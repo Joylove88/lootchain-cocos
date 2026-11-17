@@ -1,4 +1,4 @@
-import { AnimationClip, instantiate, Mat4, MeshRenderer, Node, Prefab, resources, SkeletalAnimation, SkinnedMeshRenderer, Vec3 } from 'cc';
+import { AnimationClip, instantiate, JsonAsset, Mat4, MeshRenderer, Node, Prefab, resources, SkeletalAnimation, SkinnedMeshRenderer, Vec3 } from 'cc';
 import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastDeath, poseBeastHit, poseBeastIdle, poseBeastWalk, poseBite, poseCast, poseHit, poseShoot, Rig } from './G3DPose';
 
 /**
@@ -15,11 +15,24 @@ import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastDeath, poseBeastHit, p
 /** 动作片段的先后(展示模式轮播用;也是「哪个算待机 / 行走」的查找顺序)。 */
 export const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
 
+/**
+ * 动作库转套过来的招式(tools/proto3d/char3d/mixamo_retarget.py 出的 moves.json):
+ * 每个片段多长、位移轨迹(每帧 [往前, 往右],模型原始尺寸下的米)、剑尖最快的时刻;剑在右手里的方向和握点(右手自己的坐标)。
+ */
+export interface MoveData {
+  fps: number;
+  sword: { axis: number[]; grip: number[] };
+  clips: Record<string, { dur: number; frames: number; loop: boolean; root: number[][]; peak: number; fast: number[] | null; yawEnd: number }>;
+}
+
 export interface CharTemplate {
   key: string;
   prefab: Prefab;
   /** 预制体上没带动画组件的时候,从同目录读出来的动作片段。 */
   clips: AnimationClip[] | null;
+  /** 另外放的一批动作片段(assets/resources/g3d_moves/<键>/,动作库转套过来的招式)和它们的数据;没有就是空。 */
+  extra: AnimationClip[] | null;
+  moves: MoveData | null;
   /** 站姿下网格的包围盒(holder 自己的坐标,没缩放、没转向);第一次生成实例时量。 */
   lo: Vec3 | null;
   hi: Vec3 | null;
@@ -80,6 +93,16 @@ export function hasChar(key: string): boolean {
   return paths.has(key);
 }
 
+/** 这个角色有没有另外放的那批招式(assets/resources/g3d_moves/<键>/ 下有动作片段)。 */
+export function hasMoves(key: string): boolean {
+  try {
+    return (((resources as any).getDirWithPath(`g3d_moves/${key}`, AnimationClip) as unknown[]) ?? []).length > 0;
+  } catch (error) {
+    void error;
+    return false;
+  }
+}
+
 /** 读一个角色的模型(读过的直接给)。没有这个角色 / 读失败回 null。 */
 export function loadChar(key: string, done: (tpl: CharTemplate | null) => void): void {
   const hit = templates.get(key);
@@ -113,11 +136,11 @@ export function loadChar(key: string, done: (tpl: CharTemplate | null) => void):
       return;
     }
     prefab.addRef();
-    const tpl: CharTemplate = { key, prefab, clips: null, lo: null, hi: null, tris: 0, joints: 0 };
+    const tpl: CharTemplate = { key, prefab, clips: null, extra: null, moves: null, lo: null, hi: null, tris: 0, joints: 0 };
     const probe = prefab.data as Node;
     const own = probe.getComponent(SkeletalAnimation) ?? probe.getComponentInChildren(SkeletalAnimation);
     if (own && own.clips.some((clip) => !!clip)) {
-      finish(tpl);
+      loadMoves(tpl, () => finish(tpl));
       return;
     }
     // 预制体上没带动画组件:把同目录导入出来的动作片段读出来,生成实例的时候挂上去
@@ -126,7 +149,28 @@ export function loadChar(key: string, done: (tpl: CharTemplate | null) => void):
         clips.forEach((clip) => clip.addRef());
         tpl.clips = clips;
       }
-      finish(tpl);
+      loadMoves(tpl, () => finish(tpl));
+    });
+  });
+}
+
+/** 这个角色另外放的那批招式(g3d_moves/<键>/ 下的动作片段 + moves_data.json)。目录也是临时拷进来的,没有就直接过。 */
+function loadMoves(tpl: CharTemplate, done: () => void): void {
+  const dir = `g3d_moves/${tpl.key}`;
+  if (!hasMoves(tpl.key)) {
+    done();
+    return;
+  }
+  resources.loadDir(dir, AnimationClip, (err, clips) => {
+    if (!err && clips && clips.length) {
+      clips.forEach((clip) => clip.addRef());
+      tpl.extra = clips;
+    }
+    resources.load(`${dir}/moves_data`, JsonAsset, (e2, asset) => {
+      if (!e2 && asset && asset.json) {
+        tpl.moves = asset.json as unknown as MoveData;
+      }
+      done();
     });
   });
 }
@@ -176,6 +220,8 @@ export class G3DChar {
   walkRate = 1.35;
   seed = 0;
   anim: SkeletalAnimation | null = null;
+  /** 动作库转套过来的招式的数据(没有这批招式就是空)。 */
+  moves: MoveData | null = null;
   names: string[] = [];
   cur = '';
   tris: number;
@@ -201,6 +247,13 @@ export class G3DChar {
       anim = anim ?? model.addComponent(SkeletalAnimation);
       anim.useBakedAnimation = !!opts.baked;   // 同样要赶在挂动作片段(建状态)之前
       anim.clips = tpl.clips;
+    }
+    if (anim && tpl.extra) {
+      for (const clip of tpl.extra) {
+        if (!anim.getState(clip.name)) {
+          anim.addClip(clip, clip.name);
+        }
+      }
     }
     holder.addChild(model);
     parent.addChild(holder);
@@ -278,6 +331,7 @@ export class G3DChar {
     this.kind = this.rig.j('Hips') && this.rig.j('Spine1') ? 'biped' : 'beast';
     this.beast = this.kind === 'beast' ? analyzeBeast(this.rig, this.frame) : null;
     this.applyAlbedo();
+    this.moves = tpl.extra && tpl.extra.length ? tpl.moves : null;
     if (anim) {
       const rank = (name: string): number => {
         const i = CHAR_ORDER.findIndex((k) => name.toLowerCase().indexOf(k) >= 0);

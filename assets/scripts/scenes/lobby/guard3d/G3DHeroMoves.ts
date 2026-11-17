@@ -1,5 +1,5 @@
 import { Material, Node, Quat, Texture2D, Vec3 } from 'cc';
-import type { G3DChar } from './G3DChar';
+import type { G3DChar, MoveData } from './G3DChar';
 import { addMesh, DynMesh, material, tex } from './G3DKit';
 import { Sculpt, xform } from './G3DSculpt';
 import { ctxOf, makeCanvas } from './G3DTextures';
@@ -18,6 +18,11 @@ import { pfbm } from './G3DFieldTex';
  * 「过顶劈」那一段片段留着用在跃空重劈上(那一招腿在空中,不用解腿)。
  *
  * 这套是代码摆出来的姿势,比不上动作捕捉:重心和脚步偏硬。骨架是标准的 mixamo 骨架,以后要更自然的招式可以直接换动作库的片段。
+ *
+ * 同一天接了动作库(用户:「先用 Mixamo」):Mixamo 的「大剑」动作包(51 个动作捕捉片段)转套到主角骨架上
+ * (tools/proto3d/char3d/mixamo_retarget.py,片段放在 assets/resources/g3d_moves/hero_m/,和模型一样不进仓库)。
+ * 有这批片段时招式用 GS_COMBO / GS_SKILLS(一招 = 某个片段里的一段,按逻辑时间定格播放;位移照片段里胯走过的路挪),
+ * 剑换成双手大剑、固定在右手里(方向和握点由转套脚本量出来);没有这批片段时还是上面那套代码摆的招式。
  */
 
 export type V3 = [number, number, number];      // 角色自己的方向:[往前, 往上, 往右手边]
@@ -69,6 +74,14 @@ export interface Move {
   trail: [number, number];
   /** 刀光的颜色(0~1)。 */
   color: V3;
+  /** 动作库的片段(有它就不用 keys 摆姿势):片段名、取片段里的哪一段(秒)、位移放大几倍。 */
+  clip?: string;
+  from?: number;
+  to?: number;
+  rootK?: number;
+  /** 这一招自己的特效 / 沿路判定开着的进度区间,和「出手」那一下(放剑气、砸地)的进度。 */
+  fx?: [number, number];
+  fire?: number;
 }
 
 const STEEL: V3 = [0.72, 0.88, 1.0];
@@ -158,6 +171,69 @@ export const SKILLS: Record<string, Move> = {
     ],
   },
 };
+
+// ───────────────────────── 动作库的招式(Mixamo 大剑包) ─────────────────────────
+interface ClipHit { at: number; reach: number; arc: number; dmg: number; heavy?: boolean }
+
+/**
+ * 用片段里的一段做一招。时刻都按片段自己的秒数写(对着逐帧分解图量的),这里换成进度。
+ * speed = 播放速度(动作捕捉的原速偏慢,收势也长:取中间一段、放快一些,到了 cancel 就能接下一招)。
+ */
+function clipMove(name: string, clip: string, from: number, to: number, speed: number,
+  o: { hits?: ClipHit[]; trail: [number, number]; cancel: number; color?: V3; rootK?: number; fx?: [number, number]; fire?: number }): Move {
+  const span = to - from;
+  const f = (at: number): number => (at - from) / span;
+  return {
+    name, clip, from, to, rootK: o.rootK ?? 1, dur: span / speed, keys: [], advance: 0, advAt: [0, 1],
+    hits: (o.hits ?? []).map((h) => ({ t: f(h.at), reach: h.reach, arc: h.arc, dmg: h.dmg, heavy: h.heavy })),
+    cancel: f(o.cancel), trail: [f(o.trail[0]), f(o.trail[1])], color: o.color ?? STEEL,
+    fx: o.fx ? [f(o.fx[0]), f(o.fx[1])] : undefined, fire: o.fire !== undefined ? f(o.fire) : undefined,
+  };
+}
+
+/** 待机 / 跑(双手持剑的架势)。 */
+export const GS_STAND = 'gs_stand';
+export const GS_RUN = 'gs_jog2';
+
+/** 普攻四连。 */
+export const GS_COMBO: Move[] = [
+  clipMove('劈斩', 'gs_cut1', 0.2, 1.0, 1.4, { hits: [{ at: 0.68, reach: 2.8, arc: 150, dmg: 1 }], trail: [0.5, 0.86], cancel: 0.86 }),
+  clipMove('回旋斩', 'gs_cut3', 0.25, 1.3, 1.45, { hits: [{ at: 0.82, reach: 2.9, arc: 360, dmg: 1 }], trail: [0.6, 1.06], cancel: 1.08 }),
+  clipMove('连斩', 'gs_cut4', 0.25, 1.45, 1.5, { hits: [{ at: 0.74, reach: 2.9, arc: 170, dmg: 1 }, { at: 1.15, reach: 2.9, arc: 200, dmg: 2 }], trail: [0.55, 1.3], cancel: 1.3 }),
+  clipMove('旋身重劈', 'gs_spin', 0.1, 1.6, 1.35, { hits: [{ at: 0.55, reach: 2.9, arc: 360, dmg: 2 }, { at: 1.12, reach: 3.2, arc: 150, dmg: 3, heavy: true }], trail: [0.3, 1.26], cancel: 1.45, color: VIOLET }),
+];
+
+/** 技能:突进(滑铲斩)、连环斩(一路三刀)、跃空重劈、剑气斩。 */
+export const GS_SKILLS: Record<string, Move> = {
+  // 突进斩:举剑跪滑出去(沿路碰到的都算),滑到头一记贴地横扫
+  dash: clipMove('突进斩', 'gs_slide', 0.1, 1.75, 1.5, { hits: [{ at: 1.2, reach: 3.0, arc: 220, dmg: 2, heavy: true }], trail: [0.9, 1.55], cancel: 1.6, color: VIOLET, rootK: 1.3, fx: [0.25, 0.95], fire: 1.25 }),
+  // 连环斩:一路往前四刀(劈、撩、扫、回身扫)
+  whirl: clipMove('连环斩', 'gs_cut2', 0.25, 2.95, 1.5, {
+    hits: [{ at: 0.88, reach: 2.8, arc: 170, dmg: 1 }, { at: 1.45, reach: 2.8, arc: 200, dmg: 1 }, { at: 1.75, reach: 3.0, arc: 220, dmg: 2 }, { at: 2.55, reach: 3.1, arc: 360, dmg: 3, heavy: true }],
+    trail: [0.7, 2.75], cancel: 2.8, fx: [0.8, 2.7] }),
+  // 跃空重劈:助跑起跳,举剑过顶,落地劈下
+  smash: clipMove('跃空重劈', 'gs_leap', 0.15, 1.75, 1.3, { trail: [0.85, 1.3], cancel: 1.6, color: VIOLET, fire: 1.08 }),
+  // 剑气斩:蹲身一记横扫,扫出去的那一下放出剑气
+  wave: clipMove('剑气斩', 'gs_cut5', 0.05, 1.05, 1.3, { trail: [0.3, 0.62], cancel: 0.85, color: VIOLET, fire: 0.48 }),
+};
+
+/** 片段里某一刻(秒)的位移:[往前, 往右](模型原始尺寸下的米,相对片段开头)。 */
+export function rootAt(data: MoveData, clip: string, time: number, out: [number, number]): [number, number] {
+  const info = data.clips[clip];
+  if (!info || !info.root.length) {
+    out[0] = 0;
+    out[1] = 0;
+    return out;
+  }
+  const x = Math.min(info.root.length - 1, Math.max(0, time * data.fps));
+  const i = Math.min(info.root.length - 2, Math.floor(x));
+  const k = x - i;
+  const a = info.root[Math.max(0, i)];
+  const b = info.root[Math.min(info.root.length - 1, i + 1)];
+  out[0] = a[0] + (b[0] - a[0]) * k;
+  out[1] = a[1] + (b[1] - a[1]) * k;
+  return out;
+}
 
 // ───────────────────────── 取某一刻的姿势 ─────────────────────────
 const lerpV = (a: V3 | undefined, b: V3 | undefined, k: number, out: V3): V3 => {
@@ -298,38 +374,51 @@ export function applyPose(c: G3DChar, p: Pose, w: number, bladeOut: Vec3): void 
 export const BLADE_LEN = 1.02;        // 从手到剑尖(米)
 export const BLADE_ROOT = 0.16;       // 从手到剑身开始的地方
 
-/** 一把单手长剑(代码拼的):菱形截面的剑身、护手、缠皮的握柄、配重球。节点原点在握柄正中,剑身沿自己的 +y。 */
-export function buildSword(parent: Node): { node: Node; edge: Material; lit: Material[] } {
+/**
+ * 一把剑(代码拼的):菱形截面的剑身、护手、缠皮的握柄、配重球。节点原点在右手握的地方,剑身沿自己的 +y。
+ * great = 双手大剑(动作库的招式用):剑身更长更宽,握柄往下加长到左手也握得住。返回 len / root = 从手到剑尖 / 到剑身开始处。
+ */
+export function buildSword(parent: Node, great = false): { node: Node; edge: Material; lit: Material[]; len: number; root: number } {
   const node = new Node('DgSword');
   parent.addChild(node);
   const blade = new Sculpt();
   const dark = new Sculpt();
   const grip = new Sculpt();
   const edge = new Sculpt();
-  const W = 0.036;
-  const TH = 0.0075;
+  const W = great ? 0.05 : 0.036;
+  const TH = great ? 0.0095 : 0.0075;
+  const ROOT = great ? 0.19 : BLADE_ROOT;
+  const LEN = great ? 1.42 : BLADE_LEN;
+  const m1 = great ? 0.92 : 0.62;            // 剑身分三段的两个分界
+  const m2 = great ? 1.28 : 0.9;
+  const lo = great ? -0.34 : -0.11;          // 握柄的下端
+  const gy = great ? 0.145 : 0.115;          // 护手的位置
+  const gw = great ? 0.2 : 0.15;             // 护手半宽
   // 剑身:三段,越往尖越窄;最后一段收成尖
   const seg = (y0: number, y1: number, w0: number, w1: number): void => {
     blade.prism([[w0, 0], [0, TH], [-w0, 0], [0, -TH]], y0, y1, w1 / w0, [[0.86, 0.9, 0.96], [0.62, 0.66, 0.74], [0.86, 0.9, 0.96], [0.62, 0.66, 0.74]], 3, undefined, false);
   };
-  seg(BLADE_ROOT, 0.62, W, W * 0.86);
-  seg(0.62, 0.9, W * 0.86, W * 0.62);
-  blade.prism([[W * 0.62, 0], [0, TH], [-W * 0.62, 0], [0, -TH]], 0.9, BLADE_LEN, 0, [[0.9, 0.94, 1], [0.66, 0.7, 0.78]], 3, undefined, false);
+  seg(ROOT, m1, W, W * 0.86);
+  seg(m1, m2, W * 0.86, W * 0.62);
+  blade.prism([[W * 0.62, 0], [0, TH], [-W * 0.62, 0], [0, -TH]], m2, LEN, 0, [[0.9, 0.94, 1], [0.66, 0.7, 0.78]], 3, undefined, false);
   // 血槽:剑身正中一道略凹的暗条(两面各一条薄片)
-  for (const s of [1, -1]) {
-    dark.prism([[0.009, 0], [0, 0.0012], [-0.009, 0], [0, -0.0012]], BLADE_ROOT + 0.03, 0.72, 0.5, [0.2, 0.22, 0.27], 3, xform([0, 0, s * (TH * 0.72)]), false);
+  for (const sgn of [1, -1]) {
+    dark.prism([[W * 0.25, 0], [0, 0.0012], [-W * 0.25, 0], [0, -0.0012]], ROOT + 0.03, m1 + 0.1, 0.5, [0.2, 0.22, 0.27], 3, xform([0, 0, sgn * (TH * 0.72)]), false);
   }
   // 护手:一根横档,两头略上翘 + 中间一块菱形的格
-  dark.prism([[0.15, 0], [0.13, 0.014], [-0.13, 0.014], [-0.15, 0], [-0.13, -0.014], [0.13, -0.014]], 0.115, 0.15, 0.92, [0.32, 0.3, 0.3], 3);
-  dark.prism([[0.04, 0], [0, 0.02], [-0.04, 0], [0, -0.02]], 0.1, 0.19, 0.6, [0.4, 0.36, 0.3], 3);
-  grip.lathe([[0.016, -0.11], [0.019, -0.04], [0.018, 0.04], [0.016, 0.115]], 10, { den: 9, tint: [0.2, 0.15, 0.12], smooth: true });
-  dark.lathe([[0.0, -0.16], [0.022, -0.15], [0.027, -0.13], [0.02, -0.11], [0.016, -0.108]], 12, { den: 3, tint: [0.36, 0.33, 0.3] });
+  dark.prism([[gw, 0], [gw - 0.02, 0.014], [-gw + 0.02, 0.014], [-gw, 0], [-gw + 0.02, -0.014], [gw - 0.02, -0.014]], gy, gy + 0.035, 0.92, [0.32, 0.3, 0.3], 3);
+  dark.prism([[0.04, 0], [0, 0.02], [-0.04, 0], [0, -0.02]], gy - 0.015, gy + 0.075, 0.6, [0.4, 0.36, 0.3], 3);
+  grip.lathe([[0.016, lo], [0.019, lo + 0.07], [0.018, gy - 0.075], [0.016, gy]], 10, { den: great ? 16 : 9, tint: [0.2, 0.15, 0.12], smooth: true });
+  dark.lathe([[0.0, lo - 0.05], [0.022, lo - 0.04], [0.027, lo - 0.02], [0.02, lo], [0.016, lo + 0.002]], 12, { den: 3, tint: [0.36, 0.33, 0.3] });
   // 刃口:贴着两条刃的两条细亮线(发一点冷光,暗处也看得出剑在哪)
-  for (const s of [1, -1]) {
-    edge.prism([[0.0035, 0], [0, 0.0016], [-0.0035, 0], [0, -0.0016]], BLADE_ROOT + 0.01, 0.9, 0.62, [1, 1, 1], 1, xform([s * (W - 0.002), 0, 0], [0, 0, s * -0.8]), false);
+  for (const sgn of [1, -1]) {
+    edge.prism([[0.0035, 0], [0, 0.0016], [-0.0035, 0], [0, -0.0016]], ROOT + 0.01, m2, 0.62, [1, 1, 1], 1, xform([sgn * (W - 0.002), 0, 0], [0, 0, sgn * -(great ? 0.55 : 0.8)]), false);
   }
   const steel = material('builtin-standard', { USE_VERTEX_COLOR: true });
-  steel.setProperty('roughness', 0.24);
+  steel.setProperty('roughness', great ? 0.5 : 0.24);
+  if (great) {
+    steel.setProperty('albedoScale', new Vec3(0.46, 0.48, 0.52));          // 大剑的面宽:又亮又光的话,在月光下整片反白、带一圈光晕
+  }
   steel.setProperty('metallic', 1);
   const iron = material('builtin-standard', { USE_VERTEX_COLOR: true });
   iron.setProperty('roughness', 0.5);
@@ -338,13 +427,13 @@ export function buildSword(parent: Node): { node: Node; edge: Material; lit: Mat
   leather.setProperty('roughness', 0.85);
   leather.setProperty('metallic', 0);
   const edgeMat = material('builtin-unlit', {});
-  edgeMat.setProperty('colorScale', new Vec3(1.5, 1.9, 2.6));
+  edgeMat.setProperty('colorScale', great ? new Vec3(0.9, 1.15, 1.6) : new Vec3(1.5, 1.9, 2.6));
   for (const [b, m, name] of [[blade, steel, 'blade'], [dark, iron, 'guard'], [grip, leather, 'grip'], [edge, edgeMat, 'edge']] as Array<[Sculpt, Material, string]>) {
     for (const mesh of b.build()) {
       addMesh(node, name, mesh, m, name !== 'edge', name !== 'edge');
     }
   }
-  return { node, edge: edgeMat, lit: [steel, iron, leather] };
+  return { node, edge: edgeMat, lit: [steel, iron, leather], len: LEN, root: ROOT };
 }
 
 const _q = new Quat();

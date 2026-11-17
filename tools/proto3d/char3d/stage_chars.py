@@ -4,9 +4,10 @@
   python tools/proto3d/char3d/stage_chars.py in  [--lod] [--keys=hero_m,hero_f,rat,wolf,spider2,bear,rotbear]
   python tools/proto3d/char3d/stage_chars.py out
 
-in:拷 <键>/anim_model.glb(--lod 则拷 anim_model_lod.glb,没有就先用 glb_lod.py 出一份)到 assets/resources/g3d_char/<键>/<键>.glb,
+in:(有的话)先把 <键>/moves/ 下动作库转套出来的招式(moves.glb + moves_data.json,见 mixamo_retarget.py)拷到 assets/resources/g3d_moves/<键>/;
+    拷 <键>/anim_model.glb(--lod 则拷 anim_model_lod.glb,没有就先用 glb_lod.py 出一份)到 assets/resources/g3d_char/<键>/<键>.glb,
     让 Creator 导入,再跑 gltf_meta_fix.py(贴图多级渐远 + 各向异性、算切线)。Creator 预览(7456)要开着。
-out:整个 assets/resources/g3d_char 删掉(连 .meta),再让 Creator 刷新。
+out:整个 assets/resources/g3d_char 和 g3d_moves 删掉(连 .meta),再让 Creator 刷新。
 换另一套(原版 ↔ 低配)之前先 out 再 in。
 """
 import os
@@ -20,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..', '..'))
 SRC = os.environ.get('LC_CHAR_SRC', r'D:\project\lootchain-3d-ref\chars')
 DST = os.path.join(ROOT, 'assets', 'resources', 'g3d_char')
+MOVES = os.path.join(ROOT, 'assets', 'resources', 'g3d_moves')
 OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1:] if a.startswith('--'))
 KEYS = [k for k in OPT.get('keys', 'hero_m,hero_f,rat,wolf,spider2,bear,rotbear').split(',') if k]
 CMD = next((a for a in sys.argv[1:] if not a.startswith('--')), 'in')
@@ -44,6 +46,13 @@ def main():
             os.makedirs(d, exist_ok=True)
             shutil.copy2(src, os.path.join(d, k + '.glb'))
             print('in', k, 'lod' if lod else 'full', os.path.getsize(src))
+            mv = os.path.join(SRC, k, 'moves')
+            if os.path.exists(os.path.join(mv, 'moves.glb')) and not OPT.get('nomoves'):
+                md = os.path.join(MOVES, k)
+                os.makedirs(md, exist_ok=True)
+                for name in ('moves.glb', 'moves_data.json'):
+                    shutil.copy2(os.path.join(mv, name), os.path.join(md, name))
+                print('in', k, 'moves', os.path.getsize(os.path.join(mv, 'moves.glb')))
         refresh(25)
         for _ in range(30):
             if all(os.path.exists(os.path.join(DST, k, k + '.glb.meta')) for k in KEYS):
@@ -53,10 +62,11 @@ def main():
         refresh(25)
         print('staged', 'lod' if lod else 'full')
     elif CMD == 'out':
-        if os.path.isdir(DST):
-            shutil.rmtree(DST)
-        if os.path.exists(DST + '.meta'):
-            os.remove(DST + '.meta')
+        for d in (DST, MOVES):
+            if os.path.isdir(d):
+                shutil.rmtree(d)
+            if os.path.exists(d + '.meta'):
+                os.remove(d + '.meta')
         refresh(8)
         print('removed', not os.path.exists(DST))
 

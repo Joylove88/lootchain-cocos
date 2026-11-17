@@ -1,10 +1,10 @@
 import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
-import { charKeys, G3DChar, loadChar } from './G3DChar';
+import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
-import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, Move, MoveHit, newPose, placeSword, poseAt, SKILLS } from './G3DHeroMoves';
+import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
@@ -173,6 +173,8 @@ const _v = new Vec3();
 const _q = new Quat();
 const _q2v = new Vec3();
 const _lead = new Vec3();
+const _r0: [number, number] = [0, 0];
+const _r1: [number, number] = [0, 0];
 const _grip = new Vec3();
 const _base = new Vec3();
 const _tip = new Vec3();
@@ -298,6 +300,9 @@ class Dungeon {
   view = { yaw: 62, pitch: 14, dist: 6.2, fov: 52 };
   free: { pos: Vec3; look: Vec3 } | null = null;
   private pull = 6.2;
+  /** 镜头被挤近时额外抬高 / 往旁边绕开的角度(度)。 */
+  private lift = 0;
+  private swing = 0;
   private look = new Vec3(-6.5, 1.2, 1.6);
   // 主角
   leader: G3DChar | null = null;
@@ -308,7 +313,16 @@ class Dungeon {
    * 正在出的这一招:move = 代码摆的招式(跃空重劈用片段,move 是空的);t = 出到第几秒;done = 每次判定做过没有;
    * yaw0 = 出手时面朝哪;adv = 已经往前挪了多少;hit = 这一招里已经打中过的怪(突进沿路每只只算一次)。
    */
-  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; hit: Set<Mob>; fired: boolean } | null = null;
+  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean } | null = null;
+  /** 主角有没有动作库转套过来的那批招式(有 = 用片段出招、双手大剑;没有 = 代码摆的招式、单手长剑)。 */
+  private gs = false;
+  private swordLen = BLADE_LEN;
+  private swordRoot = BLADE_ROOT;
+  /** 剑尖这一帧往哪边走(世界方向;命中的火星顺着它飞)。 */
+  private tipVel = new Vec3(0, 0, 1);
+  private tipPrev = new Vec3();
+  /** 调试:把主角定在某个片段的某一刻(逐帧看动作用)。 */
+  dbgClip: { name: string; t: number } | null = null;
   private comboI = 0;
   private comboUntil = 0;
   private queued: string | null = null;
@@ -1240,7 +1254,9 @@ class Dungeon {
     this.cam = cam;
     this.fx = new FxWorld(world, { min: [X0 - 4, -1, Z0 - 5], max: [X1 + 1, ROOF, Z1 + 5] });
     const fxBounds = { min: [X0 - 2, -1, Z0 - 2] as [number, number, number], max: [X1 + 2, H, Z1 + 2] as [number, number, number] };
-    const sw = buildSword(world);
+    const sw = buildSword(world, hasMoves('hero_m'));
+    this.swordLen = sw.len;
+    this.swordRoot = sw.root;
     this.sword = sw.node;
     this.swordLit = sw.lit;
     sw.node.active = false;
@@ -1272,7 +1288,11 @@ class Dungeon {
     };
     spawn('hero_m', this.lx, this.lz, 1.78, 0, (c) => {
       this.leader = c;
-      c.play(c.clip('idle'), 0);
+      this.gs = !!c.moves && !!c.anim?.getState(GS_STAND);
+      if (this.gs) {
+        c.inPlace = false;          // 这批片段的位移已经抽掉了,剩下的是身体的晃动,要留着
+      }
+      this.loco('idle', 0);
     });
     spawn('hero_f', this.lx - 0.9, this.lz + 0.9, 1.68, 0, (c) => {
       this.followers.push({ c, x: this.lx - 0.9, z: this.lz + 0.9, yaw: 0, moving: false, ox: -0.9, oz: 0.9 });
@@ -1844,6 +1864,22 @@ class Dungeon {
     return true;
   }
 
+  /** 主角的待机 / 跑:有动作库的那批片段时用双手持剑的架势。 */
+  private loco(kind: 'idle' | 'run', fade: number): void {
+    const c = this.leader;
+    if (!c) {
+      return;
+    }
+    if (this.gs) {
+      c.play(kind === 'idle' ? GS_STAND : GS_RUN, fade, true);
+      if (kind === 'run') {
+        c.setSpeed(0.86);          // 片段是按 4.5 米/秒跑的,这里走 3.6
+      }
+      return;
+    }
+    c.play(kind === 'idle' ? c.clip('idle') : c.clip('run') || c.clip('walk'), fade);
+  }
+
   private startAct(kind: string): void {
     const c = this.leader!;
     let move: Move | null = null;
@@ -1852,12 +1888,14 @@ class Dungeon {
       if (this.time > this.comboUntil) {
         this.comboI = 0;
       }
-      move = COMBO[this.comboI % COMBO.length];
+      const combo = this.gs ? GS_COMBO : COMBO;
+      move = combo[this.comboI % combo.length];
       this.comboI += 1;
     } else if (kind === 'smash') {
       this.cd.smash = 7;
+      move = this.gs ? GS_SKILLS.smash : null;
     } else {
-      move = SKILLS[kind];
+      move = (this.gs ? GS_SKILLS : SKILLS)[kind];
       this.cd[kind] = kind === 'dash' ? 3 : kind === 'whirl' ? 6 : 4;
     }
     if (move) {
@@ -1888,11 +1926,11 @@ class Dungeon {
       const wz = -ix * Math.sin(a) - iy * Math.cos(a);
       this.lyaw = (Math.atan2(-wz, wx) * 180) / Math.PI;
     }
-    this.act = { kind, move, dur, t: 0, done: [], yaw0: this.lyaw, adv: 0, hit: new Set(), fired: false };
+    this.act = { kind, move, dur, t: 0, done: [], yaw0: this.lyaw, adv: 0, advR: 0, hit: new Set(), fired: false };
     this.queued = null;
     this.auto = null;
     this.moving = false;
-    if (move) {
+    if (move && !move.clip) {
       c.play(c.clip('idle'), 0.08);
     }
     c.place(this.lx, this.leaderY, this.lz, this.lyaw);
@@ -1930,9 +1968,27 @@ class Dungeon {
     slab(oz, dz, Z0 + 0.35, Z1 - 0.35);
     // 大个子的怪(熊)站到镜头和主角之间时也算挡镜头的:不然镜头会埋进它身子里
     const blockers = this.solids.filter((v) => v.hx >= 0.3);      // 烛台这种细杆子不算(挡不住什么,却会把镜头拉到贴脸)
+    // 怪按圆柱算(按方盒子算的话,主角贴着熊站时镜头的线会蹭到盒子的角,被拉到贴脸)
+    const hd = Math.hypot(dx, dz);
     for (const m of this.mobs) {
-      if (m.radius >= 0.7 && m.state !== 'gone' && m.state !== 'down') {
-        blockers.push({ x: m.x, z: m.z, hx: m.radius * 0.9, hz: m.radius * 0.9, h: m.c.height });
+      if (m.radius < 0.7 || m.state === 'gone' || m.state === 'down' || hd < 1e-4) {
+        continue;
+      }
+      const R = m.radius * 0.8;
+      const px = ox - m.x;
+      const pz = oz - m.z;
+      if (px * px + pz * pz < (R + 0.25) * (R + 0.25)) {
+        continue;      // 起点就在它身子里(主角贴着它):不管它
+      }
+      const b = (px * dx + pz * dz) / (hd * hd);
+      const c = (px * px + pz * pz - R * R) / (hd * hd);
+      const disc = b * b - c;
+      if (disc <= 0) {
+        continue;
+      }
+      const te = -b - Math.sqrt(disc);
+      if (te > 0 && te < t && oy + dy * te < m.c.height + 0.2) {
+        t = te;
       }
     }
     for (const s of blockers) {
@@ -1975,9 +2031,36 @@ class Dungeon {
       cam.node.lookAt(this.free.look);
       return;
     }
-    const a = (this.view.yaw * Math.PI) / 180;
-    const p = (this.view.pitch * Math.PI) / 180;
     this.look.set(this.lx, 1.25, this.lz);
+    // 身后有东西(柱子、围上来的熊)把镜头挤到两米半以内时:不往脸上贴,先往左右绕开(柱子是通顶的,抬高没用),再不行抬高了俯视
+    const near = Math.min(this.view.dist, 2.6);
+    const reachAt = (yawDeg: number, deg: number): number => {
+      const y = (yawDeg * Math.PI) / 180;
+      const q = (deg * Math.PI) / 180;
+      return this.reach(this.look.x, this.look.y, this.look.z, Math.sin(y) * Math.cos(q), Math.sin(q), Math.cos(y) * Math.cos(q), this.view.dist);
+    };
+    const sg = this.swing < 0 ? -1 : 1;          // 已经往哪边绕了就先试哪边,免得左右来回跳
+    const tries: Array<[number, number]> = [[0, 0], [20 * sg, 0], [-20 * sg, 0], [0, 14], [40 * sg, 0], [-40 * sg, 0], [20 * sg, 14], [-20 * sg, 14], [60 * sg, 0], [-60 * sg, 0], [0, 28], [40 * sg, 20], [-40 * sg, 20], [0, 42]];
+    let needYaw = 0;
+    let needLift = 0;
+    let best = -1;
+    for (const [sw, add] of tries) {
+      const deg = Math.min(72, this.view.pitch + add);
+      const r = reachAt(this.view.yaw + sw, deg);
+      if (r > best + 0.3 || r >= near) {
+        best = r;
+        needYaw = sw;
+        needLift = deg - this.view.pitch;
+      }
+      if (r >= near) {
+        break;
+      }
+    }
+    const ease = (cur: number, to: number): number => (dt <= 0 ? to : cur + (to - cur) * (1 - Math.exp(-(Math.abs(to) > Math.abs(cur) ? 9 : 2) * dt)));
+    this.lift = ease(this.lift, needLift);
+    this.swing = ease(this.swing, needYaw);
+    const a = ((this.view.yaw + this.swing) * Math.PI) / 180;
+    const p = ((this.view.pitch + this.lift) * Math.PI) / 180;
     const dx = Math.sin(a) * Math.cos(p);
     const dy = Math.sin(p);
     const dz = Math.cos(a) * Math.cos(p);
@@ -2170,6 +2253,11 @@ class Dungeon {
       return;
     }
     c.step(dt);
+    if (this.dbgClip) {
+      c.scrub(this.dbgClip.name, this.dbgClip.t, 0);
+      c.place(this.lx, this.leaderY, this.lz, this.lyaw);
+      return;
+    }
     const K = this.keys;
     let ix = (K.has(KeyCode.KEY_D) || K.has(KeyCode.ARROW_RIGHT) ? 1 : 0) - (K.has(KeyCode.KEY_A) || K.has(KeyCode.ARROW_LEFT) ? 1 : 0);
     let iy = (K.has(KeyCode.KEY_W) || K.has(KeyCode.ARROW_UP) ? 1 : 0) - (K.has(KeyCode.KEY_S) || K.has(KeyCode.ARROW_DOWN) ? 1 : 0);
@@ -2220,11 +2308,11 @@ class Dungeon {
       this.lyaw += d * Math.min(1, dt * 14);
       if (!this.moving) {
         this.moving = true;
-        c.play(c.clip('run') || c.clip('walk'), 0.15);
+        this.loco('run', 0.15);
       }
     } else if (!this.act && this.moving) {
       this.moving = false;
-      c.play(c.clip('idle'), 0.2);
+      this.loco('idle', 0.2);
     }
     // 主角不走进怪的身子里(突进是穿过去的、跳劈在空中,不管)
     if (!(this.act && (this.act.kind === 'dash' || this.act.kind === 'smash'))) {
@@ -2268,11 +2356,27 @@ class Dungeon {
     const advance = m ? m.advance : 2.4;
     const advAt: [number, number] = m ? m.advAt : [0.2, 0.66];
     const want = advance * sm(advAt[0], advAt[1]);
-    const step = want - act.adv;
-    act.adv = want;
-    if (step > 1e-5) {
-      const tx = this.lx + fxn * step;
-      const tz = this.lz + fzn * step;
+    let step = want - act.adv;
+    let side = 0;
+    if (!(m && m.clip && c.moves)) {
+      act.adv = want;
+    } else {
+      // 动作库的片段:定在逻辑时间对应的那一刻(顿帧、加速都跟着走);位移照片段里胯走过的路
+      const ct = m.from! + u * (m.to! - m.from!);
+      c.scrub(m.clip, ct, 0.09);
+      rootAt(c.moves, m.clip, ct, _r1);
+      rootAt(c.moves, m.clip, m.from!, _r0);
+      const k = (m.rootK ?? 1) * c.scale;
+      const wf = (_r1[0] - _r0[0]) * k;
+      const wr = (_r1[1] - _r0[1]) * k;
+      step = wf - act.adv;
+      side = wr - act.advR;
+      act.adv = wf;
+      act.advR = wr;
+    }
+    if (Math.abs(step) > 1e-5 || Math.abs(side) > 1e-5) {
+      const tx = this.lx + fxn * step - fzn * side;
+      const tz = this.lz + fzn * step + fxn * side;
       if (!this.blocked(tx, tz, 0.3)) {
         this.lx = tx;
         this.lz = tz;
@@ -2295,9 +2399,11 @@ class Dungeon {
         }
       });
     }
+    const fxA = m?.fx ? m.fx[0] : act.kind === 'dash' ? 0.2 : 0.1;
+    const fxB = m?.fx ? m.fx[1] : act.kind === 'dash' ? 0.66 : 0.88;
     if (act.kind === 'dash') {
       // 突进:冲过去的路上碰到谁算谁(每只一次);身后拖尘土和一串细火星
-      if (u > 0.2 && u < 0.66) {
+      if (u > fxA && u < fxB) {
         for (const mob of this.mobs) {
           if (mob.state === 'down' || mob.state === 'gone' || act.hit.has(mob)) {
             continue;
@@ -2318,7 +2424,7 @@ class Dungeon {
             c0: [0.3, 0.31, 0.36], a: 0.14, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1 });
         }
       }
-      if (!act.fired && u >= 0.62) {
+      if (!act.fired && u >= (m?.fire ?? 0.62)) {
         act.fired = true;
         // 收势:剑尖前面一团很短的闪 + 贴地一圈往外扩的环
         fx.emit({ x: this.lx + fxn * 1.2, y: 1.15, z: this.lz + fzn * 1.2, life: 0.1, s0: 0.5, s1: 1.4, c0: [0.8, 0.78, 1], a: 0.5, cell: FX_CELL.core, fadeIn: 0.01 });
@@ -2326,7 +2432,7 @@ class Dungeon {
         this.shake = Math.max(this.shake, 0.06);
       }
     } else if (act.kind === 'whirl') {
-      if (dt > 0 && u > 0.1 && u < 0.88) {
+      if (dt > 0 && u > fxA && u < fxB) {
         // 旋风:身边往上卷的细丝 + 贴地往外带的尘
         for (let i = 0; i < 2; i += 1) {
           const a = fx.rand(0, Math.PI * 2);
@@ -2341,10 +2447,16 @@ class Dungeon {
         }
       }
     } else if (act.kind === 'wave') {
-      if (!act.fired && u >= 0.44) {
+      if (!act.fired && u >= (m?.fire ?? 0.44)) {
         act.fired = true;
         this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set() });
         this.shake = Math.max(this.shake, 0.07);
+      }
+    } else if (act.kind === 'smash' && m) {
+      // 跃空重劈(动作库的片段):起跳和落地都在片段里,落地那一下砸地
+      if (!act.fired && u >= (m.fire ?? 0.6)) {
+        act.fired = true;
+        this.slam(this.lx + fxn * 1.3, this.lz + fzn * 1.3, fxn, fzn);
       }
     } else if (act.kind === 'smash') {
       // 跃空重劈:用模型自带的「过顶劈」片段。蓄力下蹲 → 腾空举剑 → 落地劈下 → 收势
@@ -2384,8 +2496,8 @@ class Dungeon {
     this.leaderY = 0;
     this.lyaw = ((this.lyaw % 360) + 360) % 360;
     this.comboUntil = this.time + 0.55;
-    if (was && !was.move) {
-      c.play(c.clip('idle'), 0.25);
+    if (was && (!was.move || was.move.clip)) {
+      this.loco('idle', 0.25);
     }
     this.queued = null;
   }
@@ -2546,7 +2658,8 @@ class Dungeon {
     // 这一下刀往哪边带(火星顺着飞):横斩往左、上撩往右上、斜劈往左下;一圈的用切线
     const sweep: Record<string, [number, number, number]> = { 横斩: [0.2, 0.1, -1], 反手上撩: [0.2, 0.7, 0.8], 斜劈: [0.3, -0.7, -0.6] };
     const mv = this.act?.move;
-    const sv = mv ? sweep[mv.name] : undefined;
+    const sv = mv && !mv.clip ? sweep[mv.name] : undefined;
+    const tipV = mv && mv.clip && h.arc < 360 ? this.tipVel : null;
     let any = false;
     for (const m of this.mobs) {
       if (m.state === 'down' || m.state === 'gone') {
@@ -2571,6 +2684,10 @@ class Dungeon {
         tx = fxn * sv[0] + -fzn * sv[2];
         ty = sv[1];
         tz = fzn * sv[0] + fxn * sv[2];
+      } else if (tipV) {
+        tx = tipV.x;
+        ty = tipV.y;
+        tz = tipV.z;
       }
       this.damage(m, h.dmg, !!h.heavy, dx / (d || 1), dz / (d || 1), color, tx, ty, tz);
     }
@@ -2797,7 +2914,7 @@ class Dungeon {
     const act = this.act;
     const rig = c.rig;
     const f = c.frame;
-    const want = act && act.move ? 1 : 0;
+    const want = act && act.move && !act.move.clip ? 1 : 0;
     this.poseW += (want - this.poseW) * Math.min(1, dt * (want ? 30 : 12));
     if (Math.abs(want - this.poseW) < 0.01) {
       this.poseW = want;
@@ -2805,7 +2922,11 @@ class Dungeon {
     const target = _v;
     let on = false;
     let color: [number, number, number] = [0.72, 0.88, 1];
-    if (act && act.move) {
+    if (act && act.move && act.move.clip) {
+      const u = Math.min(1, act.t / act.dur);
+      on = u >= act.move.trail[0] && u <= act.move.trail[1];
+      color = act.move.color as [number, number, number];
+    } else if (act && act.move) {
       const u = Math.min(1, act.t / act.dur);
       poseAt(act.move, u, this.poseBuf);
       applyPose(c, this.poseBuf, Math.max(0.2, this.poseW), target);
@@ -2842,6 +2963,13 @@ class Dungeon {
     }
     const hp = hand.worldPosition;
     Vec3.subtract(_grip, hp, fore.worldPosition).normalize().multiplyScalar(0.085).add(hp);
+    if (this.gs && c.moves) {
+      // 动作库的招式:剑固定在右手里(方向和握点是转套时量出来的,右手自己的坐标),刃朝小臂伸出去的方向
+      const sw = c.moves.sword;
+      Vec3.transformQuat(this.bladeDir, _v.set(sw.axis[0], sw.axis[1], sw.axis[2]), hand.worldRotation).normalize();
+      Vec3.subtract(this.bladeLead, hp, fore.worldPosition).normalize();
+      Vec3.transformQuat(_grip, _v.set(sw.grip[0] * c.scale, sw.grip[1] * c.scale, sw.grip[2] * c.scale), hand.worldRotation).add(hp);
+    }
     sword.active = true;
     placeSword(sword, _grip, this.bladeDir, this.bladeLead);
     if (DUNGEON.bake) {
@@ -2852,12 +2980,19 @@ class Dungeon {
         m.setProperty('albedoScale', _tint);
       }
     }
-    _base.set(_grip.x + this.bladeDir.x * BLADE_ROOT, _grip.y + this.bladeDir.y * BLADE_ROOT, _grip.z + this.bladeDir.z * BLADE_ROOT);
-    _tip.set(_grip.x + this.bladeDir.x * BLADE_LEN, _grip.y + this.bladeDir.y * BLADE_LEN, _grip.z + this.bladeDir.z * BLADE_LEN);
+    _base.set(_grip.x + this.bladeDir.x * this.swordRoot, _grip.y + this.bladeDir.y * this.swordRoot, _grip.z + this.bladeDir.z * this.swordRoot);
+    _tip.set(_grip.x + this.bladeDir.x * this.swordLen, _grip.y + this.bladeDir.y * this.swordLen, _grip.z + this.bladeDir.z * this.swordLen);
+    if (dt > 0) {
+      _lead.set(_tip.x - this.tipPrev.x, _tip.y - this.tipPrev.y, _tip.z - this.tipPrev.z);
+      if (_lead.lengthSqr() > 1e-6) {
+        this.tipVel.set(_lead).normalize();
+      }
+      this.tipPrev.set(_tip);
+    }
     this.trail.push(_base, _tip, on && dt > 0, color);
     this.trail.update(dt);
     // 突进:身体两侧拖出一条宽的光带(用同一种带子,两个端点取身体左右)
-    const dashing = !!act && act.kind === 'dash' && act.t / act.dur > 0.2 && act.t / act.dur < 0.66;
+    const dashing = !!act && act.kind === 'dash' && act.t / act.dur > (act.move?.fx ? act.move.fx[0] : 0.2) && act.t / act.dur < (act.move?.fx ? act.move.fx[1] : 0.66);
     _base.set(this.lx - f.right.x * 0.42, 0.55, this.lz - f.right.z * 0.42);
     _tip.set(this.lx + f.right.x * 0.42, 1.45, this.lz + f.right.z * 0.42);
     this.aura.push(_base, _tip, dashing && dt > 0, [0.5, 0.44, 0.95]);
@@ -3014,7 +3149,7 @@ function boot(): void {
 if (!EDITOR && sys.isBrowser) {
   (globalThis as any).__g3dd = { dungeon, cfg: DUNGEON, info: () => dungeon.info(), set: (p: Partial<DungeonCfg>) => dungeon.set(p),
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
-    attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), go: (x: number, z: number) => { dungeon.auto = { x, z }; },
+    attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1') {

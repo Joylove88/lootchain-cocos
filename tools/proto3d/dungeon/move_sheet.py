@@ -71,4 +71,4 @@ for i, im in enumerate(tiles):
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 sh.save(OUT, quality=88)
 print('saved', OUT, sh.size)
-print(' '.join(log)[:600])
+print(' '.join(log)[:600].encode('ascii', 'replace').decode())
