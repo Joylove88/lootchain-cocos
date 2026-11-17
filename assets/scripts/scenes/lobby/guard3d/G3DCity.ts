@@ -54,7 +54,8 @@ export interface CityScene {
    * 可以换成「图转 3D」模型的建筑:键、占地的中心、朝向(度)、占地的宽和进深(米)。
    * 第五步(用户:「建筑和原型图还是差距比较大,需要还原下」→「先转铁匠铺试试」):代码拼的到不了原型的细节,换成从原型设定图转出来的模型。
    */
-  bldSpots: Array<{ key: string; x: number; z: number; yaw: number; w: number; d: number }>;
+  /** key = 用哪个模型,id = 这一栋的名字(同一个模型可以摆几栋),y = 底面的高度(教堂站在台地上)。 */
+  bldSpots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }>;
   /** 镇民站的位置和朝向(度)。 */
   npcs: Array<{ x: number; z: number; yaw: number }>;
   plan: CityPlan;
@@ -345,7 +346,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       solidRot(G, -7.6, 7.4, -8, 0.4, 6);
     }
     const bc = smithyModel ? G.P(6.1, 0, -3.65) : G.P(-0.1, 0, -4);
-    s.bldSpots.push({ key: 'smithy', x: bc.x, z: bc.z, yaw: SMY, w: smithyModel ? 12.5 : 15.6, d: 9 });
+    s.bldSpots.push({ key: 'smithy', id: 'smithy', x: bc.x, z: bc.z, yaw: SMY, w: smithyModel ? 12.5 : 15.6, d: 9 });
   }
   if (smithyModel) {
     // 用转出来的模型:炉火和烟对到模型的炉口和左边那根烟囱(正对着正面截图量的:炉口中心在本地 x = 4.65、往里凹半米,炉台离地约 1.05 米)
@@ -492,10 +493,19 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     }
   }
   house(3.4, CITY.Z0 - 1.2, 0, 9, 8, { upper: 2, lit: 3, tone: 0.86 });
-  house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
+  const houseModel = skip.indexOf('house') >= 0;
+  if (houseModel) {
+    // 换成模型的两栋:北排东头、南排集市后面(各一栋,离得远、大小朝向不一样,不会一眼看出是同一个模型)
+    // w = 正面的宽(模型按它缩放:门高约 1.9 米);中心 = 正面那条线往后退半个进深
+    s.bldSpots.push({ key: 'house', id: 'house_n', x: 13.6, z: CITY.Z0 - 0.9 - 3.1, yaw: 0, w: 6.6, d: 6.3 });
+    s.bldSpots.push({ key: 'house', id: 'house_s', x: 6.9, z: CITY.Z1 + 3.2 + 3.3, yaw: 180, w: 7.0, d: 6.7 });
+    house(14.1, CITY.Z1 + 3.2, 180, 6.8, 8, { upper: 1, lit: 2, tone: 0.84 });
+  } else {
+    house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
+    house(10.5, CITY.Z1 + 3.2, 180, 14, 8, { upper: 1, lit: 3, tone: 0.84 });
+  }
   house(-13.4, CITY.Z1 + 0.6, 180, 11, 8, { upper: 1, lit: 3 });
   house(-2.2, CITY.Z1 + 1.1, 180, 9, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.92 });
-  house(10.5, CITY.Z1 + 3.2, 180, 14, 8, { upper: 1, lit: 3, tone: 0.84 });
   house(CITY.X0 - 0.5, -9.2, 90, 9.5, 8, { upper: 1, lit: 2 });
   house(CITY.X0 - 0.5, 9.2, 90, 9.5, 8, { upper: 2, gableFront: true, lit: 2 });
   // 第二排(只露出屋顶和上层)、西边街口尽头的一栋
@@ -513,7 +523,13 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   // ── 大教堂:在广场东头。本地坐标里正面是 +z;按正面比例搭好之后整体等比缩到 0.64 倍 ──
   // 第三轮(用户:「建筑还是需要打磨一下,还原型不像」):原型里它是斜四分之三的角度,看得到右侧一长排尖窗和扶壁。
   // 所以整座转了 20°(正面朝西偏北),南侧面露给广场;侧廊加长到和中殿一样长;砌石的块改小(块太大,整座楼显得像小模型)、石色提亮。
-  {
+  // 教堂的模型:w = 正面的宽(连尖顶高约 26 米),中心 = 正面中点沿中轴往后退 12.5 米;站在台地上
+  s.bldSpots.push({ key: 'cathedral', id: 'cathedral', x: 38.05, z: 4.1, yaw: -110, w: 17.6, d: 25, y: 0.9 });
+  if (skip.indexOf('cathedral') >= 0) {
+    // 换成模型:这里只留挡路的方块
+    solid(32, -2, 8, 12, 30);
+    solid(23.4, 8.6, 1.4, 2.6, 30);
+  } else {
     const S = 0.64;
     const CY = -110;
     const f = frame(26.1, 0, CY, S, S);

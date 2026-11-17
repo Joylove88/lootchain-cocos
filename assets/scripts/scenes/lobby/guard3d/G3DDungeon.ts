@@ -147,6 +147,8 @@ export interface DungeonCfg {
   scene: 'hall' | 'wild' | 'city';
   /** 主城里哪些建筑换成「图转 3D」的模型(逗号隔开的键,地址 &bld=smithy);空 = 全用代码拼的。模型临时拷在 resources/g3d_bld/<键>/。 */
   bld: string;
+  /** 建筑模型的窗(颜色贴图里暖黄发亮的地方)自己发光的强度;0 = 不发光。地址 &bglow=。 */
+  bldGlow: number;
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
   /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
@@ -173,7 +175,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -185,8 +187,10 @@ export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazi
 
 /** 主城场景在默认值上改的几项(不放怪;月光比野外略暗一点,靠路灯和窗子的暖光点缀)。 */
 /** 建筑模型的手调修正:转多少度(模型的正面朝哪是平台定的)、在「缩放到占地宽」的基础上再乘多少、挪多少米。 */
-const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number }> = {
+const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number; a?: number }> = {
   smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
+  cathedral: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.48 },          // 模型的长轴是中殿,正面在一头:转 -90°;石头是浅灰的,月光下发白(0.72 还是白),颜色压到 0.48
+  house: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },          // 带门的那面在侧边:转 -90°
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
@@ -393,7 +397,7 @@ class Dungeon {
   private cityFireY = 0.98;
   /** 天上的月亮(一块板):每帧跟着镜头挪,和天空图里那团月晕始终对齐。 */
   private moonDisc: Node | null = null;
-  private cityBld: Record<string, { pivot: Node; spot: { key: string; x: number; z: number; yaw: number; w: number; d: number }; size: { x: number; y: number; z: number }; tris: number }> = {};
+  private cityBld: Record<string, { pivot: Node; spot: { key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }; size: { x: number; y: number; z: number }; tris: number }> = {};
   /** 野外场景:这个位置是不是积水。 */
   private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
@@ -1570,7 +1574,7 @@ class Dungeon {
    * 把「图转 3D」的建筑模型摆进场景:模型的大小、朝向都是平台随意给的,所以量一下包围盒,缩放到占地那么宽、底面落地、中心对到占地中心。
    * 每个模型另有一份手调的修正(BLD_FIX:转多少度、再放大多少、挪多少),调的时候用 __dg.bld('smithy', { yaw: 90 })。
    */
-  private loadCityBuildings(world: Node, spots: Array<{ key: string; x: number; z: number; yaw: number; w: number; d: number }>): void {
+  private loadCityBuildings(world: Node, spots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }>): void {
     // 模型文件里的预制体路径带着它自己的节点名(g3d_bld/<键>/<键>/<节点名>),所以先问资源表
     const infos = ((resources as any).getDirWithPath('g3d_bld', Prefab) as Array<{ path: string }>) ?? [];
     for (const sp of spots) {
@@ -1580,7 +1584,7 @@ class Dungeon {
           console.warn('[g3dd] 建筑模型没找到(要先临时拷进 resources/g3d_bld)', sp.key);
           return;
         }
-        const pivot = new Node(`DgBld_${sp.key}`);
+        const pivot = new Node(`DgBld_${sp.id}`);
         world.addChild(pivot);
         const model = instantiate(prefab);
         pivot.addChild(model);
@@ -1591,6 +1595,11 @@ class Dungeon {
         for (const mr of model.getComponentsInChildren(MeshRenderer)) {
           mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
           mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
+          this.glowFromAlbedo(mr, DUNGEON.bldGlow);
+          const al = BLD_FIX[sp.key]?.a ?? 1;
+          for (let i = 0; al !== 1 && i < mr.sharedMaterials.length; i += 1) {
+            mr.getMaterialInstance(i)?.setProperty('albedoScale', new Vec3(al, al, al));
+          }
           const st = mr.mesh?.struct;
           if (!st || !st.minPosition || !st.maxPosition) {
             continue;
@@ -1608,10 +1617,56 @@ class Dungeon {
         }
         const size = { x: mx.x - mn.x, y: mx.y - mn.y, z: mx.z - mn.z };
         model.setPosition(-(mn.x + mx.x) / 2, -mn.y, -(mn.z + mx.z) / 2);
-        this.cityBld[sp.key] = { pivot, spot: sp, size, tris: Math.round(tris) };
-        this.tuneBld(sp.key, {});
-        console.log('[g3dd] 建筑模型', sp.key, JSON.stringify({ size, tris: Math.round(tris) }));
+        this.cityBld[sp.id] = { pivot, spot: sp, size, tris: Math.round(tris) };
+        this.tuneBld(sp.id, {});
+        console.log('[g3dd] 建筑模型', sp.id, JSON.stringify({ size, tris: Math.round(tris) }));
       });
+    }
+  }
+
+  /**
+   * 模型的窗是画在颜色贴图上的,自己不发光,暗处发闷。把颜色贴图里「暖黄、够亮」的地方(亮着的窗、炉膛里的炭)抠出来当发光贴图:
+   * 窗在暗处自己亮,墙和木头不受影响。k = 发光的强度。
+   */
+  private glowFromAlbedo(mr: MeshRenderer, k: number): void {
+    if (k <= 0) {
+      return;
+    }
+    for (let i = 0; i < mr.sharedMaterials.length; i += 1) {
+      try {
+        const src = mr.sharedMaterials[i];
+        const img = (src?.getProperty('mainTexture') as any)?.image?.data;
+        if (!src || !img) {
+          continue;
+        }
+        const S = 1024;
+        const cv = document.createElement('canvas');
+        cv.width = S;
+        cv.height = S;
+        const c = cv.getContext('2d')!;
+        c.drawImage(img, 0, 0, S, S);
+        const d = c.getImageData(0, 0, S, S);
+        const p = d.data;
+        for (let j = 0; j < p.length; j += 4) {
+          const r = p[j];
+          const g = p[j + 1];
+          const b = p[j + 2];
+          const warm = r > 150 && r - b > 85 && g > r * 0.42 && g < r * 0.9;
+          const m = warm ? Math.min(1, (r - 150) / 60) * Math.min(1, (r - b - 85) / 45) : 0;
+          p[j] = r * m;
+          p[j + 1] = g * m * 0.9;
+          p[j + 2] = b * m * 0.6;
+          p[j + 3] = 255;
+        }
+        c.putImageData(d, 0, 0);
+        const mi = mr.getMaterialInstance(i)!;
+        mi.recompileShaders({ USE_EMISSIVE_MAP: true });
+        mi.setProperty('emissiveMap', tex(cv, false, 4));
+        mi.setProperty('emissive', new Color(255, 255, 255, 255));
+        mi.setProperty('emissiveScale', new Vec3(k, k, k));
+      } catch (error) {
+        console.warn('[g3dd] 建筑模型的发光贴图没做成', error);
+      }
     }
   }
 
@@ -1621,12 +1676,12 @@ class Dungeon {
     if (!b) {
       return null;
     }
-    const fix = Object.assign(BLD_FIX[key] ?? (BLD_FIX[key] = { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 }), o);
+    const fix = Object.assign(BLD_FIX[key] ?? (BLD_FIX[key] = { ...(BLD_FIX[b.spot.key] ?? { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 }) }), o);
     const turned = Math.abs(Math.round(fix.yaw / 90)) % 2 === 1;
     const k = (b.spot.w / (turned ? b.size.z : b.size.x)) * fix.k;
     b.pivot.setScale(k, k, k);
     b.pivot.setRotationFromEuler(0, b.spot.yaw + fix.yaw, 0);
-    b.pivot.setPosition(b.spot.x + fix.dx, fix.dy, b.spot.z + fix.dz);
+    b.pivot.setPosition(b.spot.x + fix.dx, (b.spot.y ?? 0) + fix.dy, b.spot.z + fix.dz);
     return { fix, size: b.size, scale: k, tris: b.tris };
   }
 
@@ -3841,6 +3896,9 @@ function boot(): void {
   }
   if (param('g3dcity') === '1') {
     Object.assign(DUNGEON, CITY_CFG, { scene: 'city', bld: param('bld') ?? '' });
+    if (param('bglow') !== null && !Number.isNaN(Number(param('bglow')))) {
+      DUNGEON.bldGlow = Number(param('bglow'));
+    }
     setArea(CITY);
   }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
