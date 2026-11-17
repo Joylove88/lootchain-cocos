@@ -1393,7 +1393,7 @@ class Dungeon {
     const stoneMat = std(masonryPbr(Math.round(1024 * TK)), true, 8);
     stoneMat.setProperty('albedoScale', new Vec3(0.86, 0.85, 0.85));
     const plasterMat = std(plasterPbr(Math.round(512 * TK)), true, 8);
-    plasterMat.setProperty('albedoScale', new Vec3(0.6, 0.58, 0.55));
+    plasterMat.setProperty('albedoScale', new Vec3(0.45, 0.43, 0.41));          // 第三轮:墙面压成灰褐(原型的房子是暗的,不是奶油色)
     const timberMat = std(woodPbr(Math.round(512 * TK)), true, 8);
     timberMat.setProperty('albedoScale', new Vec3(0.44, 0.39, 0.35));
     const slateMat = std(slatePbr(Math.round(512 * TK)), true, 8);
@@ -1449,8 +1449,8 @@ class Dungeon {
         addMesh(world, name, mesh, m, false, false);
       }
     };
-    litWindow(C.winHouse, paintWindow('house', 96, 128, 3), 1.05, 'DgWinHouse');
-    litWindow(C.winLancet, paintWindow('lancet', 64, 224, 5), 1.0, 'DgWinLancet');
+    litWindow(C.winHouse, paintWindow('house', 160, 200, 3), 1.05, 'DgWinHouse');
+    litWindow(C.winLancet, paintWindow('lancet', 96, 336, 5), 1.0, 'DgWinLancet');
     litWindow(C.winRose, paintWindow('rose', 256, 256, 7), 0.95, 'DgWinRose');
 
     // ── 远处的城:两圈屋顶和塔楼的剪影 ──

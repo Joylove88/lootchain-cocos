@@ -333,34 +333,41 @@ export function paintWindow(kind: 'house' | 'lancet' | 'rose', W: number, H: num
     return g;
   };
   if (kind === 'house') {
+    // 第三轮:菱格的铅条窗(原型里房子的窗都是这种),中间一根竖棂、上面一道横档,把窗分成四扇
     c.fillStyle = 'rgb(26,20,16)';
     c.fillRect(0, 0, W, H);
+    const gx = W * 0.07;
+    const gy = H * 0.06;
+    const gw = W * 0.86;
+    const gh = H * 0.88;
     c.fillStyle = glass(0, 0, 0, H);
-    c.fillRect(W * 0.07, H * 0.06, W * 0.86, H * 0.88);
-    // 每格玻璃深浅不同
-    const nx = 3;
-    const ny = 4;
-    for (let j = 0; j < ny; j += 1) {
-      for (let i = 0; i < nx; i += 1) {
-        c.fillStyle = `rgba(40,20,8,${(rnd() * 0.3).toFixed(2)})`;
-        c.fillRect(W * 0.07 + (i * W * 0.86) / nx, H * 0.06 + (j * H * 0.88) / ny, (W * 0.86) / nx, (H * 0.88) / ny);
-      }
+    c.fillRect(gx, gy, gw, gh);
+    c.save();
+    c.beginPath();
+    c.rect(gx, gy, gw, gh);
+    c.clip();
+    // 每块小玻璃深浅不同
+    for (let i = 0; i < 26; i += 1) {
+      c.fillStyle = `rgba(40,20,8,${(0.08 + rnd() * 0.22).toFixed(2)})`;
+      c.fillRect(gx + rnd() * gw, gy + rnd() * gh, gw * 0.2, gh * 0.14);
     }
-    c.strokeStyle = 'rgb(30,22,16)';
-    c.lineWidth = Math.max(2, W * 0.035);
-    for (let i = 1; i < nx; i += 1) {
+    c.strokeStyle = 'rgba(36,26,18,0.92)';
+    c.lineWidth = Math.max(1.5, W * 0.016);
+    const step = W / 5.2;
+    for (let k = -H; k < W + H; k += step) {
       c.beginPath();
-      c.moveTo(W * 0.07 + (i * W * 0.86) / nx, H * 0.06);
-      c.lineTo(W * 0.07 + (i * W * 0.86) / nx, H * 0.94);
+      c.moveTo(k, 0);
+      c.lineTo(k + H, H);
+      c.moveTo(k, H);
+      c.lineTo(k + H, 0);
       c.stroke();
     }
-    for (let j = 1; j < ny; j += 1) {
-      c.beginPath();
-      c.moveTo(W * 0.07, H * 0.06 + (j * H * 0.88) / ny);
-      c.lineTo(W * 0.93, H * 0.06 + (j * H * 0.88) / ny);
-      c.stroke();
-    }
+    c.restore();
+    c.fillStyle = 'rgb(30,22,16)';
+    c.fillRect(W / 2 - W * 0.035, gy, W * 0.07, gh);
+    c.fillRect(gx, gy + gh * 0.34 - H * 0.022, gw, H * 0.044);
   } else if (kind === 'lancet') {
+    // 第三轮:加花格 —— 一根竖棂把窗分成两扇小尖窗,尖顶里一个圆
     const arch = (inset: number): void => {
       c.beginPath();
       c.moveTo(inset, H - inset);
@@ -376,18 +383,35 @@ export function paintWindow(kind: 'house' | 'lancet' | 'rose', W: number, H: num
     arch(W * 0.12);
     c.fillStyle = glass(0, 0, 0, H);
     c.fill();
-    c.strokeStyle = 'rgb(34,28,26)';
-    c.lineWidth = Math.max(2, W * 0.06);
+    c.save();
+    arch(W * 0.12);
+    c.clip();
+    c.strokeStyle = 'rgb(36,30,28)';
+    c.lineCap = 'round';
+    c.lineWidth = Math.max(2, W * 0.075);
     c.beginPath();
-    c.moveTo(W / 2, H * 0.1);
-    c.lineTo(W / 2, H * 0.95);
+    c.moveTo(W / 2, H * 0.36);
+    c.lineTo(W / 2, H);
     c.stroke();
-    for (const k of [0.36, 0.56, 0.76]) {
+    for (const [x0, x1] of [[W * 0.12, W / 2], [W / 2, W * 0.88]]) {
+      const xm = (x0 + x1) / 2;
+      c.beginPath();
+      c.moveTo(x0, H * 0.4);
+      c.quadraticCurveTo(x0, H * 0.3, xm, H * 0.265);
+      c.quadraticCurveTo(x1, H * 0.3, x1, H * 0.4);
+      c.stroke();
+    }
+    c.beginPath();
+    c.arc(W / 2, H * 0.185, W * 0.17, 0, Math.PI * 2);
+    c.stroke();
+    c.lineWidth = Math.max(1.5, W * 0.045);
+    for (const k of [0.56, 0.72, 0.88]) {
       c.beginPath();
       c.moveTo(W * 0.12, H * k);
       c.lineTo(W * 0.88, H * k);
       c.stroke();
     }
+    c.restore();
   } else {
     const R = W * 0.49;
     c.beginPath();
