@@ -43,7 +43,17 @@ export function distToPath(px: number, pz: number, path: Array<[number, number]>
  * 高一点的地方长着枯草和苔;篝火周围踩实、烧黑。
  * 积水:表面是平的、又黑又滑(镜面倒影出在这里);水边一圈是湿泥,半滑反光;干一点的泥和草是糙的。
  */
-export function mudPbr(W: number, H: number, plan: WildPlan): Pbr {
+/** 哪儿有积水:一张粗格子(每格 0.25 米),1 = 水。芦苇长在水边、雨后的水滴落在水里,都查它。 */
+export interface WetMap { cols: number; rows: number; cell: number; data: Uint8Array }
+export interface MudOut extends Pbr { wet: WetMap }
+
+export function wetAt(m: WetMap, plan: WildPlan, x: number, z: number): boolean {
+  const gx = Math.floor((x - plan.x0) / m.cell);
+  const gz = Math.floor((z - plan.z0) / m.cell);
+  return gx >= 0 && gz >= 0 && gx < m.cols && gz < m.rows && m.data[gz * m.cols + gx] > 0;
+}
+
+export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
   const A = makeCanvas(W, H);
   const N = makeCanvas(W, H);
   const O = makeCanvas(W, H);
@@ -60,6 +70,7 @@ export function mudPbr(W: number, H: number, plan: WildPlan): Pbr {
   const mpp = plan.w / W;
   const level = mixn(0.3, 0.42, plan.wet);
   const CELL = 0.78;                      // 石板大概这么大
+  const wet: WetMap = { cols: Math.ceil(plan.w / 0.25), rows: Math.ceil(plan.d / 0.25), cell: 0.25, data: new Uint8Array(Math.ceil(plan.w / 0.25) * Math.ceil(plan.d / 0.25)) };
   for (let y = 0; y < H; y += 1) {
     const wz = plan.z0 + ((y + 0.5) / H) * plan.d;
     for (let x = 0; x < W; x += 1) {
@@ -189,6 +200,9 @@ export function mudPbr(W: number, H: number, plan: WildPlan): Pbr {
         rough = mixn(rough, 0.03, water);
         ao = mixn(ao, 1, water);
         h = mixn(h, level, water);
+        if (water > 0.8) {
+          wet.data[Math.min(wet.rows - 1, Math.floor((wz - plan.z0) / wet.cell)) * wet.cols + Math.min(wet.cols - 1, Math.floor((wx - plan.x0) / wet.cell))] = 1;
+        }
       }
       const i = y * W + x;
       Hh[i] = h;
@@ -226,7 +240,7 @@ export function mudPbr(W: number, H: number, plan: WildPlan): Pbr {
   ac.putImageData(ai, 0, 0);
   nc.putImageData(ni, 0, 0);
   oc.putImageData(oi, 0, 0);
-  return { albedo: A, normal: N, orm: O };
+  return { albedo: A, normal: N, orm: O, wet };
 }
 
 /**

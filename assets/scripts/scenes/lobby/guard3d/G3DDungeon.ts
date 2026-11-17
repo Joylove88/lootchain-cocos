@@ -3,7 +3,7 @@ import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
 import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
-import { barkPbr, canvasPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
+import { barkPbr, canvasPbr, endGrainPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
 import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
@@ -11,8 +11,8 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
-import { buildWildScene, WILD_GROUND, WILD_MOON } from './G3DWild';
-import { mudPbr, paintTreeline } from './G3DWildTex';
+import { buildWildScene, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
+import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
 import { FieldPost, loadPost, POST_CFG, PostCfg } from './TownPost3D';
 
@@ -368,6 +368,8 @@ class Dungeon {
   private stride = 0;
   /** 野外场景:提灯的位置。 */
   private wildLanterns: Array<{ x: number; y: number; z: number }> = [];
+  /** 野外场景:这个位置是不是积水。 */
+  private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
     return DUNGEON.scene === 'wild';
   }
@@ -1315,14 +1317,16 @@ class Dungeon {
    * 做法和地宫一样:一张不平铺的大地面贴图(积水的地方是镜面,倒影用平面反射)、程序材质、月光投影 + 几盏局部的灯、后期。
    */
   private buildWild(world: Node, rnd: () => number, t0: number): void {
-    const W = buildWildScene(rnd, X0, X1, Z0, Z1);
+    // 先画地面(顺带得到「哪儿有积水」),再摆东西:草不长在水里,芦苇长在水边
+    const t1 = performance.now();
+    const gw = DUNGEON.floor;
+    const ground = mudPbr(gw, Math.round((gw * WILD_GROUND.d) / WILD_GROUND.w), WILD_PLAN);
+    this.stats.floorMs = Math.round(performance.now() - t1);
+    this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, WILD_PLAN, x, z);
+    const W = buildWildScene(rnd, X0, X1, Z0, Z1, this.wildWet);
     this.solids.push(...W.solids);
     BRAZIERS.splice(0, BRAZIERS.length, ...W.fires);          // 火的特效和声音认这张表:野外就是那堆篝火
     this.wildLanterns = W.lanterns;
-    const t1 = performance.now();
-    const gw = DUNGEON.floor;
-    const ground = mudPbr(gw, Math.round((gw * WILD_GROUND.d) / WILD_GROUND.w), W.plan);
-    this.stats.floorMs = Math.round(performance.now() - t1);
     const std = (p: Pbr, repeat: boolean, aniso: number, vertexColor = true): Material => {
       const m = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: vertexColor });
       m.setProperty('mainTexture', tex(p.albedo, repeat, aniso));
@@ -1343,7 +1347,7 @@ class Dungeon {
     const rockP = rockPbr(Math.round(512 * TK));
     const rockMat = std(rockP, true, 8);
     rockMat.setProperty('albedoScale', new Vec3(0.62, 0.64, 0.68));
-    rockMat.setProperty('normalStrength', 0.7);
+    rockMat.setProperty('normalStrength', 0.4);          // 岩石贴图里的细裂纹太强的话,近看像刻了一圈圈的字
     // 树皮:不用那张粗糙度图(沟里的粗糙度很低,月光下整棵树一道道反白),粗糙度给一个固定的高值
     const barkP = barkPbr(Math.round(512 * TK), true);
     const barkMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true });
@@ -1356,6 +1360,9 @@ class Dungeon {
     const woodMat = std(woodPbr(Math.round(512 * TK)), true, 8);
     woodMat.setProperty('albedoScale', new Vec3(0.66, 0.62, 0.58));
     const ironMat = std(ironPbr(256), true, 4);
+    const endMat = std(endGrainPbr(256), true, 4);
+    endMat.setProperty('albedoScale', new Vec3(0.6, 0.56, 0.5));
+    endMat.setProperty('normalStrength', 0.45);
     const canvasMat = std(canvasPbr(Math.round(512 * TK)), true, 4);
     canvasMat.setProperty('albedoScale', new Vec3(0.42, 0.4, 0.38));
     const grassMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
@@ -1406,7 +1413,7 @@ class Dungeon {
       addMesh(world, 'DgSkirt', m, skirtMat, false, true);
     }
     let tris = 0;
-    const parts: Array<[MeshBatch, Material, string, boolean]> = [[W.stone, stoneMat, 'DgStone', true], [W.rock, rockMat, 'DgRock', true], [W.bark, barkMat, 'DgBark', true], [W.wood, woodMat, 'DgWood', true],
+    const parts: Array<[MeshBatch, Material, string, boolean]> = [[W.stone, stoneMat, 'DgStone', true], [W.rock, rockMat, 'DgRock', true], [W.bark, barkMat, 'DgBark', true], [W.endgrain, endMat, 'DgEndGrain', true], [W.wood, woodMat, 'DgWood', true],
       [W.iron, ironMat, 'DgIron', true], [W.canvas, canvasMat, 'DgCanvas', true], [W.grass, grassMat, 'DgGrass', false]];
     for (const [batch, mat, name, cast] of parts) {
       for (const m of batch.build()) {
@@ -2412,6 +2419,21 @@ class Dungeon {
         if (R(0, 1) < 0.1 * DUNGEON.mist) {
           fx.emit({ x: R(X0 - 4, X1 + 4), y: R(0.25, 0.7), z: R(Z0 - 4, Z1 + 4), vx: R(0.12, 0.3), vz: R(-0.06, 0.06), life: R(7, 12), s0: R(2.4, 3.6), s1: R(3.6, 5),
             c0: [0.2, 0.26, 0.38], a: 0.045, cell: R(0, 1) < 0.5 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: R(0, 6), drag: 0, fadeIn: 0.3 });
+        }
+        // 雨后树上还在往下滴水:滴在积水里漾开一圈涟漪,偶尔听得见一声
+        if (R(0, 1) < 0.16 && this.wildWet) {
+          for (let i = 0; i < 6; i += 1) {
+            const x = R(X0 - 3, X1 + 3);
+            const z = R(Z0 - 3, Z1 + 3);
+            if (this.wildWet(x, z)) {
+              fx.decal('atlas', FX_CELL.ring, x, z, 0.03, R(0.3, 0.55), R(0.9, 1.4), [0.5, 0.6, 0.8], 0.2, 0.05, 0.1, 0, 0.012);
+              if (R(0, 1) < 0.2) {
+                const h = this.heard(x, z);
+                sfx.play('drip', { gain: h.gain * 0.7, pan: h.pan });
+              }
+              break;
+            }
+          }
         }
         // 萤火虫:零星几只,一明一灭地慢慢游
         if (R(0, 1) < 0.035 * DUNGEON.flies) {
