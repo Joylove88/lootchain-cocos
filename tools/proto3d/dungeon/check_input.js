@@ -35,12 +35,13 @@ for (let i = 1; i <= 6; i++) pe('pointermove', 12, 0.7 + i * 0.02, 0.5);
 pe('pointerup', 12, 0.82, 0.5);
 out['右半屏横拖'] = { 镜头转了几度: +(D.info().view.yaw - y0).toFixed(1) };
 // 触屏出手:右半屏点一下
-const before = D.dungeon.attackT;
+await sleep(900);
+const before = D.info().act;
 pe('pointerdown', 13, 0.75, 0.6);
 await sleep(60);
 pe('pointerup', 13, 0.75, 0.6);
 await sleep(50);
-out['右半屏点一下'] = { 出手了: before < 0 && D.dungeon.attackT >= 0 };
+out['右半屏点一下'] = { 出手了: !before && !!D.info().act };
 await sleep(1200);
 // 鼠标:右键拖动转镜头、滚轮缩放、左键出手
 const me = (type, x, y, extra = {}) => cv.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', clientX: r.left + x * r.width, clientY: r.top + y * r.height, bubbles: true, ...extra }));
@@ -51,9 +52,9 @@ me('pointerup', 0.56, 0.5, { button: 2 });
 const d0 = D.info().view.dist;
 cv.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
 out['鼠标右键拖 + 滚轮'] = { 镜头转了几度: +(D.info().view.yaw - y1).toFixed(1), 距离: [d0, +D.info().view.dist.toFixed(2)] };
-const b2 = D.dungeon.attackT;
+const b2 = D.info().act;
 me('pointerdown', 0.5, 0.5, { button: 0 });
 me('pointerup', 0.5, 0.5, { button: 0 });
 await sleep(50);
-out['鼠标左键'] = { 出手了: b2 < 0 && D.dungeon.attackT >= 0 };
+out['鼠标左键'] = { 出手了: !b2 && !!D.info().act };
 return JSON.stringify(out, null, 1);

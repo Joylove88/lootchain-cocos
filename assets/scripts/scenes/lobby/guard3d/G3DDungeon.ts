@@ -4,6 +4,7 @@ import { charKeys, G3DChar, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
+import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, Move, MoveHit, newPose, placeSword, poseAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
@@ -170,6 +171,12 @@ interface Pulse { light: PointLight; age: number; life: number; peak: number }
 
 const _v = new Vec3();
 const _q = new Quat();
+const _q2v = new Vec3();
+const _lead = new Vec3();
+const _grip = new Vec3();
+const _base = new Vec3();
+const _tip = new Vec3();
+const _tint = new Vec3();
 
 /** 烘焙用的一盏灯:位置、颜色(线性)、光通量(流明)、照射范围;spot = 聚光的方向和半角的余弦(内 / 外)。 */
 interface BakeLight { x: number; y: number; z: number; r: number; g: number; b: number; flux: number; range: number; spot?: { dx: number; dy: number; dz: number; c0: number; c1: number } }
@@ -297,8 +304,33 @@ class Dungeon {
   private lx = -7.2;
   private lz = 1.6;
   private lyaw = 0;
-  private attackT = -1;
-  private attackHit = false;
+  /**
+   * 正在出的这一招:move = 代码摆的招式(跃空重劈用片段,move 是空的);t = 出到第几秒;done = 每次判定做过没有;
+   * yaw0 = 出手时面朝哪;adv = 已经往前挪了多少;hit = 这一招里已经打中过的怪(突进沿路每只只算一次)。
+   */
+  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; hit: Set<Mob>; fired: boolean } | null = null;
+  private comboI = 0;
+  private comboUntil = 0;
+  private queued: string | null = null;
+  /** 四个技能还要等几秒。 */
+  cd: Record<string, number> = { dash: 0, whirl: 0, smash: 0, wave: 0 };
+  private sword: Node | null = null;
+  private swordLit: Material[] = [];
+  private trail: BladeTrail | null = null;
+  private aura: BladeTrail | null = null;
+  private bladeDir = new Vec3(0.4, -0.85, 0.3);
+  private bladeLead = new Vec3(0, 0, 1);
+  private poseW = 0;
+  private poseBuf = newPose();
+  private leaderY = 0;
+  private hitStop = 0;
+  private shake = 0;
+  private lastDt = 0;
+  private realDt = 0;
+  private waves: Array<{ x: number; z: number; dx: number; dz: number; age: number; life: number; hit: Set<Mob> }> = [];
+  private waveMesh: DynMesh | null = null;
+  private timers: Array<{ at: number; run: () => void }> = [];
+  private bar: Record<string, HTMLDivElement> = {};
   private moving = false;
   mobs: Mob[] = [];
   private followers: Array<{ c: G3DChar; x: number; z: number; yaw: number; moving: boolean; ox: number; oz: number }> = [];
@@ -1207,6 +1239,16 @@ class Dungeon {
     cam.visibility = Layers.Enum.DEFAULT | GROUND_LAYER;
     this.cam = cam;
     this.fx = new FxWorld(world, { min: [X0 - 4, -1, Z0 - 5], max: [X1 + 1, ROOF, Z1 + 5] });
+    const fxBounds = { min: [X0 - 2, -1, Z0 - 2] as [number, number, number], max: [X1 + 2, H, Z1 + 2] as [number, number, number] };
+    const sw = buildSword(world);
+    this.sword = sw.node;
+    this.swordLit = sw.lit;
+    sw.node.active = false;
+    this.trail = new BladeTrail(world, fxBounds);
+    this.aura = new BladeTrail(world, fxBounds, this.trail.mat.getProperty('mainTexture') as any);
+    this.aura.life = 0.26;
+    this.aura.mat.setProperty('colorScale', new Vec3(1.3, 1.3, 1.3));
+    this.waveMesh = new DynMesh(world, 'DgSwordWave', this.trail.mat, 4 * 120, 6 * 120, false, false, fxBounds);
     this.loadChars();
     this.stats.buildMs = Math.round(performance.now() - t0);
   }
@@ -1242,7 +1284,7 @@ class Dungeon {
       }
       this.mobCount += 1;
       spawn(key, x, z, height, 180, (c) => {
-        const m: Mob = { c, home: new Vec3(x, 0, z), x, z, yaw: 180, hp, maxHp: hp, speed, reach, radius, state: 'idle', t: this.rnd() * 3, cool: 0, wander: 1 + this.rnd() * 3, tx: x, tz: z };
+        const m: Mob = { c, home: new Vec3(x, 0, z), x, z, yaw: 180, hp: hp * 3, maxHp: hp * 3, speed, reach, radius, state: 'idle', t: this.rnd() * 3, cool: 0, wander: 1 + this.rnd() * 3, tx: x, tz: z };
         this.mobs.push(m);
         this.rest(m);
       }, procWalk);
@@ -1251,8 +1293,8 @@ class Dungeon {
     mob('rat', -0.6, -1.6, 0.46, 2, 2.3, 0.9, 0.35);
     mob('wolf', 3.2, 1.9, 0.98, 4, 2.9, 1.2, 0.5);
     mob('spider2', 3.6, 4.4, 0.74, 3, 2.0, 1.1, 0.5);
-    mob('bear', 6.4, -2.2, 1.62, 7, 1.7, 1.6, 0.8, true);
-    mob('rotbear', 7.6, 0.4, 2.3, 12, 1.4, 1.9, 1.0);
+    mob('bear', 6.4, -2.2, 1.62, 7, 1.7, 2.3, 1.15, true);      // 熊身子长:占的圈和够得着的距离都按身长给,不然头会顶进主角身子里
+    mob('rotbear', 7.6, 0.4, 2.3, 12, 1.4, 2.8, 1.45);
     mob('rat', 0.5, -2.3, 0.42, 2, 2.4, 0.9, 0.35);
     mob('wolf', 4.6, 0.6, 1.06, 4, 2.8, 1.2, 0.5);
     mob('rat', 1.2, -1.2, 0.5, 2, 2.2, 0.9, 0.35);
@@ -1365,6 +1407,7 @@ class Dungeon {
       }
     }
     this.applyReflection();
+    this.buildBar();
     if (DUNGEON.hud && typeof document !== 'undefined' && !this.hudEl) {
       const el = document.createElement('div');
       el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;pointer-events:none;color:#d6e6ff;font:12px/1.5 monospace;background:rgba(0,0,0,.45);padding:2px 8px;border-radius:4px;white-space:pre';
@@ -1438,9 +1481,10 @@ class Dungeon {
     const KEY: Record<string, number> = { KeyW: KeyCode.KEY_W, KeyA: KeyCode.KEY_A, KeyS: KeyCode.KEY_S, KeyD: KeyCode.KEY_D,
       ArrowUp: KeyCode.ARROW_UP, ArrowDown: KeyCode.ARROW_DOWN, ArrowLeft: KeyCode.ARROW_LEFT, ArrowRight: KeyCode.ARROW_RIGHT };
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyJ') {
+      const SK: Record<string, string> = { KeyJ: 'attack', KeyK: 'dash', KeyL: 'whirl', KeyU: 'smash', KeyI: 'wave' };
+      if (SK[e.code]) {
         if (!e.repeat) {
-          this.attack();
+          this.input(SK[e.code]);
         }
         return;
       }
@@ -1778,14 +1822,57 @@ class Dungeon {
   }
 
   attack(): boolean {
-    if (!this.leader || this.attackT >= 0) {
+    return this.input('attack');
+  }
+
+  /**
+   * 出手:attack = 普攻(连着按是四连),dash / whirl / smash / wave = 四个技能。
+   * 正在出别的招时先记下来(只记最后一次),等那一招过了「可以接下一招」的点再出 —— 提前按也不丢。
+   */
+  input(kind: string): boolean {
+    if (!this.leader) {
       return false;
     }
-    this.attackT = 0;
-    this.attackHit = false;
-    // 出手前转向最近的怪(2.8 米以内有的话)
+    if (kind !== 'attack' && this.cd[kind] > 0) {
+      return false;
+    }
+    if (this.act) {
+      this.queued = kind;
+      return true;
+    }
+    this.startAct(kind);
+    return true;
+  }
+
+  private startAct(kind: string): void {
+    const c = this.leader!;
+    let move: Move | null = null;
+    let dur = 1.05;
+    if (kind === 'attack') {
+      if (this.time > this.comboUntil) {
+        this.comboI = 0;
+      }
+      move = COMBO[this.comboI % COMBO.length];
+      this.comboI += 1;
+    } else if (kind === 'smash') {
+      this.cd.smash = 7;
+    } else {
+      move = SKILLS[kind];
+      this.cd[kind] = kind === 'dash' ? 3 : kind === 'whirl' ? 6 : 4;
+    }
+    if (move) {
+      dur = move.dur;
+    }
+    // 出手前转向:推着方向就朝那边,否则朝最近的怪(3.4 米以内有的话)
+    const K = this.keys;
+    let ix = (K.has(KeyCode.KEY_D) || K.has(KeyCode.ARROW_RIGHT) ? 1 : 0) - (K.has(KeyCode.KEY_A) || K.has(KeyCode.ARROW_LEFT) ? 1 : 0);
+    let iy = (K.has(KeyCode.KEY_W) || K.has(KeyCode.ARROW_UP) ? 1 : 0) - (K.has(KeyCode.KEY_S) || K.has(KeyCode.ARROW_DOWN) ? 1 : 0);
+    if (Math.hypot(this.stick.x, this.stick.y) > 0.22) {
+      ix = this.stick.x;
+      iy = this.stick.y;
+    }
     let best: Mob | null = null;
-    let bd = 2.8;
+    let bd = kind === 'dash' ? 6.5 : 3.4;
     for (const m of this.mobs) {
       const d = Math.hypot(m.x - this.lx, m.z - this.lz) - m.radius;
       if (m.state !== 'down' && m.state !== 'gone' && d < bd) {
@@ -1795,13 +1882,20 @@ class Dungeon {
     }
     if (best) {
       this.lyaw = (Math.atan2(-(best.z - this.lz), best.x - this.lx) * 180) / Math.PI;
-      this.leader.place(this.lx, 0, this.lz, this.lyaw);
+    } else if (ix || iy) {
+      const a = (this.view.yaw * Math.PI) / 180;
+      const wx = ix * Math.cos(a) - iy * Math.sin(a);
+      const wz = -ix * Math.sin(a) - iy * Math.cos(a);
+      this.lyaw = (Math.atan2(-wz, wx) * 180) / Math.PI;
     }
-    const clip = this.leader.clip('slash');
-    if (clip) {
-      this.leader.play(clip, 0.06, false);
+    this.act = { kind, move, dur, t: 0, done: [], yaw0: this.lyaw, adv: 0, hit: new Set(), fired: false };
+    this.queued = null;
+    this.auto = null;
+    this.moving = false;
+    if (move) {
+      c.play(c.clip('idle'), 0.08);
     }
-    return true;
+    c.place(this.lx, this.leaderY, this.lz, this.lyaw);
   }
 
   // ───────────────────────── 每帧 ─────────────────────────
@@ -1834,7 +1928,17 @@ class Dungeon {
     slab(ox, dx, X0 + 0.35, X1 - 0.35);
     slab(oy, dy, 0.25, H - 0.75);
     slab(oz, dz, Z0 + 0.35, Z1 - 0.35);
-    for (const s of this.solids) {
+    // 大个子的怪(熊)站到镜头和主角之间时也算挡镜头的:不然镜头会埋进它身子里
+    const blockers = this.solids.filter((v) => v.hx >= 0.3);      // 烛台这种细杆子不算(挡不住什么,却会把镜头拉到贴脸)
+    for (const m of this.mobs) {
+      if (m.radius >= 0.7 && m.state !== 'gone' && m.state !== 'down') {
+        blockers.push({ x: m.x, z: m.z, hx: m.radius * 0.9, hz: m.radius * 0.9, h: m.c.height });
+      }
+    }
+    for (const s of blockers) {
+      if (Math.abs(ox - s.x) < s.hx + 0.2 && Math.abs(oz - s.z) < s.hz + 0.2 && oy < s.h + 0.2) {
+        continue;      // 起点就在这块里面(主角贴着它站):拉近也躲不开,不管它
+      }
       // 射线和盒子(水平两个方向 + 高度)求交
       let t0 = 0;
       let t1 = t;
@@ -1881,7 +1985,10 @@ class Dungeon {
     const want = Math.max(Math.min(1.2, this.view.dist), can - 0.15);
     this.pull = want < this.pull || dt <= 0 ? want : Math.min(want, this.pull + (want - this.pull) * (1 - Math.exp(-4 * dt)) + 0.001);
     const d = Math.min(this.view.dist, this.pull);
-    cam.node.setPosition(this.look.x + dx * d, this.look.y + dy * d, this.look.z + dz * d);
+    // 震屏:几个不同频率的正弦叠起来,幅度很快衰减
+    const sk = this.shake;
+    const st = this.time * 60;
+    cam.node.setPosition(this.look.x + dx * d + sk * Math.sin(st * 1.31), this.look.y + dy * d + sk * 0.8 * Math.sin(st * 1.87 + 1.3), this.look.z + dz * d + sk * Math.sin(st * 1.53 + 2.1));
     cam.node.lookAt(this.look);
   }
 
@@ -1889,7 +1996,24 @@ class Dungeon {
     if (!this.opened || !this.world) {
       return;
     }
-    const dt = this.frozen ? 0 : this.fixedDt > 0 ? this.fixedDt : Math.min(0.05, game.deltaTime);
+    let dt = this.frozen ? 0 : this.fixedDt > 0 ? this.fixedDt : Math.min(0.05, game.deltaTime);
+    this.realDt = dt;
+    // 顿帧:砍中的那一下整个场面几乎停住几十毫秒(手感的来源),镜头的震动照走
+    if (this.hitStop > 0 && dt > 0) {
+      this.hitStop -= dt;
+      dt *= 0.05;
+    }
+    this.lastDt = dt;
+    this.shake *= Math.exp(-this.realDt * 9);
+    for (let i = this.timers.length - 1; i >= 0; i -= 1) {
+      if (this.time >= this.timers[i].at) {
+        const tm = this.timers.splice(i, 1)[0];
+        tm.run();
+      }
+    }
+    for (const k of Object.keys(this.cd)) {
+      this.cd[k] = Math.max(0, this.cd[k] - dt);
+    }
     this.time += dt;
     const t = this.time;
     const R = (a: number, b: number): number => a + (b - a) * this.rnd();
@@ -2029,6 +2153,7 @@ class Dungeon {
       return;
     }
     this.leader?.pose(this.time);
+    this.poseLeader();
     for (const f of this.followers) {
       f.c.pose(this.time);
     }
@@ -2071,22 +2196,10 @@ class Dungeon {
       wz = -ix * Math.sin(a) - iy * Math.cos(a);
     }
     const len = Math.hypot(wx, wz);
-    const attacking = this.attackT >= 0;
-    if (attacking) {
-      this.attackT += dt;
-      const clip = c.clip('slash');
-      const dur = clip ? Math.min(1.1, c.anim?.getState(clip)?.duration ?? 0.8) : 0.6;
-      if (!this.attackHit && this.attackT >= dur * 0.38) {
-        this.attackHit = true;
-        this.strike();
-      }
-      if (this.attackT >= dur * 0.86) {
-        this.attackT = -1;
-        this.moving = false;
-        c.play(c.clip('idle'), 0.18);
-      }
+    if (this.act) {
+      this.stepAct(dt, len > 0.01);
     }
-    if (!attacking && len > 0.01) {
+    if (!this.act && len > 0.01) {
       const speed = 3.6;
       const nx = wx / len;
       const nz = wz / len;
@@ -2103,17 +2216,178 @@ class Dungeon {
         this.auto = null;
       }
       const want = (Math.atan2(-nz, nx) * 180) / Math.PI;
-      let d = ((want - this.lyaw + 540) % 360) - 180;
+      const d = ((want - this.lyaw + 540) % 360) - 180;
       this.lyaw += d * Math.min(1, dt * 14);
       if (!this.moving) {
         this.moving = true;
         c.play(c.clip('run') || c.clip('walk'), 0.15);
       }
-    } else if (!attacking && this.moving) {
+    } else if (!this.act && this.moving) {
       this.moving = false;
       c.play(c.clip('idle'), 0.2);
     }
-    c.place(this.lx, 0, this.lz, this.lyaw);
+    // 主角不走进怪的身子里(突进是穿过去的、跳劈在空中,不管)
+    if (!(this.act && (this.act.kind === 'dash' || this.act.kind === 'smash'))) {
+      for (const m of this.mobs) {
+        if (m.state === 'gone' || m.state === 'down') {
+          continue;
+        }
+        const ox = this.lx - m.x;
+        const oz = this.lz - m.z;
+        const od = Math.hypot(ox, oz);
+        const min = m.radius * 0.9 + 0.3;
+        if (od < min && od > 1e-4) {
+          const nx2 = this.lx + (ox / od) * (min - od);
+          const nz2 = this.lz + (oz / od) * (min - od);
+          if (!this.blocked(nx2, nz2, 0.3)) {
+            this.lx = nx2;
+            this.lz = nz2;
+          }
+        }
+      }
+    }
+    c.place(this.lx, this.leaderY, this.lz, this.lyaw);
+  }
+
+  /** 正在出的这一招往前走一帧:位移、转身、判定、放特效;到了可以接的点就接下一招(或者被走位打断)。 */
+  private stepAct(dt: number, wantMove: boolean): void {
+    const act = this.act!;
+    const c = this.leader!;
+    const m = act.move;
+    act.t += dt;
+    const u = Math.min(1, act.t / act.dur);
+    const sm = (a: number, b: number): number => {
+      const k = Math.min(1, Math.max(0, (u - a) / Math.max(1e-4, b - a)));
+      return k * k * (3 - 2 * k);
+    };
+    const rad = (act.yaw0 * Math.PI) / 180;
+    const fxn = Math.cos(rad);
+    const fzn = -Math.sin(rad);
+    const fx = this.fx!;
+    // 往前挪
+    const advance = m ? m.advance : 2.4;
+    const advAt: [number, number] = m ? m.advAt : [0.2, 0.66];
+    const want = advance * sm(advAt[0], advAt[1]);
+    const step = want - act.adv;
+    act.adv = want;
+    if (step > 1e-5) {
+      const tx = this.lx + fxn * step;
+      const tz = this.lz + fzn * step;
+      if (!this.blocked(tx, tz, 0.3)) {
+        this.lx = tx;
+        this.lz = tz;
+      } else if (!this.blocked(tx, this.lz, 0.3)) {
+        this.lx = tx;
+      } else if (!this.blocked(this.lx, tz, 0.3)) {
+        this.lz = tz;
+      }
+    }
+    // 转身
+    if (m?.spin && m.spinAt) {
+      this.lyaw = act.yaw0 + m.spin * sm(m.spinAt[0], m.spinAt[1]);
+    }
+    // 判定
+    if (m) {
+      m.hits.forEach((h, i) => {
+        if (!act.done[i] && u >= h.t) {
+          act.done[i] = true;
+          this.resolveHit(h, m.color as [number, number, number], act.kind);
+        }
+      });
+    }
+    if (act.kind === 'dash') {
+      // 突进:冲过去的路上碰到谁算谁(每只一次);身后拖尘土和一串细火星
+      if (u > 0.2 && u < 0.66) {
+        for (const mob of this.mobs) {
+          if (mob.state === 'down' || mob.state === 'gone' || act.hit.has(mob)) {
+            continue;
+          }
+          const dx = mob.x - this.lx;
+          const dz = mob.z - this.lz;
+          if (Math.hypot(dx, dz) < 1.25 + mob.radius && dx * fxn + dz * fzn > -0.3) {
+            act.hit.add(mob);
+            this.damage(mob, 3, true, fxn, fzn, [0.62, 0.55, 1.0], fxn, 0, fzn);
+          }
+        }
+        if (dt > 0) {
+          for (let i = 0; i < 3; i += 1) {
+            fx.emit({ x: this.lx - fxn * fx.rand(0.2, 0.9) + fx.rand(-0.25, 0.25), y: fx.rand(0.3, 1.5), z: this.lz - fzn * fx.rand(0.2, 0.9) + fx.rand(-0.25, 0.25), vx: -fxn * fx.rand(6, 11), vy: fx.rand(-0.2, 0.4), vz: -fzn * fx.rand(6, 11),
+              life: fx.rand(0.12, 0.26), s0: 0.016, s1: 0.004, c0: [0.75, 0.7, 1], c1: [0.4, 0.35, 0.9], a: 0.7, cell: FX_CELL.streak, drag: 2, stretch: 3 });
+          }
+          fx.emit({ x: this.lx - fxn * 0.3, y: 0.15, z: this.lz - fzn * 0.3, vx: fx.rand(-0.5, 0.5), vy: fx.rand(0.2, 0.7), vz: fx.rand(-0.5, 0.5), life: fx.rand(0.5, 0.9), s0: 0.25, s1: 0.7,
+            c0: [0.3, 0.31, 0.36], a: 0.14, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1 });
+        }
+      }
+      if (!act.fired && u >= 0.62) {
+        act.fired = true;
+        // 收势:剑尖前面一团很短的闪 + 贴地一圈往外扩的环
+        fx.emit({ x: this.lx + fxn * 1.2, y: 1.15, z: this.lz + fzn * 1.2, life: 0.1, s0: 0.5, s1: 1.4, c0: [0.8, 0.78, 1], a: 0.5, cell: FX_CELL.core, fadeIn: 0.01 });
+        fx.decal('atlas', FX_CELL.ring, this.lx + fxn * 0.6, this.lz + fzn * 0.6, 0.3, 2.2, 0.32, [0.6, 0.56, 1.0], 0.5, 0.02, 0.05, 0, 0.03);
+        this.shake = Math.max(this.shake, 0.06);
+      }
+    } else if (act.kind === 'whirl') {
+      if (dt > 0 && u > 0.1 && u < 0.88) {
+        // 旋风:身边往上卷的细丝 + 贴地往外带的尘
+        for (let i = 0; i < 2; i += 1) {
+          const a = fx.rand(0, Math.PI * 2);
+          const r = fx.rand(1.0, 2.4);
+          fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.1, 0.6), z: this.lz + Math.sin(a) * r, vx: -Math.sin(a) * 7, vy: fx.rand(1.5, 3.2), vz: Math.cos(a) * 7,
+            life: fx.rand(0.25, 0.45), s0: 0.014, s1: 0.004, c0: [0.8, 0.92, 1], c1: [0.45, 0.65, 1], a: 0.6, cell: FX_CELL.streak, drag: 1.2, stretch: 3 });
+        }
+        if (fx.rand() < 0.5) {
+          const a = fx.rand(0, Math.PI * 2);
+          fx.emit({ x: this.lx + Math.cos(a) * 1.6, y: 0.12, z: this.lz + Math.sin(a) * 1.6, vx: Math.cos(a) * 2.2 - Math.sin(a) * 2, vy: fx.rand(0.2, 0.6), vz: Math.sin(a) * 2.2 + Math.cos(a) * 2,
+            life: fx.rand(0.5, 0.9), s0: 0.3, s1: 0.9, c0: [0.32, 0.33, 0.38], a: 0.13, cell: fx.rand() < 0.5 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: fx.rand(0, 6), drag: 1.4 });
+        }
+      }
+    } else if (act.kind === 'wave') {
+      if (!act.fired && u >= 0.44) {
+        act.fired = true;
+        this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set() });
+        this.shake = Math.max(this.shake, 0.07);
+      }
+    } else if (act.kind === 'smash') {
+      // 跃空重劈:用模型自带的「过顶劈」片段。蓄力下蹲 → 腾空举剑 → 落地劈下 → 收势
+      const clip = c.clip('slash');
+      const ct = u < 0.18 ? 1.15 + (u / 0.18) * 0.25 : u < 0.6 ? 1.4 + ((u - 0.18) / 0.42) * 0.62 : u < 0.7 ? 2.02 + ((u - 0.6) / 0.1) * 0.4 : 2.42 + ((u - 0.7) / 0.3) * 0.6;
+      if (clip) {
+        c.scrub(clip, ct, 0.08);
+      }
+      const air = Math.min(1, Math.max(0, (u - 0.18) / 0.5));
+      this.leaderY = u < 0.68 ? 1.7 * Math.sin(Math.PI * air) * (air < 0.5 ? 1 : 1 - (air - 0.5) * 0.3) : 0;
+      if (!act.fired && u >= 0.68) {
+        act.fired = true;
+        this.leaderY = 0;
+        this.slam(this.lx + fxn * 1.1, this.lz + fzn * 1.1, fxn, fzn);
+      }
+    }
+    // 收招 / 接下一招 / 被走位打断
+    const cancel = m ? m.cancel : 0.86;
+    if (u >= cancel && (this.queued || wantMove)) {
+      const next = this.queued;
+      this.endAct();
+      if (next && (next === 'attack' || this.cd[next] <= 0)) {
+        this.startAct(next);
+      }
+      return;
+    }
+    if (u >= 1) {
+      this.endAct();
+    }
+  }
+
+  private endAct(): void {
+    const c = this.leader!;
+    const was = this.act;
+    this.act = null;
+    this.queued = was && this.queued === null ? null : this.queued;
+    this.leaderY = 0;
+    this.lyaw = ((this.lyaw % 360) + 360) % 360;
+    this.comboUntil = this.time + 0.55;
+    if (was && !was.move) {
+      c.play(c.clip('idle'), 0.25);
+    }
+    this.queued = null;
   }
 
   auto: { x: number; z: number } | null = null;
@@ -2225,6 +2499,17 @@ class Dungeon {
       if (moving) {
         let tx = m.x + gx * m.speed * dt;
         let tz = m.z + gz * m.speed * dt;
+        // 怪和主角之间也别叠在一起(主角跳劈落到怪身上时把怪挤开)
+        {
+          const ox = tx - this.lx;
+          const oz = tz - this.lz;
+          const od = Math.hypot(ox, oz);
+          const min = m.radius + 0.38;
+          if (od < min && od > 1e-4) {
+            tx += (ox / od) * (min - od);
+            tz += (oz / od) * (min - od);
+          }
+        }
         // 怪和怪之间别叠在一起
         for (const o of this.mobs) {
           if (o === m || o.state === 'gone' || o.state === 'down') {
@@ -2252,13 +2537,17 @@ class Dungeon {
     }
   }
 
-  /** 主角这一下砍中了谁:面前一个扇形里的怪掉血、受击、火星,亮一下灯。 */
-  private strike(): void {
+  /** 一次判定:前方扇形(或一圈)里够得着的怪都算打中。 */
+  private resolveHit(h: MoveHit, color: [number, number, number], kind: string): void {
     const a = (this.lyaw * Math.PI) / 180;
     const fxn = Math.cos(a);
     const fzn = -Math.sin(a);
-    const fx = this.fx!;
-    let hitAny = false;
+    const half = Math.cos(((h.arc / 2) * Math.PI) / 180);
+    // 这一下刀往哪边带(火星顺着飞):横斩往左、上撩往右上、斜劈往左下;一圈的用切线
+    const sweep: Record<string, [number, number, number]> = { 横斩: [0.2, 0.1, -1], 反手上撩: [0.2, 0.7, 0.8], 斜劈: [0.3, -0.7, -0.6] };
+    const mv = this.act?.move;
+    const sv = mv ? sweep[mv.name] : undefined;
+    let any = false;
     for (const m of this.mobs) {
       if (m.state === 'down' || m.state === 'gone') {
         continue;
@@ -2266,36 +2555,355 @@ class Dungeon {
       const dx = m.x - this.lx;
       const dz = m.z - this.lz;
       const d = Math.hypot(dx, dz);
-      if (d > 2.0 + m.radius || (d > 0.4 && (dx * fxn + dz * fzn) / d < 0.25)) {
+      if (d - m.radius > h.reach) {
         continue;
       }
-      hitAny = true;
-      m.hp -= 1;
-      m.c.hit = 1;
-      const hy = Math.min(1.3, m.c.height * 0.6);
-      for (let i = 0; i < 14; i += 1) {
-        fx.emit({ x: m.x - (dx / Math.max(0.2, d)) * m.radius * 0.6, y: hy, z: m.z - (dz / Math.max(0.2, d)) * m.radius * 0.6, vx: fx.rand(-3.5, 3.5), vy: fx.rand(0.5, 4.5), vz: fx.rand(-3.5, 3.5),
-          life: fx.rand(0.2, 0.5), s0: 0.022, s1: 0.006, c0: [1, 0.86, 0.6], c1: [1, 0.4, 0.1], cell: FX_CELL.streak, grav: 1, drag: 1.0, stretch: 2.2 });
+      if (h.arc < 360 && d > 0.5 && (dx * fxn + dz * fzn) / d < half) {
+        continue;
       }
-      fx.emit({ x: m.x, y: hy, z: m.z, life: 0.12, s0: 0.5, s1: 0.9, c0: [1, 0.9, 0.7], a: 0.45, cell: FX_CELL.core, fadeIn: 0.02 });
-      if (m.hp <= 0) {
-        m.state = 'down';
-        m.t = 0;
-        m.c.downSide = this.rnd() < 0.5 ? -1 : 1;
-        const fall = m.c.clip('fall');
-        if (fall) {
-          m.c.play(fall, 0.1, false);
+      any = true;
+      // 刀带过去的方向(世界):有登记的按招式给,没有的(转圈)用绕着主角的切线
+      let tx = -dz / (d || 1);
+      let ty = 0.15;
+      let tz = dx / (d || 1);
+      if (sv) {
+        // 角色自己的 [前, 上, 右] → 世界:右 = 前 × 上
+        tx = fxn * sv[0] + -fzn * sv[2];
+        ty = sv[1];
+        tz = fzn * sv[0] + fxn * sv[2];
+      }
+      this.damage(m, h.dmg, !!h.heavy, dx / (d || 1), dz / (d || 1), color, tx, ty, tz);
+    }
+    if (kind === 'whirl') {
+      this.fx!.decal('atlas', FX_CELL.ring, this.lx, this.lz, 0.8, h.heavy ? 4.0 : 3.2, h.heavy ? 0.42 : 0.3, color, h.heavy ? 0.3 : 0.16, 0.02, 0.04, 0, 0.03);
+    }
+    if (any) {
+      this.hitStop = Math.max(this.hitStop, h.heavy ? 0.085 : 0.04);
+      this.shake = Math.max(this.shake, h.heavy ? 0.14 : 0.05);
+      this.flash(this.lx + fxn * 1.1, 1.2, this.lz + fzn * 1.1, h.heavy ? 1.6 : 1, 0.26);
+    }
+  }
+
+  /** 一只怪挨了一下:掉血、受击、往后退一点、特效;血没了就倒。 */
+  private damage(m: Mob, dmg: number, heavy: boolean, nx: number, nz: number, color: [number, number, number], tx: number, ty: number, tz: number): void {
+    const fx = this.fx!;
+    m.hp -= dmg;
+    m.c.hit = 1;
+    m.cool = Math.max(m.cool, heavy ? 0.9 : 0.45);
+    const kb = heavy ? 0.7 : 0.22;
+    if (!this.blocked(m.x + nx * kb, m.z + nz * kb, m.radius * 0.7)) {
+      m.x += nx * kb;
+      m.z += nz * kb;
+    }
+    // 打在怪朝主角的这一面、半身高
+    const px = m.x - nx * m.radius * 0.7;
+    const pz = m.z - nz * m.radius * 0.7;
+    const py = Math.min(1.25, m.c.height * 0.55);
+    const tl = Math.hypot(tx, ty, tz) || 1;
+    const ux = tx / tl;
+    const uy = ty / tl;
+    const uz = tz / tl;
+    // 一道很快的切痕:顺着刀的方向掠过去的一条亮线
+    fx.emit({ x: px - ux * 0.5, y: py - uy * 0.5, z: pz - uz * 0.5, vx: ux * 16, vy: uy * 16, vz: uz * 16, life: 0.075, s0: heavy ? 0.075 : 0.05, s1: 0.012, c0: [1, 1, 1], c1: color, a: 0.95, cell: FX_CELL.streak, stretch: 5, fadeIn: 0.01 });
+    // 火星:顺着刀的方向甩出去,带一点散;重击多一些
+    const n = heavy ? 26 : 13;
+    for (let i = 0; i < n; i += 1) {
+      const sp = fx.rand(3, heavy ? 10 : 7);
+      fx.emit({ x: px, y: py, z: pz, vx: ux * sp + nx * fx.rand(0, 3) + fx.rand(-2, 2), vy: uy * sp + fx.rand(0.5, 3.5), vz: uz * sp + nz * fx.rand(0, 3) + fx.rand(-2, 2),
+        life: fx.rand(0.18, 0.5), s0: fx.rand(0.012, 0.022), s1: 0.004, c0: i % 4 === 0 ? [1, 0.9, 0.7] : [0.92, 0.96, 1], c1: i % 4 === 0 ? [1, 0.45, 0.12] : color, cell: FX_CELL.streak, grav: 1, drag: 1.1, stretch: 2.4 });
+    }
+    // 接触点一下很短的白闪(小,不糊成一团)
+    fx.emit({ x: px, y: py, z: pz, life: 0.07, s0: heavy ? 0.26 : 0.18, s1: heavy ? 0.52 : 0.34, c0: [1, 1, 1], a: 0.4, cell: FX_CELL.star, rot: fx.rand(0, 3), fadeIn: 0.01 });
+    if (heavy) {
+      for (let i = 0; i < 4; i += 1) {
+        fx.emit({ x: px + fx.rand(-0.2, 0.2), y: fx.rand(0.1, 0.5), z: pz + fx.rand(-0.2, 0.2), vx: nx * fx.rand(0.5, 2) + fx.rand(-0.6, 0.6), vy: fx.rand(0.3, 1), vz: nz * fx.rand(0.5, 2) + fx.rand(-0.6, 0.6),
+          life: fx.rand(0.5, 1), s0: 0.25, s1: 0.75, c0: [0.3, 0.31, 0.35], a: 0.15, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1.2 });
+      }
+    }
+    if (m.hp <= 0) {
+      m.state = 'down';
+      m.t = 0;
+      m.c.downSide = this.rnd() < 0.5 ? -1 : 1;
+      const fall = m.c.clip('fall');
+      if (fall) {
+        m.c.play(fall, 0.1, false);
+      }
+    }
+  }
+
+  /** 出手 / 命中时亮一下的灯(很短)。 */
+  private flash(x: number, y: number, z: number, k: number, life: number): void {
+    const L = this.lights.hit.find((v) => !v.node.active) ?? this.lights.hit[0];
+    if (!L) {
+      return;
+    }
+    L.node.setPosition(x, y, z);
+    L.node.active = true;
+    const peak = DUNGEON.hit * DUNGEON.fluxK * k;
+    L.luminousFlux = peak;
+    this.pulses = this.pulses.filter((p) => p.light !== L);
+    this.pulses.push({ light: L, age: 0, life, peak });
+  }
+
+  /** 跃空重劈落地:一圈范围伤害 + 地裂、焦痕、三圈往外扩的冲击环、碎石、扬尘、火星、震屏。 */
+  private slam(x: number, z: number, fxn: number, fzn: number): void {
+    const fx = this.fx!;
+    const color: [number, number, number] = [0.66, 0.6, 1.0];
+    let any = false;
+    for (const m of this.mobs) {
+      if (m.state === 'down' || m.state === 'gone') {
+        continue;
+      }
+      const dx = m.x - x;
+      const dz = m.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d - m.radius < 3.0) {
+        any = true;
+        this.damage(m, 5, true, dx / (d || 1), dz / (d || 1), color, dx / (d || 1), 0.9, dz / (d || 1));
+        // 离落点近的再推开一截(落点上不站怪)
+        const push = Math.max(0, 1.5 + m.radius - d);
+        if (push > 0 && !this.blocked(m.x + (dx / (d || 1)) * push, m.z + (dz / (d || 1)) * push, m.radius * 0.7)) {
+          m.x += (dx / (d || 1)) * push;
+          m.z += (dz / (d || 1)) * push;
         }
       }
     }
-    if (hitAny) {
-      const L = this.lights.hit.find((x) => !x.node.active) ?? this.lights.hit[0];
-      L.node.setPosition(this.lx + fxn * 1.0, 1.2, this.lz + fzn * 1.0);
-      L.node.active = true;
-      const peak = DUNGEON.hit * DUNGEON.fluxK;
-      L.luminousFlux = peak;
-      this.pulses = this.pulses.filter((p) => p.light !== L);
-      this.pulses.push({ light: L, age: 0, life: 0.28, peak });
+    fx.decal('atlas', FX_CELL.crack, x, z, 2.6, 2.9, 3.2, [0.72, 0.68, 1.0], 0.75, 0.02, 0.5, 0, 0.026);
+    fx.decal('scorch', 0, x, z, 2.2, 2.4, 5, [0, 0, 0], 0.5, 0.05, 2.5, 0, 0.024);
+    // 两圈细环(不用那张粗的冲击波:放大以后是一整片亮盘,把地面盖没了)
+    for (let i = 0; i < 2; i += 1) {
+      this.timers.push({ at: this.time + i * 0.08, run: () => fx.decal('atlas', FX_CELL.ring, x, z, 0.5, 3.4 + i * 1.3, 0.3 + i * 0.07, color, 0.42 - i * 0.2, 0.02, 0.04, 0, 0.032 + i * 0.002) });
+    }
+    // 中心一道往上的短光 + 一圈贴地往外冲的细火星
+    fx.emit({ x, y: 0.4, z, life: 0.09, s0: 0.5, s1: 1.0, c0: [0.85, 0.82, 1], a: 0.3, cell: FX_CELL.core, fadeIn: 0.01 });
+    for (let i = 0; i < 44; i += 1) {
+      const a = (i / 44) * Math.PI * 2 + fx.rand(-0.06, 0.06);
+      const sp = fx.rand(5, 11);
+      fx.emit({ x: x + Math.cos(a) * 0.4, y: 0.12, z: z + Math.sin(a) * 0.4, vx: Math.cos(a) * sp, vy: fx.rand(0.6, 5), vz: Math.sin(a) * sp, life: fx.rand(0.25, 0.6), s0: fx.rand(0.014, 0.026), s1: 0.004,
+        c0: [0.92, 0.94, 1], c1: color, cell: FX_CELL.streak, grav: 1, drag: 1.3, stretch: 2.6 });
+    }
+    // 扬尘:一圈往外滚的烟
+    for (let i = 0; i < 20; i += 1) {
+      const a = (i / 20) * Math.PI * 2 + fx.rand(-0.1, 0.1);
+      fx.emit({ x: x + Math.cos(a) * 0.8, y: 0.2, z: z + Math.sin(a) * 0.8, vx: Math.cos(a) * fx.rand(2.5, 4.5), vy: fx.rand(0.3, 1.1), vz: Math.sin(a) * fx.rand(2.5, 4.5), life: fx.rand(0.8, 1.5), s0: 0.4, s1: 1.4,
+        c0: [0.3, 0.31, 0.36], a: 0.2, cell: i % 2 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: fx.rand(0, 6), spin: fx.rand(-0.5, 0.5), drag: 1.6 });
+    }
+    this.hitStop = Math.max(this.hitStop, any ? 0.12 : 0.05);
+    this.shake = Math.max(this.shake, 0.3);
+    this.flash(x, 1.0, z, 3.2, 0.4);
+    void fxn;
+    void fzn;
+  }
+
+  /** 剑气:往前飞的两片交叉的月牙;碰到的怪各算一次,飞到头或撞墙就散。 */
+  private stepWaves(dt: number): void {
+    const mesh = this.waveMesh;
+    const fx = this.fx;
+    if (!mesh || !fx) {
+      return;
+    }
+    mesh.begin();
+    const color: [number, number, number] = [0.66, 0.6, 1.0];
+    for (let i = this.waves.length - 1; i >= 0; i -= 1) {
+      const w = this.waves[i];
+      w.age += dt;
+      w.x += w.dx * 15 * dt;
+      w.z += w.dz * 15 * dt;
+      const out = this.blocked(w.x, w.z, 0.2) && !(w.x > DAIS.x - 0.5 && w.x < X1 - 0.5 && Math.abs(w.z) < Z1 - 0.9);
+      for (const m of this.mobs) {
+        if (m.state === 'down' || m.state === 'gone' || w.hit.has(m)) {
+          continue;
+        }
+        if (Math.hypot(m.x - w.x, m.z - w.z) < 1.15 + m.radius) {
+          w.hit.add(m);
+          this.damage(m, 3, true, w.dx, w.dz, color, w.dx, 0.2, w.dz);
+          this.hitStop = Math.max(this.hitStop, 0.05);
+          this.shake = Math.max(this.shake, 0.08);
+        }
+      }
+      if (w.age >= w.life || out) {
+        // 散开:一小撮火星
+        for (let k = 0; k < 16; k += 1) {
+          fx.emit({ x: w.x, y: fx.rand(0.5, 1.9), z: w.z, vx: w.dx * fx.rand(1, 5) + fx.rand(-2.5, 2.5), vy: fx.rand(-1, 3), vz: w.dz * fx.rand(1, 5) + fx.rand(-2.5, 2.5), life: fx.rand(0.2, 0.45), s0: 0.016, s1: 0.004,
+            c0: [0.9, 0.9, 1], c1: color, cell: FX_CELL.streak, grav: 0.6, drag: 1.5, stretch: 2.4 });
+        }
+        this.waves.splice(i, 1);
+        continue;
+      }
+      const fade = Math.min(1, w.age / 0.05) * Math.min(1, (w.life - w.age) / 0.16);
+      // 两片月牙:各自绕前进方向歪 ±38 度;每片是一条中间宽、两头尖的弧带,鼓的一面朝前
+      const rx = -w.dz;
+      const rz = w.dx;
+      for (const tilt of [38, -38]) {
+        const tr = (tilt * Math.PI) / 180;
+        const sx = rx * Math.sin(tr);
+        const sy = Math.cos(tr);
+        const sz = rz * Math.sin(tr);
+        const R = 1.25;
+        const N = 14;
+        let prev = -1;
+        for (let k = 0; k <= N; k += 1) {
+          const ph = (-72 + (144 * k) / N) * (Math.PI / 180);
+          const cf = Math.cos(ph) * R - R * 0.5;
+          const cs = Math.sin(ph) * R;
+          const th = 0.62 * Math.pow(Math.max(0, Math.cos(ph)), 1.3) + 0.03;
+          const fxp = w.x + w.dx * cf + sx * cs;
+          const fyp = 1.15 + sy * cs;
+          const fzp = w.z + w.dz * cf + sz * cs;
+          const al = 2.0 * fade * Math.pow(Math.max(0, Math.cos(ph)), 0.5);
+          if (!mesh.room(2, 6)) {
+            break;
+          }
+          const i0 = mesh.vert(fxp, fyp, fzp, 0.04, 0, color[0] * al, color[1] * al, color[2] * al, 1);
+          mesh.vert(fxp - w.dx * th, fyp, fzp - w.dz * th, 0.04, 1, color[0] * al, color[1] * al, color[2] * al, 1);
+          if (prev >= 0) {
+            mesh.tri(prev, prev + 1, i0 + 1);
+            mesh.tri(prev, i0 + 1, i0);
+          }
+          prev = i0;
+        }
+      }
+      if (dt > 0) {
+        for (let k = 0; k < 2; k += 1) {
+          fx.emit({ x: w.x + fx.rand(-0.3, 0.3), y: fx.rand(0.3, 2.0), z: w.z + fx.rand(-0.3, 0.3), vx: -w.dx * fx.rand(1, 4), vy: fx.rand(-0.5, 0.5), vz: -w.dz * fx.rand(1, 4), life: fx.rand(0.15, 0.35), s0: 0.014, s1: 0.004,
+            c0: [0.85, 0.85, 1], c1: color, a: 0.7, cell: FX_CELL.streak, drag: 1.5, stretch: 2.6 });
+        }
+        // 贴地带起一道尘
+        if (fx.rand() < 0.6) {
+          fx.emit({ x: w.x, y: 0.12, z: w.z, vx: fx.rand(-0.5, 0.5), vy: fx.rand(0.2, 0.6), vz: fx.rand(-0.5, 0.5), life: fx.rand(0.4, 0.8), s0: 0.22, s1: 0.6, c0: [0.3, 0.31, 0.36], a: 0.1, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1 });
+        }
+      }
+      const L = this.lights.hit[1];
+      if (L && i === 0) {
+        L.node.setPosition(w.x, 1.2, w.z);
+        L.node.active = true;
+        L.luminousFlux = DUNGEON.hit * DUNGEON.fluxK * 1.2 * fade;
+      }
+    }
+    mesh.end();
+  }
+
+  /**
+   * 骨骼动画摆完之后:把正在出的招式摆到骨架上、把剑摆到手上、记刀光。
+   * 没在出招时剑垂在身侧(指向前下方);跃空重劈用的是片段,剑顺着小臂的方向。
+   */
+  private poseLeader(): void {
+    const c = this.leader;
+    const sword = this.sword;
+    if (!c || !sword || !this.trail || !this.aura) {
+      return;
+    }
+    const dt = this.lastDt;
+    const act = this.act;
+    const rig = c.rig;
+    const f = c.frame;
+    const want = act && act.move ? 1 : 0;
+    this.poseW += (want - this.poseW) * Math.min(1, dt * (want ? 30 : 12));
+    if (Math.abs(want - this.poseW) < 0.01) {
+      this.poseW = want;
+    }
+    const target = _v;
+    let on = false;
+    let color: [number, number, number] = [0.72, 0.88, 1];
+    if (act && act.move) {
+      const u = Math.min(1, act.t / act.dur);
+      poseAt(act.move, u, this.poseBuf);
+      applyPose(c, this.poseBuf, Math.max(0.2, this.poseW), target);
+      on = u >= act.move.trail[0] && u <= act.move.trail[1];
+      color = act.move.color as [number, number, number];
+    } else {
+      const fore = rig.j('RightForeArm');
+      const hand = rig.j('RightHand');
+      if (act && fore && hand) {
+        // 片段(过顶劈):剑顺着小臂,略往前带
+        Vec3.subtract(target, hand.worldPosition, fore.worldPosition).normalize();
+        target.set(target.x + f.fwd.x * 0.25, target.y + 0.1, target.z + f.fwd.z * 0.25).normalize();
+        const u = act.t / act.dur;
+        on = u > 0.5 && u < 0.76;
+        color = [0.66, 0.6, 1.0];
+      } else {
+        const b = this.moving ? [0.62, -0.62, 0.42] : [0.78, -0.55, 0.3];      // 剑尖离地二三十厘米,不戳进地里
+        target.set(f.fwd.x * b[0] + f.right.x * b[2], b[1], f.fwd.z * b[0] + f.right.z * b[2]).normalize();
+      }
+    }
+    // 剑的方向往目标上靠(出招时跟得紧,平时慢一点)
+    const k = Math.min(1, dt * (act ? 40 : 10));
+    const prev = _q2v.set(this.bladeDir);
+    this.bladeDir.set(this.bladeDir.x + (target.x - this.bladeDir.x) * k, this.bladeDir.y + (target.y - this.bladeDir.y) * k, this.bladeDir.z + (target.z - this.bladeDir.z) * k).normalize();
+    const mv = _lead.set(this.bladeDir.x - prev.x, this.bladeDir.y - prev.y, this.bladeDir.z - prev.z);
+    if (mv.lengthSqr() > 1e-5) {
+      this.bladeLead.set(mv).normalize();
+    }
+    // 握柄在手腕再往前一点(手心)
+    const hand = rig.j('RightHand');
+    const fore = rig.j('RightForeArm');
+    if (!hand || !fore) {
+      return;
+    }
+    const hp = hand.worldPosition;
+    Vec3.subtract(_grip, hp, fore.worldPosition).normalize().multiplyScalar(0.085).add(hp);
+    sword.active = true;
+    placeSword(sword, _grip, this.bladeDir, this.bladeLead);
+    if (DUNGEON.bake) {
+      const a = this.bakeAt(this.lx, 1.0, this.lz, 0, 0.35, 0);
+      const l = (a[0] + a[1] + a[2]) / 3;
+      _tint.set(Math.min(1.6, l + (a[0] - l) * 0.5), Math.min(1.6, l + (a[1] - l) * 0.5), Math.min(1.6, l + (a[2] - l) * 0.5));
+      for (const m of this.swordLit) {
+        m.setProperty('albedoScale', _tint);
+      }
+    }
+    _base.set(_grip.x + this.bladeDir.x * BLADE_ROOT, _grip.y + this.bladeDir.y * BLADE_ROOT, _grip.z + this.bladeDir.z * BLADE_ROOT);
+    _tip.set(_grip.x + this.bladeDir.x * BLADE_LEN, _grip.y + this.bladeDir.y * BLADE_LEN, _grip.z + this.bladeDir.z * BLADE_LEN);
+    this.trail.push(_base, _tip, on && dt > 0, color);
+    this.trail.update(dt);
+    // 突进:身体两侧拖出一条宽的光带(用同一种带子,两个端点取身体左右)
+    const dashing = !!act && act.kind === 'dash' && act.t / act.dur > 0.2 && act.t / act.dur < 0.66;
+    _base.set(this.lx - f.right.x * 0.42, 0.55, this.lz - f.right.z * 0.42);
+    _tip.set(this.lx + f.right.x * 0.42, 1.45, this.lz + f.right.z * 0.42);
+    this.aura.push(_base, _tip, dashing && dt > 0, [0.5, 0.44, 0.95]);
+    this.aura.update(dt);
+    this.stepWaves(dt);
+    this.updateBar();
+  }
+
+  /** 右下角的技能按钮(网页上的几个圆钮:能点,也显示冷却)。 */
+  private buildBar(): void {
+    if (typeof document === 'undefined' || this.bar.attack) {
+      return;
+    }
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9998;display:flex;gap:10px;align-items:flex-end;user-select:none;-webkit-user-select:none;touch-action:none';
+    const defs: Array<[string, string, string, number]> = [['dash', '刺', 'K', 54], ['whirl', '旋', 'L', 54], ['smash', '劈', 'U', 54], ['wave', '气', 'I', 54], ['attack', '攻', 'J', 74]];
+    for (const [kind, label, key, size] of defs) {
+      const b = document.createElement('div');
+      b.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:rgba(16,20,28,.55);border:1px solid rgba(255,255,255,.28);color:#e8eefc;`
+        + `font:600 ${Math.round(size * 0.36)}px/${size}px sans-serif;text-align:center;position:relative;cursor:pointer;backdrop-filter:blur(3px)`;
+      b.textContent = label;
+      const hint = document.createElement('span');
+      hint.style.cssText = 'position:absolute;right:2px;bottom:-2px;font:11px/14px monospace;color:rgba(232,238,252,.6)';
+      hint.textContent = key;
+      b.appendChild(hint);
+      b.dataset.label = label;
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.input(kind);
+      });
+      wrap.appendChild(b);
+      this.bar[kind] = b;
+    }
+    document.body.appendChild(wrap);
+  }
+
+  private updateBar(): void {
+    for (const k of Object.keys(this.bar)) {
+      const b = this.bar[k];
+      const cd = k === 'attack' ? 0 : this.cd[k];
+      const text = cd > 0.05 ? cd.toFixed(cd < 1 ? 1 : 0) : (b.dataset.label ?? '');
+      if (b.firstChild && b.firstChild.nodeValue !== text) {
+        b.firstChild.nodeValue = text;
+        b.style.opacity = cd > 0.05 ? '0.5' : '1';
+      }
     }
   }
 
@@ -2303,7 +2911,7 @@ class Dungeon {
   info(): Record<string, unknown> {
     const root: any = director.root;
     return { opened: this.opened, error: this.lastError, stats: this.stats, time: +this.time.toFixed(2), leader: this.leader ? [+this.lx.toFixed(2), +this.lz.toFixed(2), Math.round(this.lyaw)] : null,
-      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, tier: DUNGEON.tier, fps: +this.fps.toFixed(1), fpsLow: +this.fpsLow.toFixed(1), hud: this.hudEl ? this.hudEl.textContent : '', mobile: sys.isMobile,
+      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, act: this.act ? `${this.act.kind}:${this.act.move ? this.act.move.name : '跃空重劈'}:${(this.act.t / this.act.dur).toFixed(2)}` : '', combo: this.comboI, cd: { ...this.cd }, tier: DUNGEON.tier, fps: +this.fps.toFixed(1), fpsLow: +this.fpsLow.toFixed(1), hud: this.hudEl ? this.hudEl.textContent : '', mobile: sys.isMobile,
       real: this.fixtures.filter((f) => f.on).length, fixtures: this.fixtures.length, lightsOn: this.recs.filter((r) => r.L.node.active).length, stick: { ...this.stick }, view: { ...this.view }, free: !!this.free,
       post: this.post?.info(), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
       canvas: game.canvas ? [game.canvas.width, game.canvas.height] : null };
@@ -2406,7 +3014,7 @@ function boot(): void {
 if (!EDITOR && sys.isBrowser) {
   (globalThis as any).__g3dd = { dungeon, cfg: DUNGEON, info: () => dungeon.info(), set: (p: Partial<DungeonCfg>) => dungeon.set(p),
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
-    attack: () => dungeon.attack(), go: (x: number, z: number) => { dungeon.auto = { x, z }; },
+    attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1') {
