@@ -8,7 +8,8 @@
   python tools/proto3d/dungeon/dungeon_dev.py eval <JS 或 @文件>                          # 页面里执行(已备好 D = window.__g3dd、sleep);要 return
   python tools/proto3d/dungeon/dungeon_dev.py shot <输出.png|.jpg> [--scale=0.5]
   python tools/proto3d/dungeon/dungeon_dev.py bench [--n=60]                             # 定格后量每帧耗时(毫秒,中位数)、绘制次数、三角形数
-  python tools/proto3d/dungeon/dungeon_dev.py video <输出.mp4> --script=<JS 文件> [--secs=20] [--fps=30]   # 逐帧推着录(脚本里定义 window.__dgScript = (t) => {…})
+  python tools/proto3d/dungeon/dungeon_dev.py video <输出.mp4> --script=<JS 文件> [--secs=20] [--fps=30] [--mute=1]   # 逐帧推着录(脚本里定义 window.__dgScript = (t) => {…});
+                                                                                        # 带音轨:录制期间触发的声音按时刻离线渲染后合进去
   python tools/proto3d/dungeon/dungeon_dev.py errors
   python tools/proto3d/dungeon/dungeon_dev.py stop
 
@@ -242,7 +243,8 @@ async def cmd_client():
                 log('script', await tab.js(open(OPT['script'], encoding='utf-8').read() + '\n return 1;'))
             # 引擎暂停后每调一次「走一帧」固定前进 1/60 秒:录 30 帧就每张推两帧
             sub = max(1, round(60 / fps))
-            await tab.js("D.freeze(false); D.pause(true); return 1;")
+            await tab.js("D.freeze(false); D.pause(true); if (D.audio) D.audio.capture(true); return 1;")
+            wav = ''
             try:
                 for i in range(int(secs * fps)):
                     await tab.js(f"if (window.__dgScript) window.__dgScript({i / fps:.4f}); D.step(1 / 60, {sub}); return 1;")
@@ -250,15 +252,24 @@ async def cmd_client():
                     open(os.path.join(frames, f'f_{i:05d}.jpg'), 'wb').write(base64.b64decode(r['result']['data']))
                     if i % 90 == 0:
                         log('frame', i)
+                # 声音:逐帧录的时候没有真实的时间轴,录制期间触发过的声音都记了时刻,这里一次离线渲染成音轨
+                if not OPT.get('mute'):
+                    wav = await tab.js(f"if (!D.audio || !D.cfg.snd || !D.audio.ok) return ''; return await D.audio.renderLog({secs});", 600)
             finally:
-                await tab.js("D.pause(false); return 1;")
+                await tab.js("D.pause(false); if (D.audio) D.audio.capture(false); return 1;")
             ff = shutil.which('ffmpeg')
             if not ff:
                 log('没找到 ffmpeg,帧留在', frames)
                 return
             os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-            r = subprocess.run([ff, '-y', '-framerate', str(fps), '-i', os.path.join(frames, 'f_%05d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20',
-                                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', out], capture_output=True, text=True, encoding='utf-8', errors='replace')
+            cmd = [ff, '-y', '-framerate', str(fps), '-i', os.path.join(frames, 'f_%05d.jpg')]
+            if isinstance(wav, str) and len(wav) > 1000:
+                wpath = os.path.join(frames, 'audio.wav')
+                open(wpath, 'wb').write(base64.b64decode(wav))
+                cmd += ['-i', wpath, '-c:a', 'aac', '-b:a', '192k', '-shortest']
+                log('audio', os.path.getsize(wpath), 'bytes')
+            cmd += ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', out]
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
             log('video', out if r.returncode == 0 else r.stderr[-400:])
             shutil.rmtree(frames, ignore_errors=True)
         elif CMD == 'bench':

@@ -1,5 +1,6 @@
 import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
+import { sfx } from './G3DAudio';
 import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
@@ -127,6 +128,9 @@ export interface DungeonCfg {
   glint: number;
   /** 动作库那套招式整体再快 / 慢几倍(1 = 招式表里写的速度;地址 &dpace=1.2)。 */
   pace: number;
+  /** 声音开不开(地址 &dsnd=0 关)、总音量(&dvol=0.5)。全是代码现场合成的,见 G3DAudio。 */
+  snd: boolean;
+  vol: number;
   /** 烘焙时算不算实心东西(柱子、石棺、火盆、木箱)对灯的遮挡。 */
   bakeShadow: boolean;
   /** 烘焙时环境反射图里那几团灯光加亮几倍(湿地面、铁器靠它出高光;手机档不画倒影,全靠这个)。 */
@@ -146,7 +150,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -346,6 +350,9 @@ class Dungeon {
   private waves: Array<{ x: number; z: number; dx: number; dz: number; age: number; life: number; hit: Set<Mob> }> = [];
   private waveMesh: DynMesh | null = null;
   private timers: Array<{ at: number; run: () => void }> = [];
+  /** 这一招里每次判定的挥剑声放过没有;主角走了多远(攒够一步放一声脚步)。 */
+  private swung: boolean[] = [];
+  private stride = 0;
   private bar: Record<string, HTMLDivElement> = {};
   private moving = false;
   mobs: Mob[] = [];
@@ -398,6 +405,10 @@ class Dungeon {
           director.on(Director.EVENT_BEFORE_UPDATE, this.tick, this);
           director.on(Director.EVENT_AFTER_UPDATE, this.afterUpdate, this);
           this.bindInput();
+          if (DUNGEON.snd) {
+            sfx.volume = DUNGEON.vol;
+            sfx.init('hall');
+          }
           done?.();
         } catch (error) {
           this.lastError = String((error as any)?.stack ?? error);
@@ -1495,7 +1506,18 @@ class Dungeon {
    * 键鼠:WASD / 方向键走,右键拖动转镜头,滚轮缩放,J / 左键出手。
    * 触屏:左半屏按住拖动 = 摇杆(走),右半屏拖动 = 转镜头,右半屏点一下 = 出手。
    */
+  /** 声音从哪来:按离主角多远算音量、按在镜头的左边还是右边算声像。 */
+  private heard(x: number, z: number): { gain: number; pan: number } {
+    const d = Math.hypot(x - this.lx, z - this.lz);
+    const a = ((this.view.yaw + this.swing) * Math.PI) / 180;
+    const side = (x - this.lx) * Math.cos(a) - (z - this.lz) * Math.sin(a);
+    return { gain: 1 / (1 + (d / 7) * (d / 7)), pan: Math.max(-0.8, Math.min(0.8, side / 6)) };
+  }
+
   private bindInput(): void {
+    // 浏览器要等用户点过 / 按过键才允许出声
+    window.addEventListener('keydown', () => sfx.unlock());
+    window.addEventListener('pointerdown', () => sfx.unlock(), true);
     const cv = game.canvas;
     if (!cv || typeof window === 'undefined') {
       return;
@@ -1929,6 +1951,10 @@ class Dungeon {
       this.lyaw = (Math.atan2(-wz, wx) * 180) / Math.PI;
     }
     this.act = { kind, move, dur, t: 0, done: [], yaw0: this.lyaw, adv: 0, advR: 0, hit: new Set(), fired: false };
+    this.swung = [];
+    if (kind === 'dash') {
+      sfx.play('dash', { dur: dur * 0.75 });
+    }
     this.queued = null;
     this.auto = null;
     this.moving = false;
@@ -2090,6 +2116,14 @@ class Dungeon {
     }
     this.lastDt = dt;
     this.shake *= Math.exp(-this.realDt * 9);
+    if (DUNGEON.snd) {
+      // 火盆的噼啪:离最近的一个越近越响
+      let near = 99;
+      for (const b of BRAZIERS) {
+        near = Math.min(near, Math.hypot(b.x - this.lx, b.z - this.lz));
+      }
+      sfx.tick(this.realDt, Math.max(0, 1 - near / 10) ** 1.6);
+    }
     for (let i = this.timers.length - 1; i >= 0; i -= 1) {
       if (this.time >= this.timers[i].at) {
         const tm = this.timers.splice(i, 1)[0];
@@ -2255,6 +2289,8 @@ class Dungeon {
       return;
     }
     c.step(dt);
+    const px0 = this.lx;
+    const pz0 = this.lz;
     if (this.dbgClip) {
       c.scrub(this.dbgClip.name, this.dbgClip.t, 0);
       c.place(this.lx, this.leaderY, this.lz, this.lyaw);
@@ -2336,6 +2372,16 @@ class Dungeon {
         }
       }
     }
+    // 脚步声:跑起来每 1.3 米一步(片段里两步正好是这么远)
+    if (this.moving && !this.act) {
+      this.stride += Math.hypot(this.lx - px0, this.lz - pz0);
+      if (this.stride > 1.3) {
+        this.stride = 0;
+        sfx.play('step');
+      }
+    } else {
+      this.stride = 0.9;          // 起步后很快就响第一声
+    }
     c.place(this.lx, this.leaderY, this.lz, this.lyaw);
   }
 
@@ -2391,6 +2437,21 @@ class Dungeon {
     // 转身
     if (m?.spin && m.spinAt) {
       this.lyaw = act.yaw0 + m.spin * sm(m.spinAt[0], m.spinAt[1]);
+    }
+    // 挥剑的声音:赶在判定前 0.09 秒起(声音的最响处正好落在砍中的那一下)
+    const lead = 0.09 / act.dur;
+    if (m) {
+      m.hits.forEach((h, i) => {
+        if (!this.swung[i] && u >= h.t - lead) {
+          this.swung[i] = true;
+          sfx.play('swing', { heavy: this.gs || !!h.heavy, dur: h.heavy ? 0.4 : this.gs ? 0.32 : 0.26 });
+        }
+      });
+    }
+    const fireAt = m?.fire ?? (act.kind === 'wave' ? 0.44 : act.kind === 'smash' ? 0.68 : -1);
+    if ((act.kind === 'wave' || act.kind === 'smash') && !this.swung[9] && u >= fireAt - lead * 1.4) {
+      this.swung[9] = true;
+      sfx.play('swing', { heavy: true, dur: 0.42 });
     }
     // 判定
     if (m) {
@@ -2451,6 +2512,7 @@ class Dungeon {
     } else if (act.kind === 'wave') {
       if (!act.fired && u >= (m?.fire ?? 0.44)) {
         act.fired = true;
+        sfx.play('wave');
         this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set() });
         this.shake = Math.max(this.shake, 0.07);
       }
@@ -2586,6 +2648,7 @@ class Dungeon {
             m.cool = 1.5 + this.rnd() * 0.8;
             c.act = 'bite';
             c.actT = 0;
+            sfx.play('bite', { heavy: m.radius >= 0.7, ...this.heard(m.x, m.z) });
           }
         }
         const want = (Math.atan2(-dz, dx) * 180) / Math.PI;
@@ -2706,6 +2769,7 @@ class Dungeon {
   /** 一只怪挨了一下:掉血、受击、往后退一点、特效;血没了就倒。 */
   private damage(m: Mob, dmg: number, heavy: boolean, nx: number, nz: number, color: [number, number, number], tx: number, ty: number, tz: number): void {
     const fx = this.fx!;
+    sfx.play('hit', { heavy, ...this.heard(m.x, m.z) });
     m.hp -= dmg;
     m.c.hit = 1;
     m.cool = Math.max(m.cool, heavy ? 0.9 : 0.45);
@@ -2742,6 +2806,8 @@ class Dungeon {
     if (m.hp <= 0) {
       m.state = 'down';
       m.t = 0;
+      const big = m.radius >= 0.7;
+      this.timers.push({ at: this.time + (big ? 0.45 : 0.28), run: () => sfx.play('fall', { heavy: big, ...this.heard(m.x, m.z) }) });
       m.c.downSide = this.rnd() < 0.5 ? -1 : 1;
       const fall = m.c.clip('fall');
       if (fall) {
@@ -2767,6 +2833,7 @@ class Dungeon {
   /** 跃空重劈落地:一圈范围伤害 + 地裂、焦痕、三圈往外扩的冲击环、碎石、扬尘、火星、震屏。 */
   private slam(x: number, z: number, fxn: number, fzn: number): void {
     const fx = this.fx!;
+    sfx.play('slam', this.heard(x, z));
     const color: [number, number, number] = [0.66, 0.6, 1.0];
     let any = false;
     for (const m of this.mobs) {
@@ -3125,6 +3192,10 @@ function boot(): void {
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);
   }
+  DUNGEON.snd = param('dsnd') !== '0';
+  if (param('dvol')) {
+    DUNGEON.vol = Math.max(0, Math.min(1.5, Number(param('dvol')) || 0.8));
+  }
   if (param('dpace')) {
     DUNGEON.pace = Number(param('dpace')) || 1;
   }
@@ -3154,7 +3225,7 @@ function boot(): void {
 if (!EDITOR && sys.isBrowser) {
   (globalThis as any).__g3dd = { dungeon, cfg: DUNGEON, info: () => dungeon.info(), set: (p: Partial<DungeonCfg>) => dungeon.set(p),
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
-    attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
+    audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1') {
