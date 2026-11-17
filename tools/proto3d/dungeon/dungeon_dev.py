@@ -2,7 +2,8 @@
 """地宫小样(?g3ddungeon=1,代码在 assets/scripts/scenes/lobby/guard3d/G3DDungeon.ts)的常驻预览:
 起一个无头 Edge 一直开着,之后反复往里面执行 JS / 截图;改完代码只用 reload。Creator 预览(7456)要开着,不用登录。
 
-  python tools/proto3d/dungeon/dungeon_dev.py start [--qs=&dpost=2] [--size=1920x1080]   # 放后台跑,一直活着直到 stop
+  python tools/proto3d/dungeon/dungeon_dev.py start [--qs=&dpost=2] [--size=1920x1080] [--ua=phone]   # 放后台跑,一直活着直到 stop
+                                                                                        # --ua=phone:按安卓手机的身份打开(页面会当自己在手机上)
   python tools/proto3d/dungeon/dungeon_dev.py reload [--qs=…]                            # 改完代码:刷新资源库、重载页面、等场景建好
   python tools/proto3d/dungeon/dungeon_dev.py eval <JS 或 @文件>                          # 页面里执行(已备好 D = window.__g3dd、sleep);要 return
   python tools/proto3d/dungeon/dungeon_dev.py shot <输出.png|.jpg> [--scale=0.5]
@@ -159,7 +160,13 @@ async def cmd_start():
             tab = Tab(ws, sink)
             await tab.call('Runtime.enable')
             await tab.call('Page.bringToFront')
-            await tab.call('Emulation.setDeviceMetricsOverride', {'width': w, 'height': h, 'deviceScaleFactor': 1, 'mobile': False})
+            phone = OPT.get('ua') == 'phone'
+            await tab.call('Emulation.setDeviceMetricsOverride', {'width': w, 'height': h, 'deviceScaleFactor': 1, 'mobile': phone,
+                                                                    'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
+            if phone:
+                await tab.call('Network.enable')
+                await tab.call('Network.setUserAgentOverride', {'userAgent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36', 'platform': 'Android'})
+                await tab.call('Emulation.setTouchEmulationEnabled', {'enabled': True, 'maxTouchPoints': 5})
             await enter(tab, OPT.get('qs', ''))
             log('started; 常驻中(stop 结束)')
             while not os.path.exists(STOP):

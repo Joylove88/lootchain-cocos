@@ -304,8 +304,12 @@ class Dungeon {
   private stick = { x: 0, y: 0 };
   private ptrs = new Map<number, { kind: 'stick' | 'cam'; x: number; y: number; ox: number; oy: number; t: number; moved: number; touch: boolean }>();
   private hudEl: HTMLDivElement | null = null;
-  private fpsAcc = { t: 0, n: 0, last: 0 };
+  private fpsAcc = { t: 0, n: 0, last: 0, worst: 0 };
   fps = 0;
+  /** 最近几秒里最慢的一帧折算成的帧数(卡不卡看它)。 */
+  fpsLow = 0;
+  private lows: number[] = [];
+  private gpuName = '';
   private mobCount = 0;
   private bakeLights: BakeLight[] = [];
   private pulses: Pulse[] = [];
@@ -1812,17 +1816,35 @@ class Dungeon {
     if (this.fpsAcc.last) {
       this.fpsAcc.t += now - this.fpsAcc.last;
       this.fpsAcc.n += 1;
+      this.fpsAcc.worst = Math.max(this.fpsAcc.worst, now - this.fpsAcc.last);
     }
     this.fpsAcc.last = now;
     if (this.fpsAcc.t >= 500) {
       this.fps = (1000 * this.fpsAcc.n) / this.fpsAcc.t;
+      // 最低帧:最近 6 个半秒(3 秒)里最慢的那一帧
+      this.lows.push(this.fpsAcc.worst);
+      if (this.lows.length > 6) {
+        this.lows.shift();
+      }
+      this.fpsLow = 1000 / Math.max(1, Math.max(...this.lows));
       this.fpsAcc.t = 0;
       this.fpsAcc.n = 0;
+      this.fpsAcc.worst = 0;
+      if (this.hudEl && !this.gpuName) {
+        try {
+          const gl: any = (director.root!.device as any).gl;
+          const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+          this.gpuName = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER) ?? '?').slice(0, 60);
+        } catch (error) {
+          this.gpuName = '?';
+        }
+      }
       if (this.hudEl) {
         const cv = game.canvas;
         const k = this.post?.isOn() ? this.post.scale() : 1;
         const on = this.fixtures.filter((f) => f.on).length;
-        this.hudEl.textContent = `地宫小样 · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · ${this.fps.toFixed(0)} 帧 · ${cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : ''} · 真灯 ${on} 处`
+        this.hudEl.textContent = `地宫小样 · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · ${this.fps.toFixed(0)} 帧(最低 ${this.fpsLow.toFixed(0)})· ${cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : ''} · 真灯 ${on} 处`
+          + ` · 怪 ${this.mobs.length} 只${this.post?.linear() ? '' : ' · 低动态'}\n${this.gpuName}`
           + (sys.isMobile ? '\n左半屏拖动 = 走 · 右半屏拖动 = 转镜头 · 点一下右半屏 = 出手' : '');
       }
     }
@@ -2151,7 +2173,7 @@ class Dungeon {
   info(): Record<string, unknown> {
     const root: any = director.root;
     return { opened: this.opened, error: this.lastError, stats: this.stats, time: +this.time.toFixed(2), leader: this.leader ? [+this.lx.toFixed(2), +this.lz.toFixed(2), Math.round(this.lyaw)] : null,
-      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, tier: DUNGEON.tier, fps: +this.fps.toFixed(1),
+      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, tier: DUNGEON.tier, fps: +this.fps.toFixed(1), fpsLow: +this.fpsLow.toFixed(1), hud: this.hudEl ? this.hudEl.textContent : '', mobile: sys.isMobile,
       real: this.fixtures.filter((f) => f.on).length, fixtures: this.fixtures.length, lightsOn: this.recs.filter((r) => r.L.node.active).length, stick: { ...this.stick }, view: { ...this.view }, free: !!this.free,
       post: this.post?.info(), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
       canvas: game.canvas ? [game.canvas.width, game.canvas.height] : null };
