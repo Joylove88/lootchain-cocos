@@ -42,6 +42,7 @@ export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
   const big = new NoiseLut(256, 4, 5, 611);
   const mid = new NoiseLut(256, 16, 4, 623);
   const fine = new NoiseLut(256, 64, 3, 639);
+  const warp = new NoiseLut(256, 8, 2, 617);
   const mpp = plan.w / W;
   const level = mixn(0.26, 0.44, plan.wet);
   const wet: WetMap = { cols: Math.ceil(plan.w / 0.25), rows: Math.ceil(plan.d / 0.25), cell: 0.25, data: new Uint8Array(Math.ceil(plan.w / 0.25) * Math.ceil(plan.d / 0.25)) };
@@ -107,30 +108,36 @@ export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
       } else {
         // 一排一排铺的石板:每排的进深不一样(0.25 ~ 0.45 米),排里每块的宽窄也不一样(0.3 ~ 0.75 米),排与排随机错开 ——
         // 分界线 = 等距的线各自挪一点,所以不会看出规整的格子
-        const RD = 0.27;
-        const RW = 0.38;
-        const zb = (j: number): number => j * RD + (texHash(j, 5, 655) - 0.5) * RD * 0.5;
-        let row = Math.floor(wz / RD);
-        if (wz < zb(row)) {
+        // 第二轮:整片铺地先被缓缓地「揉」一下(一排排的缝不走直线 —— 直的话一眼就是地砖),石角磨圆
+        const RD = 0.25;
+        const RW = 0.35;
+        const ux = wx + (warp.at(wx / 14 + 0.31, wz / 14 + 0.77) - 0.5) * 0.42;
+        const uz = wz + (warp.at(wx / 14 + 0.63, wz / 14 + 0.19) - 0.5) * 0.42;
+        const zb = (j: number): number => j * RD + (texHash(j, 5, 655) - 0.5) * RD * 0.55;
+        let row = Math.floor(uz / RD);
+        if (uz < zb(row)) {
           row -= 1;
-        } else if (wz >= zb(row + 1)) {
+        } else if (uz >= zb(row + 1)) {
           row += 1;
         }
         const off = texHash(row, 3, 659) * RW;
         const xb = (i: number): number => i * RW - off + (texHash(i, row, 657) - 0.5) * RW * 0.8;
-        let col = Math.floor((wx + off) / RW);
-        if (wx < xb(col)) {
+        let col = Math.floor((ux + off) / RW);
+        if (ux < xb(col)) {
           col -= 1;
-        } else if (wx >= xb(col + 1)) {
+        } else if (ux >= xb(col + 1)) {
           col += 1;
         }
-        edge = Math.min(Math.min(wx - xb(col), xb(col + 1) - wx), Math.min(wz - zb(row), zb(row + 1) - wz));
+        const ex = Math.min(ux - xb(col), xb(col + 1) - ux);
+        const ez = Math.min(uz - zb(row), zb(row + 1) - uz);
+        const CR = 0.06;
+        edge = ex < CR && ez < CR ? CR - Math.hypot(CR - ex, CR - ez) : Math.min(ex, ez);
         id = texHash(col, row, 661);
         id2 = texHash(col, row, 673);
       }
       edge += (ng - 0.5) * 0.008;
-      const body = sstep(0.008, 0.02, edge);
-      const round = 1 - sstep(0.01, 0.07, edge);
+      const body = sstep(0.004, 0.014, edge);
+      const round = 1 - sstep(0.008, 0.07, edge);
       // 石面:整片地有很缓的起伏(积水的地方),每块石头高低差一点、顶面略鼓,少数石头陷下去
       const sunk = id2 > 0.93 ? 0.09 : 0;
       // 石面本身是花的:粗粒的斑、细碎的麻点(一片平色就成了地砖)
@@ -138,36 +145,37 @@ export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
       // 每块石板朝某个方向歪一点(所以水积在低的那一角),表面有浅坑
       const tilt = (Math.sin(wx * 2.1 + id * 40) * 0.5 + Math.cos(wz * 2.3 + id2 * 40) * 0.5) * 0.03;
       const pit = sstep(0.72, 0.8, fine.at(wx / 0.9 + id * 3, wz / 0.9 + id2 * 3));
-      let h = 0.42 + 0.34 * (nb - 0.5) + 0.1 * (nm - 0.5) + 0.06 * (id - 0.5) + tilt - sunk + 0.04 * (nf - 0.5) + 0.02 * (ng - 0.5) + 0.02 * (speck - 0.5) - 0.05 * round * round - 0.035 * pit;
+      let h = 0.42 + 0.42 * (nb - 0.5) + 0.1 * (nm - 0.5) + 0.06 * (id - 0.5) + tilt - sunk + 0.04 * (nf - 0.5) + 0.02 * (ng - 0.5) + 0.02 * (speck - 0.5) - 0.05 * round * round - 0.035 * pit;
       if (inlay > 0) {
         h += 0.02;
       }
       h = mixn(0.12 + 0.05 * nf, h, body);
       // 颜色:青灰的花岗石,每块深浅不同,少数偏褐;镶嵌的星一半浅一半深;整石圈偏浅
       // 颜色压得深(夜里的湿石头),块与块之间只差一点:差太多、太亮就成了一格格的蓝砖
-      const tone = (0.8 + 0.4 * id) * (0.78 + 0.44 * nb) * (0.8 + 0.4 * nf) * (0.86 + 0.28 * speck);
-      const warm = sstep(0.7, 0.95, id2) * 0.5;
-      let cr = mixn(54, 62, warm) * tone;
-      let cg = mixn(55, 56, warm) * tone;
-      let cb = mixn(58, 50, warm) * tone;
+      // 第二轮:块间色差再收一些,底色从青灰改成不偏色的灰(偏蓝的话月光一照整片发蓝),少数石头偏褐
+      const tone = (0.86 + 0.28 * id) * (0.8 + 0.4 * nb) * (0.8 + 0.4 * nf) * (0.84 + 0.32 * speck);
+      const warm = sstep(0.55, 0.95, id2) * 0.7;
+      let cr = mixn(60, 70, warm) * tone;
+      let cg = mixn(58, 60, warm) * tone;
+      let cb = mixn(56, 50, warm) * tone;
       if (inlay === 1) {
-        cr = 96 * (0.86 + 0.28 * nf);
-        cg = 95 * (0.86 + 0.28 * nf);
-        cb = 92 * (0.86 + 0.28 * nf);
+        cr = 80 * (0.86 + 0.28 * nf);
+        cg = 79 * (0.86 + 0.28 * nf);
+        cb = 76 * (0.86 + 0.28 * nf);
       } else if (inlay === 2) {
         cr = 28 * (0.86 + 0.28 * nf);
         cg = 30 * (0.86 + 0.28 * nf);
         cb = 36 * (0.86 + 0.28 * nf);
       } else if (inlay === 3) {
-        cr = 74 * tone;
-        cg = 74 * tone;
-        cb = 77 * tone;
+        cr = 70 * tone;
+        cg = 69 * tone;
+        cb = 68 * tone;
       }
-      cr = mixn(22, cr, body);
-      cg = mixn(22, cg, body);
-      cb = mixn(24, cb, body);
+      cr = mixn(17, cr, body);
+      cg = mixn(16, cg, body);
+      cb = mixn(16, cb, body);
       let rough = mixn(0.9, 0.58 + 0.2 * (nf - 0.5) + 0.12 * (id - 0.5), body);
-      let ao = clamp01(0.62 + 0.38 * sstep(0.004, 0.05, edge));
+      let ao = clamp01(0.5 + 0.5 * sstep(0.004, 0.06, edge));
       // 潮:整片石面都发暗发亮一点;低处积水
       const damp = clamp01(0.5 + 0.8 * (0.5 - nb) + 0.3 * plan.wet);
       cr *= 1 - 0.28 * damp;
@@ -179,7 +187,7 @@ export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
         cr = mixn(cr, cr * 0.5, water);
         cg = mixn(cg, cg * 0.52, water);
         cb = mixn(cb, cb * 0.56, water);
-        rough = mixn(rough, 0.035, water);
+        rough = mixn(rough, 0.13, water);
         ao = mixn(ao, 1, water);
         h = mixn(h, level, water);
         if (water > 0.8 && body > 0.5) {
@@ -285,7 +293,7 @@ export function slatePbr(S: number): Pbr {
     o.r = mixn(58, 52, moss) * tone;
     o.g = mixn(64, 70, moss) * tone;
     o.b = mixn(78, 56, moss) * tone;
-    o.rough = 0.5 + 0.2 * n + 0.2 * moss;
+    o.rough = 0.76 + 0.16 * n + 0.08 * moss;          // 石板瓦是哑的:再滑一点,迎着月光的那面屋顶整片反白
     o.ao = 1 - 0.5 * gap - 0.25 * lip * 0;
   }, 2.2);
 }
