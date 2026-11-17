@@ -195,26 +195,29 @@ function clipMove(name: string, clip: string, from: number, to: number, speed: n
 export const GS_STAND = 'gs_stand';
 export const GS_RUN = 'gs_jog2';
 
-/** 普攻四连。 */
+/**
+ * 普攻四连。节奏:用户看了第一版录屏说「调快一些」—— 起手的蓄势切掉更多、播放放到 1.7 ~ 1.85 倍、劈完就能接下一招
+ * (第一版是 1.35 ~ 1.5 倍,四连打完 2.8 秒;现在约 1.9 秒)。整体还可以用地址 &dpace=1.2 之类再乘一个倍数试。
+ */
 export const GS_COMBO: Move[] = [
-  clipMove('劈斩', 'gs_cut1', 0.2, 1.0, 1.4, { hits: [{ at: 0.68, reach: 2.8, arc: 150, dmg: 1 }], trail: [0.5, 0.86], cancel: 0.86 }),
-  clipMove('回旋斩', 'gs_cut3', 0.25, 1.3, 1.45, { hits: [{ at: 0.82, reach: 2.9, arc: 360, dmg: 1 }], trail: [0.6, 1.06], cancel: 1.08 }),
-  clipMove('连斩', 'gs_cut4', 0.25, 1.45, 1.5, { hits: [{ at: 0.74, reach: 2.9, arc: 170, dmg: 1 }, { at: 1.15, reach: 2.9, arc: 200, dmg: 2 }], trail: [0.55, 1.3], cancel: 1.3 }),
-  clipMove('旋身重劈', 'gs_spin', 0.1, 1.6, 1.35, { hits: [{ at: 0.55, reach: 2.9, arc: 360, dmg: 2 }, { at: 1.12, reach: 3.2, arc: 150, dmg: 3, heavy: true }], trail: [0.3, 1.26], cancel: 1.45, color: VIOLET }),
+  clipMove('劈斩', 'gs_cut1', 0.25, 1.0, 1.75, { hits: [{ at: 0.68, reach: 2.8, arc: 150, dmg: 1 }], trail: [0.5, 0.86], cancel: 0.82 }),
+  clipMove('回旋斩', 'gs_cut3', 0.35, 1.3, 1.8, { hits: [{ at: 0.82, reach: 2.9, arc: 360, dmg: 1 }], trail: [0.6, 1.06], cancel: 1.0 }),
+  clipMove('连斩', 'gs_cut4', 0.3, 1.45, 1.85, { hits: [{ at: 0.74, reach: 2.9, arc: 170, dmg: 1 }, { at: 1.15, reach: 2.9, arc: 200, dmg: 2 }], trail: [0.55, 1.3], cancel: 1.24 }),
+  clipMove('旋身重劈', 'gs_spin', 0.2, 1.6, 1.7, { hits: [{ at: 0.55, reach: 2.9, arc: 360, dmg: 2 }, { at: 1.12, reach: 3.2, arc: 150, dmg: 3, heavy: true }], trail: [0.3, 1.26], cancel: 1.36, color: VIOLET }),
 ];
 
-/** 技能:突进(滑铲斩)、连环斩(一路三刀)、跃空重劈、剑气斩。 */
+/** 技能:突进(滑铲斩)、连环斩(一路四刀)、跃空重劈、剑气斩。 */
 export const GS_SKILLS: Record<string, Move> = {
   // 突进斩:举剑跪滑出去(沿路碰到的都算),滑到头一记贴地横扫
-  dash: clipMove('突进斩', 'gs_slide', 0.1, 1.75, 1.5, { hits: [{ at: 1.2, reach: 3.0, arc: 220, dmg: 2, heavy: true }], trail: [0.9, 1.55], cancel: 1.6, color: VIOLET, rootK: 1.3, fx: [0.25, 0.95], fire: 1.25 }),
+  dash: clipMove('突进斩', 'gs_slide', 0.15, 1.7, 1.9, { hits: [{ at: 1.2, reach: 3.0, arc: 220, dmg: 2, heavy: true }], trail: [0.9, 1.55], cancel: 1.5, color: VIOLET, rootK: 1.3, fx: [0.25, 0.95], fire: 1.25 }),
   // 连环斩:一路往前四刀(劈、撩、扫、回身扫)
-  whirl: clipMove('连环斩', 'gs_cut2', 0.25, 2.95, 1.5, {
+  whirl: clipMove('连环斩', 'gs_cut2', 0.4, 2.95, 1.9, {
     hits: [{ at: 0.88, reach: 2.8, arc: 170, dmg: 1 }, { at: 1.45, reach: 2.8, arc: 200, dmg: 1 }, { at: 1.75, reach: 3.0, arc: 220, dmg: 2 }, { at: 2.55, reach: 3.1, arc: 360, dmg: 3, heavy: true }],
-    trail: [0.7, 2.75], cancel: 2.8, fx: [0.8, 2.7] }),
+    trail: [0.7, 2.75], cancel: 2.7, fx: [0.8, 2.7] }),
   // 跃空重劈:助跑起跳,举剑过顶,落地劈下
-  smash: clipMove('跃空重劈', 'gs_leap', 0.15, 1.75, 1.3, { trail: [0.85, 1.3], cancel: 1.6, color: VIOLET, fire: 1.08 }),
+  smash: clipMove('跃空重劈', 'gs_leap', 0.35, 1.7, 1.6, { trail: [0.85, 1.3], cancel: 1.5, color: VIOLET, fire: 1.08 }),
   // 剑气斩:蹲身一记横扫,扫出去的那一下放出剑气
-  wave: clipMove('剑气斩', 'gs_cut5', 0.05, 1.05, 1.3, { trail: [0.3, 0.62], cancel: 0.85, color: VIOLET, fire: 0.48 }),
+  wave: clipMove('剑气斩', 'gs_cut5', 0.15, 1.05, 1.7, { trail: [0.3, 0.62], cancel: 0.76, color: VIOLET, fire: 0.48 }),
 };
 
 /** 片段里某一刻(秒)的位移:[往前, 往右](模型原始尺寸下的米,相对片段开头)。 */

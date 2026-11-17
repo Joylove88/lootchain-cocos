@@ -125,6 +125,8 @@ export interface DungeonCfg {
    * **默认各档都不开**(地址 &dglint=1 才开):做出来看是一颗颗浮在地上的发光椭圆,不像倒影,比不加还假。留着代码只为以后换做法时对照。
    */
   glint: number;
+  /** 动作库那套招式整体再快 / 慢几倍(1 = 招式表里写的速度;地址 &dpace=1.2)。 */
+  pace: number;
   /** 烘焙时算不算实心东西(柱子、石棺、火盆、木箱)对灯的遮挡。 */
   bakeShadow: boolean;
   /** 烘焙时环境反射图里那几团灯光加亮几倍(湿地面、铁器靠它出高光;手机档不画倒影,全靠这个)。 */
@@ -144,7 +146,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -1899,7 +1901,7 @@ class Dungeon {
       this.cd[kind] = kind === 'dash' ? 3 : kind === 'whirl' ? 6 : 4;
     }
     if (move) {
-      dur = move.dur;
+      dur = move.clip ? move.dur / Math.max(0.3, DUNGEON.pace) : move.dur;
     }
     // 出手前转向:推着方向就朝那边,否则朝最近的怪(3.4 米以内有的话)
     const K = this.keys;
@@ -3122,6 +3124,9 @@ function boot(): void {
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);
+  }
+  if (param('dpace')) {
+    DUNGEON.pace = Number(param('dpace')) || 1;
   }
   if (param('dglint')) {
     DUNGEON.glint = Number(param('dglint')) || 0;
