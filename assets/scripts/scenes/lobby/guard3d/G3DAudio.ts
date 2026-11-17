@@ -26,7 +26,7 @@ export interface PlayOpts {
   dur?: number;
 }
 
-type Space = 'hall' | 'open';
+type Space = 'hall' | 'open' | 'town';
 type Ctx = BaseAudioContext;
 
 function mulberry(seed: number): () => number {
@@ -103,7 +103,8 @@ export class AudioRig {
     this.dry.connect(comp);
     this.wet = ctx.createGain();
     const conv = ctx.createConvolver();
-    conv.buffer = this.impulse(space === 'hall' ? 2.4 : 0.55, space === 'hall' ? 0.018 : 0.006, space === 'hall' ? 5200 : 7000);
+    // 石头大厅 2.4 秒;野外很短;城里的广场四面是房子,有一点回声(1.2 秒)
+    conv.buffer = this.impulse(space === 'hall' ? 2.4 : space === 'town' ? 1.2 : 0.55, space === 'hall' ? 0.018 : space === 'town' ? 0.03 : 0.006, space === 'hall' ? 5200 : space === 'town' ? 4200 : 7000);
     const back = ctx.createGain();
     back.gain.value = space === 'hall' ? 0.9 : 0.35;
     this.wet.connect(conv);
@@ -312,6 +313,16 @@ export class AudioRig {
         }
         break;
       }
+      case 'bell': {
+        // 远处教堂的钟:很低的一声,带着不成倍数的泛音,拖得很长,大半是回声
+        const out = this.bus(0.07 * g, pan, 0.9);
+        const f = 196 * this.r(0.99, 1.01);
+        for (const [k, a, d] of [[1, 1, 4.2], [2.0, 0.55, 3.2], [2.76, 0.4, 2.4], [5.4, 0.22, 1.4], [8.9, 0.1, 0.8]] as Array<[number, number, number]>) {
+          this.tone(out, t, d, 'sine', f * k, f * k * 0.998, [[0, 0.001], [0.004, a], [1, 0.001]]);
+        }
+        this.nz(out, t, 0.03, 'bandpass', 900, 1.5, [[0, 0.3], [1, 0.001]]);
+        break;
+      }
       case 'dash': {
         // 突进:一长段「呼」+ 膝盖和靴子在石板上滑的摩擦声(断断续续的中高频噪声)
         const d = o.dur ?? 0.6;
@@ -483,7 +494,14 @@ export class AudioRig {
     s.gain.value = this.space === 'hall' ? 0.25 : 0.06;
     this.amb.connect(s);
     s.connect(this.wet);
-    if (this.space === 'hall') {
+    if (this.space === 'town') {
+      // 城里:很轻的风、锻炉的火(走近了才响)
+      this.loop(this.noise, 'bandpass', 420, 0.9, 0.03, -0.2, 0.6, 0.05);
+      this.loop(this.noise, 'bandpass', 1300, 1.1, 0.012, 0.3, 0.7, 0.08);
+      this.loop(this.noise, 'lowpass', 110, 0.7, 0.07, 0);
+      this.fire = this.loop(this.crackle, 'highpass', 900, 0.6, 0, -0.2);
+      this.fireRoar = this.loop(this.noise, 'lowpass', 300, 0.8, 0, -0.2);
+    } else if (this.space === 'hall') {
       this.loop(this.noise, 'lowpass', 130, 0.7, 0.13, 0);
       this.loop(this.noise, 'bandpass', 380, 2.4, 0.035, -0.3, 0.6, 0.07);
       this.loop(this.noise, 'bandpass', 760, 3.2, 0.014, 0.4, 0.7, 0.11);
@@ -543,7 +561,7 @@ export class AudioRig {
     if (!this.amb) {
       return;
     }
-    const kinds: Array<[string, number, number]> = this.space === 'hall' ? [['drip', 1.2, 4.5]] : [['owl', 7, 19]];
+    const kinds: Array<[string, number, number]> = this.space === 'hall' ? [['drip', 1.2, 4.5]] : this.space === 'town' ? [['bell', 9, 26], ['drip', 3, 9]] : [['owl', 7, 19]];
     for (const [name, lo, hi] of kinds) {
       if (this.next[name] === undefined) {
         this.next[name] = this.ctx.currentTime + this.r(0.3, lo);
@@ -704,7 +722,7 @@ class Sfx {
     this.space = space;
     const out: Record<string, { peak: number; rms: number; secs: number; ok: boolean }> = {};
     const list: Array<[string, PlayOpts]> = [['swing', {}], ['swing', { heavy: true }], ['hit', {}], ['hit', { heavy: true }], ['step', {}], ['stepGrass', {}], ['dash', {}], ['slam', {}], ['wave', {}],
-      ['bite', {}], ['bite', { heavy: true }], ['fall', {}], ['drip', {}], ['bird', {}], ['stepMud', {}], ['owl', {}]];
+      ['bite', {}], ['bite', { heavy: true }], ['fall', {}], ['drip', {}], ['bird', {}], ['stepMud', {}], ['owl', {}], ['bell', {}]];
     for (const [name, o] of list) {
       const chs = await this.render([{ n: name, t: 0.05, o }], 3.2, false);
       let peak = 0;

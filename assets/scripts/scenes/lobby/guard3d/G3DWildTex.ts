@@ -47,7 +47,7 @@ export function distToPath(px: number, pz: number, path: Array<[number, number]>
 export interface WetMap { cols: number; rows: number; cell: number; data: Uint8Array }
 export interface MudOut extends Pbr { wet: WetMap }
 
-export function wetAt(m: WetMap, plan: WildPlan, x: number, z: number): boolean {
+export function wetAt(m: WetMap, plan: { x0: number; z0: number }, x: number, z: number): boolean {
   const gx = Math.floor((x - plan.x0) / m.cell);
   const gz = Math.floor((z - plan.z0) / m.cell);
   return gx >= 0 && gz >= 0 && gx < m.cols && gz < m.rows && m.data[gz * m.cols + gx] > 0;

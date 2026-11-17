@@ -11,6 +11,8 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
+import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN } from './G3DCity';
+import { paintMoon, paintSkyline, paintWindow, plasterPbr, plazaPbr, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
@@ -37,10 +39,17 @@ import { FieldPost, loadPost, POST_CFG, PostCfg } from './TownPost3D';
  */
 
 // ───────────────────────── 房间的尺寸 ─────────────────────────
-const X0 = -12;
-const X1 = 12;
-const Z0 = -6;
-const Z1 = 6;
+// 可走的范围。地宫和野外是 24 × 12 米;主城的广场 40 × 28 米(开场景前由 setArea 换掉)。
+let X0 = -12;
+let X1 = 12;
+let Z0 = -6;
+let Z1 = 6;
+function setArea(a: { X0: number; X1: number; Z0: number; Z1: number }): void {
+  X0 = a.X0;
+  X1 = a.X1;
+  Z0 = a.Z0;
+  Z1 = a.Z1;
+}
 const H = 6;                       // 天花板的高度
 const ROOF = H + 1.6;              // 屋顶上表面(只为了挡月光:投影只认朝着光的那一面)
 const PILLAR_X = [-6, 0, 6];
@@ -134,10 +143,12 @@ export interface DungeonCfg {
   /** 声音开不开(地址 &dsnd=0 关)、总音量(&dvol=0.5)。全是代码现场合成的,见 G3DAudio。 */
   snd: boolean;
   vol: number;
-  /** 哪个场景:hall = 地宫大厅;wild = 野外(枯木林里的废弃营地,地址 ?g3dwild=1)。 */
-  scene: 'hall' | 'wild';
+  /** 哪个场景:hall = 地宫大厅;wild = 野外(枯木林里的废弃营地,地址 ?g3dwild=1);city = 主城中心广场(?g3dcity=1)。 */
+  scene: 'hall' | 'wild' | 'city';
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
+  /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
+  moonDisc: number;
   wildFog: number;
   mist: number;
   flies: number;
@@ -160,7 +171,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', skyK: 4200, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -169,6 +180,9 @@ export const DUNGEON: DungeonCfg = {
  */
 /** 野外场景在默认值上改的几项(月光是直接照下来的,不像地宫只从天井漏一束;泥地比石板糙)。 */
 export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazier: 24, torch: 15, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 1.0, shaft: 0, bake: false };
+
+/** 主城场景在默认值上改的几项(不放怪;月光比野外略暗一点,靠路灯和窗子的暖光点缀)。 */
+export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 20, torch: 30, candle: 9, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.9, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
 export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
@@ -368,11 +382,22 @@ class Dungeon {
   private stride = 0;
   /** 野外场景:提灯的位置。 */
   private wildLanterns: Array<{ x: number; y: number; z: number }> = [];
+  private cityLamps: Array<{ x: number; y: number; z: number }> = [];
   /** 野外场景:这个位置是不是积水。 */
   private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
     return DUNGEON.scene === 'wild';
   }
+  private get city(): boolean {
+    return DUNGEON.scene === 'city';
+  }
+  /** 露天的场景(野外、主城):有天空,没有屋顶。 */
+  private get outdoor(): boolean {
+    return DUNGEON.scene !== 'hall';
+  }
+  /** 主城里站着的镇民。 */
+  private npcs: G3DChar[] = [];
+  private cityNpcSpots: Array<{ x: number; z: number; yaw: number }> = [];
   private bar: Record<string, HTMLDivElement> = {};
   private moving = false;
   mobs: Mob[] = [];
@@ -427,7 +452,7 @@ class Dungeon {
           this.bindInput();
           if (DUNGEON.snd) {
             sfx.volume = DUNGEON.vol;
-            sfx.init(this.wild ? 'open' : 'hall');
+            sfx.init(this.city ? 'town' : this.wild ? 'open' : 'hall');
           }
           done?.();
         } catch (error) {
@@ -448,6 +473,10 @@ class Dungeon {
     const rnd = mulberry32(91);
     if (this.wild) {
       this.buildWild(world, rnd, t0);
+      return;
+    }
+    if (this.city) {
+      this.buildCity(world, rnd, t0);
       return;
     }
     if (DUNGEON.bake) {
@@ -1281,14 +1310,14 @@ class Dungeon {
 
   /** 相机、特效、剑、角色:两个场景共用的收尾。 */
   private finishBuild(world: Node, t0: number): void {
-    const wild = this.wild;
+    const wild = this.outdoor;
     const camNode = new Node('DgCamera');
     world.addChild(camNode);
     const cam = camNode.addComponent(Camera);
     cam.projection = Camera.ProjectionType.PERSPECTIVE;
     cam.fovAxis = Camera.FOVAxis.VERTICAL;
     cam.near = 0.12;
-    cam.far = wild ? 160 : 90;
+    cam.far = this.city ? 240 : wild ? 160 : 90;
     cam.priority = -1;
     cam.clearFlags = wild ? Camera.ClearFlag.SKYBOX : Camera.ClearFlag.SOLID_COLOR;
     cam.clearColor = new Color(4, 5, 8, 255);
@@ -1310,6 +1339,244 @@ class Dungeon {
     this.waveMesh = new DynMesh(world, 'DgSwordWave', this.trail.mat, 4 * 120, 6 * 120, false, false, fxBounds);
     this.loadChars();
     this.stats.buildMs = Math.round(performance.now() - t0);
+  }
+
+  /**
+   * 主城场景:中心广场(月夜)。几何在 G3DCity.ts,贴图在 G3DCityTex.ts;这里配材质、灯、远景。
+   * 照着原型做(周报截图/2026-11-17_主城3D小样/原型/01_…):湿的方石广场和罗盘纹、正对着的大教堂、左边的铁匠铺和水井、右边的红篷摊位。
+   */
+  private buildCity(world: Node, rnd: () => number, t0: number): void {
+    const t1 = performance.now();
+    const gw = DUNGEON.floor;
+    const ground = plazaPbr(gw, Math.round((gw * CITY_GROUND.d) / CITY_GROUND.w), CITY_PLAN);
+    this.stats.floorMs = Math.round(performance.now() - t1);
+    this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, CITY_PLAN, x, z);
+    const C = buildCityScene(rnd);
+    this.solids.push(...C.solids);
+    BRAZIERS.splice(0, BRAZIERS.length, { x: C.forge.x, z: C.forge.z });          // 火的特效和声音认这张表:城里就是铁匠铺的锻炉
+    this.cityNpcSpots = C.npcs;
+    this.cityLamps = C.lamps;
+    this.lx = -12;
+    this.lz = 0.6;
+    // 镜头比另外两个场景放平、放广:城里要看得到教堂的塔尖和天
+    this.view.yaw = 270;
+    this.view.pitch = 4;
+    this.view.dist = 4.8;
+    this.view.fov = 58;
+    const std = (p: Pbr, repeat: boolean, aniso: number, vertexColor = true): Material => {
+      const m = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: vertexColor });
+      m.setProperty('mainTexture', tex(p.albedo, repeat, aniso));
+      m.setProperty('normalMap', tex(p.normal, repeat, aniso));
+      m.setProperty('pbrMap', tex(p.orm, repeat, Math.min(4, aniso)));
+      m.setProperty('occlusion', 1);
+      m.setProperty('roughness', 1);
+      m.setProperty('metallic', 1);
+      return m;
+    };
+    const plain = (rough: number, metal = 0): Material => {
+      const m = material('builtin-standard', { USE_VERTEX_COLOR: true });
+      m.setProperty('roughness', rough);
+      m.setProperty('metallic', metal);
+      return m;
+    };
+    const floorMat = std(ground, false, 16, false);
+    floorMat.setProperty('specularIntensity', 0.12);
+    floorMat.setProperty('normalStrength', DUNGEON.floorBump);
+    floorMat.setProperty('roughness', DUNGEON.gloss);
+    this.floorMat = floorMat;
+    const TK = DUNGEON.texK;
+    const stoneMat = std(masonryPbr(Math.round(1024 * TK)), true, 8);
+    stoneMat.setProperty('albedoScale', new Vec3(0.84, 0.86, 0.9));
+    const plasterMat = std(plasterPbr(Math.round(512 * TK)), true, 8);
+    plasterMat.setProperty('albedoScale', new Vec3(0.8, 0.78, 0.76));
+    const timberMat = std(woodPbr(Math.round(512 * TK)), true, 8);
+    timberMat.setProperty('albedoScale', new Vec3(0.6, 0.55, 0.5));
+    const slateMat = std(slatePbr(Math.round(512 * TK)), true, 8);
+    const ironMat = std(ironPbr(256), true, 4);
+    const barkP = barkPbr(Math.round(512 * TK), true);
+    const barkMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true });
+    barkMat.setProperty('mainTexture', tex(barkP.albedo, true, 8));
+    barkMat.setProperty('normalMap', tex(barkP.normal, true, 8));
+    barkMat.setProperty('roughness', 0.88);
+    barkMat.setProperty('metallic', 0);
+    barkMat.setProperty('normalStrength', 0.7);
+    barkMat.setProperty('albedoScale', new Vec3(0.6, 0.56, 0.54));
+    // 暗红的布(篷布、旗幡):帆布的纹理压成暗红
+    const clothMat = std(canvasPbr(Math.round(512 * TK)), true, 4);
+    clothMat.setProperty('albedoScale', new Vec3(0.3, 0.06, 0.07));
+    const goodsMat = plain(0.85);
+    const leafMat = plain(0.8);
+    const darkGlass = plain(0.2);
+    this.stats.texMs = Math.round(performance.now() - t1);
+
+    // ── 地面:广场一块(带积水倒影)+ 外面一大片暗色的铺地(街道往外延伸,被雾吃掉)──
+    for (const m of MeshBatch.groundTiles(CITY_GROUND.x0, CITY_GROUND.z0, CITY_GROUND.w, CITY_GROUND.d, 8, 6)) {
+      const gn = addMesh(world, 'DgFloor', m, floorMat, false, true);
+      gn.layer = GROUND_LAYER;
+      this.groundNodes.push(gn);
+    }
+    const outerMat = std(rockPbr(256), true, 4, false);
+    outerMat.setProperty('albedoScale', new Vec3(0.16, 0.17, 0.2));
+    for (const m of MeshBatch.groundTiles(-150, -150, 300, 300, 2, 2, -0.04)) {
+      addMesh(world, 'DgOuter', m, outerMat, false, true);
+    }
+    let tris = 0;
+    const parts: Array<[MeshBatch, Material, string, boolean]> = [[C.stone, stoneMat, 'DgStone', true], [C.plaster, plasterMat, 'DgPlaster', true], [C.timber, timberMat, 'DgTimber', true],
+      [C.slate, slateMat, 'DgSlate', true], [C.iron, ironMat, 'DgIron', true], [C.bark, barkMat, 'DgBark', true], [C.cloth, clothMat, 'DgCloth', true],
+      [C.goods, goodsMat, 'DgGoods', true], [C.leaf, leafMat, 'DgLeaf', true], [C.winDark, darkGlass, 'DgWinDark', false]];
+    for (const [batch, mat, name, cast] of parts) {
+      for (const m of batch.build()) {
+        addMesh(world, name, m, mat, cast, true);
+      }
+      tris += batch.triangles;
+    }
+    this.stats.sceneTris = tris;
+
+    // ── 亮着的窗:暖黄的玻璃 + 深色窗棂,自己发光(不受光);亮度压着,只是点缀 ──
+    const litWindow = (batch: MeshBatch, cv: HTMLCanvasElement, k: number, name: string): void => {
+      const m = material('builtin-unlit', { USE_TEXTURE: true }, 1);
+      m.setProperty('mainTexture', tex(cv, false, 4));
+      m.setProperty('mainColor', new Color(255, 255, 255, 255));
+      m.setProperty('colorScale', new Vec3(k, k, k));
+      for (const mesh of batch.build()) {
+        addMesh(world, name, mesh, m, false, false);
+      }
+    };
+    litWindow(C.winHouse, paintWindow('house', 96, 128, 3), 1.05, 'DgWinHouse');
+    litWindow(C.winLancet, paintWindow('lancet', 64, 224, 5), 1.0, 'DgWinLancet');
+    litWindow(C.winRose, paintWindow('rose', 256, 256, 7), 0.95, 'DgWinRose');
+
+    // ── 远处的城:两圈屋顶和塔楼的剪影 ──
+    for (const [rad, hgt, seed, y0, rep2] of [[58, 16, 3, -1, 3], [78, 26, 9, -1, 4]] as Array<[number, number, number, number, number]>) {
+      const line = new Sculpt();
+      line.surf(48, 1, (u, v, out) => {
+        const a = u * Math.PI * 2;
+        out.set(Math.cos(a) * rad * 1.15, y0 + v * hgt, Math.sin(a) * rad * 0.9);
+      }, { uv01: true, twoSided: true });
+      const lm = material('builtin-unlit', { USE_TEXTURE: true }, 1);
+      lm.setProperty('mainTexture', tex(paintSkyline(2048, 256, seed), true, 4));
+      lm.setProperty('mainColor', new Color(255, 255, 255, 255));
+      lm.setProperty('tilingOffset', new Quat(rep2, 1, 0, 0) as any);
+      for (const m of line.build()) {
+        addMesh(world, 'DgSkyline', m, lm, false, false);
+      }
+    }
+
+    // ── 月亮:天上的一块小板(朝着广场),贴一个清楚的圆月;天空图里只留它周围的一圈淡淡的光 ──
+    {
+      const mm = material('builtin-unlit', { USE_TEXTURE: true }, 1);
+      mm.setProperty('mainTexture', tex(paintMoon(256), false, 4));
+      mm.setProperty('mainColor', new Color(255, 255, 255, 255));
+      mm.setProperty('colorScale', new Vec3(DUNGEON.moonDisc, DUNGEON.moonDisc, DUNGEON.moonDisc));
+      const mn = addMesh(world, 'DgMoonDisc', MeshBatch.quad(), mm, false, false);
+      const dl = Math.hypot(CITY_MOON_SKY[0], CITY_MOON_SKY[1], CITY_MOON_SKY[2]);
+      mn.setPosition((CITY_MOON_SKY[0] / dl) * 200, (CITY_MOON_SKY[1] / dl) * 200, (CITY_MOON_SKY[2] / dl) * 200);
+      mn.lookAt(new Vec3(mn.position.x * 2, mn.position.y * 2, mn.position.z * 2));          // 板的正面是 +z:要背对着「看」出去,正面才朝广场
+      mn.setScale(10.5, 10.5, 1);
+    }
+
+    // ── 发光的东西:路灯的玻璃、锻炉的炭火,各带一小团光晕 ──
+    const quad = MeshBatch.quad();
+    const glowTex = tex(paintGlow(128, 2.2), false, 1);
+    const halo = (x: number, y: number, z: number, size: number, color: Color, k: number): void => {
+      const m = material('builtin-unlit', { USE_TEXTURE: true }, 2);
+      m.setProperty('mainTexture', glowTex);
+      m.setProperty('mainColor', color);
+      m.setProperty('colorScale', new Vec3(k, k, k));
+      const n = addMesh(world, 'DgHalo', quad, m, false, false);
+      n.setPosition(x, y, z);
+      n.setScale(size, size, 1);
+      this.halos.push(n);
+    };
+    const emissive = (color: Color, k: number): Material => {
+      const m = material('builtin-unlit', {});
+      m.setProperty('mainColor', color);
+      m.setProperty('colorScale', new Vec3(k, k, k));
+      return m;
+    };
+    const glassMat = emissive(new Color(255, 200, 128, 255), 3.0);
+    for (const m of C.glass.build()) {
+      addMesh(world, 'DgLampGlass', m, glassMat, false, false);
+    }
+    const coalMat = emissive(new Color(255, 96, 28, 255), 3.0);
+    for (const m of C.coal.build()) {
+      addMesh(world, 'DgCoal', m, coalMat, false, false);
+    }
+    for (const l of C.lamps) {
+      halo(l.x, l.y, l.z, 1.0, new Color(255, 190, 120, 255), 0.28);
+    }
+
+    // ── 灯:四盏路灯、教堂台阶两侧各一盏、锻炉一盏;命中时闪一下的两盏;跟着主角的一盏很弱的补光 ──
+    const point = (kind: string, x: number, y: number, z: number, color: Color, range: number): PointLight => {
+      const n = new Node(`DgLight_${kind}`);
+      world.addChild(n);
+      n.setPosition(x, y, z);
+      const L = n.addComponent(PointLight);
+      L.color = color;
+      L.range = range * DUNGEON.rangeK;
+      L.luminousFlux = 0;
+      this.lights[kind].push(L);
+      return L;
+    };
+    const fixture = (x: number, z: number): number => {
+      this.fixtures.push({ x, z, w: 1, on: true, d: 0, fake: [] });
+      return this.fixtures.length - 1;
+    };
+    C.lamps.forEach((l, i) => {
+      this.recs.push({ L: point('torch', l.x, l.y - 0.3, l.z, new Color(255, 178, 104, 255), 10), kind: 'torch', fx: fixture(l.x, l.z), amp: 0.05, seed: 3 + i * 2.9 });
+    });
+    C.doorLamps.forEach((l, i) => {
+      this.recs.push({ L: point('candle', l.x - 0.5, l.y, l.z, new Color(255, 178, 104, 255), 7), kind: 'candle', fx: fixture(l.x, l.z), amp: 0.05, seed: 11 + i * 3.1 });
+    });
+    this.recs.push({ L: point('brazier', C.forge.x, C.forge.y + 0.3, C.forge.z, new Color(255, 132, 60, 255), 9), kind: 'brazier', fx: fixture(C.forge.x, C.forge.z), amp: 0.2, seed: 1.7 });
+    for (let i = 0; i < 2; i += 1) {
+      const L = point('hit', 0, 1.2, 0, new Color(255, 214, 160, 255), 4.5);
+      L.node.active = false;
+    }
+    point('fill', this.lx, 2.6, this.lz, new Color(190, 206, 255, 255), 4.6);
+    const moonNode = new Node('DgMoon');
+    world.addChild(moonNode);
+    moonNode.setPosition(-CITY_MOON.x * 80, -CITY_MOON.y * 80, -CITY_MOON.z * 80);
+    moonNode.lookAt(new Vec3(0, 0, 0));
+    const moon = moonNode.addComponent(DirectionalLight);
+    moon.color = new Color(186, 204, 255, 255);
+    moon.illuminance = DUNGEON.moon;
+    this.moon = moon;
+    this.finishBuild(world, t0);
+  }
+
+  /** 主城每帧的小动静:锻炉冒的烟、从枫树上飘下来的红叶、路灯下打转的飞蛾、贴地的一点薄雾、落在积水里的水滴。 */
+  private cityFx(R: (a: number, b: number) => number): void {
+    const fx = this.fx!;
+    const f = BRAZIERS[0];
+    if (f && R(0, 1) < 0.25) {
+      fx.emit({ x: f.x + R(-0.3, 0.3), y: 2.4, z: f.z - 0.4, vx: R(-0.1, 0.2), vy: R(0.5, 0.9), vz: R(-0.1, 0.1), life: R(2.5, 4.5), s0: 0.3, s1: 1.4,
+        c0: [0.2, 0.2, 0.22], a: 0.08, cell: R(0, 1) < 0.5 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: R(0, 6), drag: 0.3, fadeIn: 0.25 });
+    }
+    if (R(0, 1) < 0.12) {
+      const t = CITY_PLAN.trees[Math.floor(R(0, CITY_PLAN.trees.length - 0.001))];
+      fx.emit({ x: t[0] + R(-3, 3), y: R(3.5, 7), z: t[1] + R(-3, 3), vx: R(0.2, 0.7), vy: R(-0.5, -0.25), vz: R(-0.3, 0.3), life: R(5, 8), s0: R(0.04, 0.06), s1: 0.04,
+        c0: [0.42, 0.1, 0.06], c1: [0.3, 0.1, 0.06], a: 0.95, cell: FX_CELL.mote, add: false, grav: 0.12, drag: 0.6, fadeIn: 0.1 });
+    }
+    if (R(0, 1) < 0.1 && this.cityLamps.length) {
+      const l = this.cityLamps[Math.floor(R(0, this.cityLamps.length - 0.001))];
+      fx.emit({ x: l.x + R(-0.5, 0.5), y: l.y + R(-0.4, 0.5), z: l.z + R(-0.5, 0.5), vx: R(-0.6, 0.6), vy: R(-0.3, 0.3), vz: R(-0.6, 0.6), life: R(1, 2.2), s0: 0.014, s1: 0.01,
+        c0: [1, 0.86, 0.6], a: 0.5, cell: FX_CELL.mote, drag: 0.4, fadeIn: 0.2 });
+    }
+    if (R(0, 1) < 0.06 * DUNGEON.mist) {
+      fx.emit({ x: R(X0 - 2, X1 + 2), y: R(0.25, 0.6), z: R(Z0 - 2, Z1 + 2), vx: R(0.1, 0.25), vz: R(-0.05, 0.05), life: R(7, 12), s0: R(2.4, 3.6), s1: R(3.6, 5),
+        c0: [0.18, 0.23, 0.34], a: 0.035, cell: R(0, 1) < 0.5 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: R(0, 6), drag: 0, fadeIn: 0.3 });
+    }
+    if (R(0, 1) < 0.12 && this.wildWet) {
+      for (let i = 0; i < 6; i += 1) {
+        const x = R(X0, X1);
+        const z = R(Z0, Z1);
+        if (this.wildWet(x, z)) {
+          fx.decal('atlas', FX_CELL.ring, x, z, 0.03, R(0.25, 0.45), R(0.9, 1.4), [0.5, 0.6, 0.8], 0.16, 0.05, 0.1, 0, 0.012);
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -1514,6 +1781,22 @@ class Dungeon {
       this.followers.push({ c, x: this.lx - 0.9, z: this.lz + 0.9, yaw: 0, moving: false, ox: -0.9, oz: 0.9 });
       c.play(c.clip('idle'), 0);
     });
+    if (this.city) {
+      // 镇民:手头有哪个角色模型就用哪个(都是站着不动的);站的地方当成挡路的
+      const pool = ['sorcerer', 'nyx', 'hero_f'].filter((k) => keys.indexOf(k) >= 0);
+      this.cityNpcSpots.forEach((n, i) => {
+        if (!pool.length) {
+          return;
+        }
+        const key = pool[i % pool.length];
+        spawn(key, n.x, n.z, key === 'sorcerer' ? 1.8 : 1.68, n.yaw, (c) => {
+          this.npcs.push(c);
+          c.play(c.clip('idle'), 0);
+        });
+        this.solids.push({ x: n.x, z: n.z, hx: 0.3, hz: 0.3, h: 1.8 });
+      });
+      return;
+    }
     const mob = (key: string, x: number, z: number, height: number, hp: number, speed: number, reach: number, radius: number, procWalk = false): void => {
       if (this.mobCount >= DUNGEON.maxMobs) {
         return;
@@ -1590,7 +1873,7 @@ class Dungeon {
     amb.skyLightingColor = DUNGEON.bake ? new Color(255, 255, 255, 255) : new Color(70, 92, 140, 255);
     amb.groundLightingColor = DUNGEON.bake ? new Color(255, 255, 255, 255) : new Color(46, 36, 30, 255);
     amb.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : DUNGEON.ambient;
-    if (this.wild) {
+    if (this.outdoor) {
       // 天空那张图存不下大于 1 的数,而这套灯光是高动态的(月光几十万):天空要看得见,只能把「环境光的照度」整体抬高(skyK),
       // 再把天 / 地两个环境光颜色按同样的倍数压回去 —— 物体受到的环境光不变,天空和积水里的倒影变亮
       const k = DUNGEON.ambient / DUNGEON.skyK;
@@ -1599,10 +1882,11 @@ class Dungeon {
       amb.skyIllum = DUNGEON.skyK;
       try {
         // 夜空:很暗的天顶、略亮的地平线、月亮那一侧有一团光、一层被月光照亮边缘的云。同一张图也当环境反射(积水里反出来的就是它)
-        const c = (r: number, g: number, b: number): [number, number, number] => [r, g, b];
+        const sk = this.city ? 2.4 : 1;          // 主城的天整体亮一些(月色更亮,看得见云)
+        const c = (r: number, g: number, b: number): [number, number, number] => [r * sk, g * sk, b * sk];
         sky.envmap = buildSkyCube({ zenith: c(0.012, 0.02, 0.045), horizon: c(0.05, 0.075, 0.125), horizonAway: c(0.03, 0.045, 0.08), ground: c(0.012, 0.014, 0.018),
-          sunDir: [-WILD_MOON.x, -WILD_MOON.y, -WILD_MOON.z], sunColor: c(0.5, 0.62, 0.9), sunSize: 0.045,
-          cloud: c(0.12, 0.16, 0.25), cloudShade: c(0.018, 0.024, 0.045), cover: 0.56, cloudScale: 1.6, size: 256, seed: 5 });
+          sunDir: this.city ? CITY_MOON_SKY : [-WILD_MOON.x, -WILD_MOON.y, -WILD_MOON.z], sunColor: this.city ? c(0.1, 0.13, 0.2) : c(0.5, 0.62, 0.9), sunSize: this.city ? 0.09 : 0.045,
+          cloud: this.city ? c(0.22, 0.27, 0.4) : c(0.12, 0.16, 0.25), cloudShade: this.city ? c(0.05, 0.062, 0.1) : c(0.018, 0.024, 0.045), cover: this.city ? 0.5 : 0.56, cloudScale: this.city ? 1.3 : 1.6, size: 256, seed: this.city ? 11 : 5 });
         (sky as any).envLightingType = 1;
         sky.enabled = true;
       } catch (error) {
@@ -1639,8 +1923,8 @@ class Dungeon {
       moon.shadowNormalBias = 0.02;
       moon.shadowFixedArea = true;
       moon.shadowNear = 1;
-      moon.shadowFar = this.wild ? 140 : 90;
-      moon.shadowOrthoSize = this.wild ? 26 : 17;
+      moon.shadowFar = this.outdoor ? 160 : 90;
+      moon.shadowOrthoSize = this.city ? 40 : this.wild ? 26 : 17;
     }
     this.applyLights();
     // 后期:沿用野外那套,数值按「暗房间、亮灯」重新给
@@ -1651,7 +1935,10 @@ class Dungeon {
       shadowTint: [0.94, 1.0, 1.08], highlightTint: [1.04, 1.0, 0.96],
       vignette: 0.34, vignetteStart: 0.45, vignetteEnd: 1.1,
       fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
-    if (this.wild) {
+    if (this.city) {
+      // 主城:广场大、要看得到教堂的塔尖,雾更淡;远处的屋顶剪影靠它推远
+      Object.assign(cfg, { fogColor: [0.045, 0.065, 0.115], fogAway: [0.045, 0.065, 0.115], fogStart: 14, fogDensity: 0.009, fogMax: 0.85, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.5, exposure: 0.95, saturation: 0.92 });
+    } else if (this.wild) {
       // 野外:看得远,雾淡一些、但远处要吃得掉(林子的剪影靠它接到天上)
       Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.9 });
     }
@@ -1697,7 +1984,7 @@ class Dungeon {
     if (this.moon) {
       this.moon.illuminance = DUNGEON.moon;
     }
-    director.getScene()!.globals.ambient.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : this.wild ? DUNGEON.skyK : DUNGEON.ambient;
+    director.getScene()!.globals.ambient.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : this.outdoor ? DUNGEON.skyK : DUNGEON.ambient;
     this.shaftMat?.setProperty('colorScale', new Vec3(DUNGEON.shaft, DUNGEON.shaft, DUNGEON.shaft));
     this.floorMat?.setProperty('roughness', DUNGEON.gloss);
   }
@@ -2195,7 +2482,7 @@ class Dungeon {
       // 侧廊和门洞不让进(小样只做了这一间)
       return true;
     }
-    if (!this.wild && x > DAIS.x - r - 0.2) {
+    if (!this.outdoor && x > DAIS.x - r - 0.2) {
       return true;      // 石台不上
     }
     for (const s of this.solids) {
@@ -2216,9 +2503,9 @@ class Dungeon {
         t = Math.min(t, (lo - o) / d);
       }
     };
-    const out = this.wild ? 5 : -0.35;          // 野外没有墙:镜头可以退到场地外面几米
+    const out = this.wild ? 5 : this.city ? 1.5 : -0.35;          // 野外没有墙:镜头可以退到场地外面几米
     slab(ox, dx, X0 - out, X1 + out);
-    slab(oy, dy, 0.25, this.wild ? 9 : H - 0.75);
+    slab(oy, dy, 0.25, this.outdoor ? 9 : H - 0.75);
     slab(oz, dz, Z0 - out, Z1 + out);
     // 大个子的怪(熊)站到镜头和主角之间时也算挡镜头的:不然镜头会埋进它身子里
     const blockers = this.solids.filter((v) => Math.max(v.hx, v.hz) >= 0.3);      // 烛台这种细杆子不算(挡不住什么,却会把镜头拉到贴脸)
@@ -2368,7 +2655,7 @@ class Dungeon {
       this.stepFollowers(dt);
       this.stepMobs(dt);
       // 火:火盆的火苗和火星、侧廊的火把
-      const fy = this.wild ? 0.14 : 1.18;          // 火从哪个高度起:火盆的碗口 / 地上的篝火
+      const fy = this.city ? 0.98 : this.wild ? 0.14 : 1.18;          // 火从哪个高度起:火盆的碗口 / 地上的篝火 / 锻炉的炉膛
       for (const b of BRAZIERS) {
         for (let i = 0; i < 2; i += 1) {
           fx.emit({ x: b.x + R(-0.2, 0.2), y: fy + R(0, 0.08), z: b.z + R(-0.2, 0.2), vx: R(-0.12, 0.12), vy: R(0.9, 1.7), life: R(0.4, 0.7), s0: R(0.26, 0.38), s1: 0.08,
@@ -2379,7 +2666,9 @@ class Dungeon {
             c0: [1, 0.62, 0.22], c1: [1, 0.2, 0.04], cell: FX_CELL.ember, grav: -0.04, drag: 0.5, stretch: 0.9 });
         }
       }
-      if (!this.wild) {
+      if (this.city) {
+        this.cityFx(R);
+      } else if (!this.wild) {
         fx.emit({ x: HALL.x + 0.4 + R(-0.05, 0.05), y: 1.72, z: Z1 + HALL.depth - 0.5 + R(-0.05, 0.05), vy: R(0.7, 1.3), life: R(0.3, 0.55), s0: R(0.2, 0.3), s1: 0.06,
           c0: [1, 0.7, 0.3], c1: [0.9, 0.16, 0.03], a: 0.55, cell: R(0, 1) < 0.5 ? FX_CELL.flameA : FX_CELL.flameB, rot: R(-0.25, 0.25), drag: 0.3, fadeIn: 0.15 });
       } else {
@@ -2428,7 +2717,7 @@ class Dungeon {
         }
       }
       // 光柱里的浮尘
-      if (!this.wild && R(0, 1) < 0.6) {
+      if (!this.outdoor && R(0, 1) < 0.6) {
         const k = R(0, 1);
         const sx = (MOON_DIR.x / -MOON_DIR.y) * H * k;
         const sz = (MOON_DIR.z / -MOON_DIR.y) * H * k;
@@ -3457,6 +3746,10 @@ function boot(): void {
   if (param('g3dwild') === '1') {
     Object.assign(DUNGEON, WILD_CFG, { scene: 'wild' });
   }
+  if (param('g3dcity') === '1') {
+    Object.assign(DUNGEON, CITY_CFG, { scene: 'city' });
+    setArea(CITY);
+  }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
@@ -3498,7 +3791,7 @@ if (!EDITOR && sys.isBrowser) {
     audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
-  if (param('g3ddungeon') === '1' || param('g3dwild') === '1') {
+  if (param('g3ddungeon') === '1' || param('g3dwild') === '1' || param('g3dcity') === '1') {
     boot();
   }
 }
