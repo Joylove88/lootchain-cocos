@@ -4,7 +4,7 @@ import { charKeys, G3DChar, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
-import { addMesh, loadKit, material, tex } from './G3DKit';
+import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
@@ -118,6 +118,14 @@ export interface DungeonCfg {
   bake: boolean;
   bakeAmb: number;
   bakeGain: number;
+  /**
+   * 地面的假倒影高光(不画倒影的档位用):每盏灯在湿地面上该出现倒影的地方贴一条朝镜头拉长的叠加色光斑。0 = 不要。
+   * 不是真倒影:只有灯,照不出柱子和人;也不管地上哪块干哪块湿。
+   * **默认各档都不开**(地址 &dglint=1 才开):做出来看是一颗颗浮在地上的发光椭圆,不像倒影,比不加还假。留着代码只为以后换做法时对照。
+   */
+  glint: number;
+  /** 烘焙时算不算实心东西(柱子、石棺、火盆、木箱)对灯的遮挡。 */
+  bakeShadow: boolean;
   /** 烘焙时环境反射图里那几团灯光加亮几倍(湿地面、铁器靠它出高光;手机档不画倒影,全靠这个)。 */
   bakeEnv: number;
   realK: number;
@@ -135,7 +143,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -144,7 +152,7 @@ export const DUNGEON: DungeonCfg = {
  */
 export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
-  mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },
+  mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
   phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
@@ -317,6 +325,9 @@ class Dungeon {
   private shaftMat: Material | null = null;
   private floorMat: Material | null = null;
   private coneMat: Material | null = null;
+  private glintMesh: DynMesh | null = null;
+  /** 假倒影高光的光源:位置、颜色(0~1)、强弱、多宽。 */
+  private glints: Array<{ x: number; y: number; z: number; r: number; g: number; b: number; k: number; w: number }> = [];
   private spots: SpotLight[] = [];
   private candles: Vec3[] = [];
   private solids: Array<{ x: number; z: number; hx: number; hz: number; h: number }> = [];
@@ -1067,6 +1078,30 @@ class Dungeon {
       addMesh(world, 'DgLampCone', m, coneMat, false, false);
     }
 
+    // ── 地面的假倒影高光:光源表 + 一张每帧重写的网格 ──
+    if (DUNGEON.glint > 0) {
+      const G = (x: number, y: number, z: number, c: [number, number, number], k: number, w: number): void => {
+        this.glints.push({ x, y, z, r: c[0] / 255, g: c[1] / 255, b: c[2] / 255, k, w });
+      };
+      for (const L of LAMPS) {
+        G(L.x, 3.66, L.z + L.nz * 0.52, [170, 215, 255], 1.0, 0.62);
+      }
+      for (const b of BRAZIERS) {
+        G(b.x, 1.4, b.z, [255, 150, 70], 0.9, 0.5);
+      }
+      for (let i = 1; i < this.candles.length; i += 3) {
+        const c = this.candles[i];
+        G(c.x, c.y, c.z, [255, 176, 96], 0.55, 0.34);
+      }
+      G(X0 - 0.4, 2.0, 0, [255, 50, 36], 0.8, 0.9);
+      G(11.0, DAIS.h + 1.5, -2.9, [60, 255, 140], 0.5, 0.5);
+      G(11.0, DAIS.h + 1.5, 2.9, [60, 255, 140], 0.5, 0.5);
+      G(HALL.x + 0.4, 1.8, Z1 + HALL.depth - 0.6, [255, 140, 60], 0.6, 0.4);
+      const gm = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, 2);
+      gm.setProperty('mainTexture', glowTex);
+      this.glintMesh = new DynMesh(world, 'DgGlint', gm, 4 * 40, 6 * 40, false, false, { min: [X0 - 2, -1, Z0 - 2], max: [X1 + 2, 2, Z1 + 2] });
+    }
+
     // ── 灯 ──
     const point = (kind: string, x: number, y: number, z: number, color: Color, range: number): PointLight => {
       const n = new Node(`DgLight_${kind}`);
@@ -1498,6 +1533,51 @@ class Dungeon {
     }, { passive: false });
   }
 
+  /**
+   * 地面的假倒影高光:把灯对着地面镜像过去,镜头到「镜像的灯」这条线和地面的交点就是倒影该出现的位置;
+   * 在那儿贴一条沿着视线方向拉长的光斑(湿而不平的地面上,倒影就是朝着人拉长的一条)。镜头越低拉得越长。
+   */
+  private stepGlints(): void {
+    const mesh = this.glintMesh;
+    if (!mesh) {
+      return;
+    }
+    mesh.begin();
+    const cam = this.cam!.node.worldPosition;
+    const K = DUNGEON.glint;
+    if (K > 0 && cam.y > 0.05) {
+      for (const g of this.glints) {
+        const t = cam.y / (cam.y + g.y);
+        const px = cam.x + (g.x - cam.x) * t;
+        const pz = cam.z + (g.z - cam.z) * t;
+        if (px < X0 + 0.2 || px > X1 - 0.2 || pz < Z0 + 0.2 || pz > Z1 - 0.2 || (px > DAIS.x - 0.1 && Math.abs(pz) < Z1 - 0.8)) {
+          continue;      // 落在墙外 / 石台上:不画
+        }
+        let dx = px - cam.x;
+        let dz = pz - cam.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.3) {
+          continue;
+        }
+        dx /= d;
+        dz /= d;
+        // 掠射角越小(镜头低、离得远)倒影越亮、拉得越长
+        const graze = d / Math.hypot(d, cam.y);
+        // 大小按「离镜头多远」给(倒影在画面上占的角度大致不变:远处的看着不会比近处的小一截)
+        const len = Math.max(0.25, d * 0.34 * (0.5 + 0.5 * graze));
+        const wid = Math.max(0.07, d * 0.05 * (g.w / 0.5));
+        const a = K * g.k * (0.22 + 0.78 * graze * graze * graze) * 2.6;
+        // 四个角:沿视线方向(dx, dz)是长边,垂直方向是宽
+        const sx = -dz * wid;
+        const sz = dx * wid;
+        const y = 0.022;
+        mesh.quad(px - dx * len - sx, y, pz - dz * len - sz, px - dx * len + sx, y, pz - dz * len + sz,
+          px + dx * len + sx, y, pz + dz * len + sz, px + dx * len - sx, y, pz + dz * len - sz, 0, 0, 1, 1, g.r * a, g.g * a, g.b * a, 1);
+      }
+    }
+    mesh.end();
+  }
+
   /** 烘焙用的灯表:位置和亮度照着「灯」那一段里真灯的摆法抄一份(聚光按点光的二十五分之一折算,这是对着画面校出来的)。 */
   private collectBakeLights(): void {
     const out = this.bakeLights;
@@ -1517,7 +1597,7 @@ class Dungeon {
       add(b.x, 1.9, b.z, [255, 146, 72], DUNGEON.brazier * K, 7.5);
     }
     add(X0 - 0.9, 2.1, 0, [255, 52, 38], DUNGEON.gate * K, 9);
-    add(10.2, DAIS.h + 1.5, 0, [60, 255, 140], DUNGEON.rune * K, 7);
+    add(10.2, DAIS.h + 1.5, 0, [60, 255, 140], DUNGEON.rune * K * 2.4, 7.5);
     add(HALL.x + 0.4, 1.9, Z1 + HALL.depth - 1.1, [255, 132, 56], DUNGEON.torch * K, 9);
     add(RING.x, 1.4, RING.z, [150, 190, 255], DUNGEON.bounce * K, 7.5);
     for (const px of PILLAR_X) {
@@ -1534,9 +1614,9 @@ class Dungeon {
   bakeAt(x: number, y: number, z: number, nx: number, ny: number, nz: number): [number, number, number] {
     // 原来的环境光:天光色和地光色按朝向混
     const k = 0.5 + 0.5 * ny;
-    let r = DUNGEON.ambient * (lin(46) + (lin(70) - lin(46)) * k) * 0.5;
-    let g = DUNGEON.ambient * (lin(36) + (lin(92) - lin(36)) * k) * 0.5;
-    let b = DUNGEON.ambient * (lin(30) + (lin(140) - lin(30)) * k) * 0.5;
+    let r = DUNGEON.ambient * (lin(46) + (lin(70) - lin(46)) * k) * 0.42;
+    let g = DUNGEON.ambient * (lin(36) + (lin(92) - lin(36)) * k) * 0.4;
+    let b = DUNGEON.ambient * (lin(30) + (lin(140) - lin(30)) * k) * 0.34;
     for (const L of this.bakeLights) {
       const dx = L.x - x;
       const dy = L.y - y;
@@ -1553,6 +1633,21 @@ class Dungeon {
       }
       const q = (d / L.range) ** 4;
       let e = (L.flux / (4 * Math.PI * (d2 + 0.06))) * wrap * (1 - q) * (1 - q);
+      if (DUNGEON.bakeShadow && d > 0.6) {
+        // 遮挡:灯取三个点(本身、左右各偏 0.22 米)各连一条线到这一点,数有几条被实心东西挡住 → 影子的边是软的
+        const ox = (-dz / (Math.hypot(dx, dz) || 1)) * 0.22;
+        const oz = (dx / (Math.hypot(dx, dz) || 1)) * 0.22;
+        let open = 0;
+        for (let sI = -1; sI <= 1; sI += 1) {
+          if (!this.blockedRay(x + nx * 0.03, y + ny * 0.03, z + nz * 0.03, L.x + ox * sI, L.y, L.z + oz * sI)) {
+            open += 1;
+          }
+        }
+        e *= open / 3;
+        if (open === 0) {
+          continue;
+        }
+      }
       if (L.spot) {
         const c = -(dx * L.spot.dx + dy * L.spot.dy + dz * L.spot.dz) / (d || 1);
         const t = Math.min(1, Math.max(0, (c - L.spot.c1) / (L.spot.c0 - L.spot.c1)));
@@ -1564,6 +1659,38 @@ class Dungeon {
     }
     const A = DUNGEON.bakeAmb / DUNGEON.bakeGain;
     return [r / A, g / A, b / A];
+  }
+
+  /** 从 a 到 b 这条线段有没有被实心东西挡住(柱子、石棺、火盆、木箱、木桶的包围盒;两头各让出一点,自己不挡自己)。 */
+  private blockedRay(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    for (const s of this.solids) {
+      let t0 = 0.04;
+      let t1 = 0.94;
+      const slab = (o: number, d: number, lo: number, hi: number): boolean => {
+        if (Math.abs(d) < 1e-7) {
+          return o > lo && o < hi;
+        }
+        let a = (lo - o) / d;
+        let b = (hi - o) / d;
+        if (a > b) {
+          const c = a;
+          a = b;
+          b = c;
+        }
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, b);
+        return t0 < t1;
+      };
+      // 柱子的登记盒比柱身大一圈(给镜头碰撞留的边),算遮挡时往里收
+      const k = s.h > 3 ? 0.66 : 0.9;
+      if (slab(ax, dx, s.x - s.hx * k, s.x + s.hx * k) && slab(az, dz, s.z - s.hz * k, s.z + s.hz * k) && slab(ay, dy, -0.5, s.h)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** 把一批网格细分、逐顶点乘上算好的光(顶点颜色是按显示用的颜色存的,所以乘之前先开方回去)。不开烘焙时什么都不做。 */
@@ -1861,7 +1988,9 @@ class Dungeon {
     if (DUNGEON.bake) {
       const tint = (c: G3DChar, x: number, z: number): void => {
         const a = this.bakeAt(x, Math.min(1.1, c.height * 0.6), z, 0, 0.35, 0);
-        c.setTint(Math.min(1.6, a[0]), Math.min(1.6, a[1]), Math.min(1.6, a[2]));
+        // 颜色往灰里收一半:整只怪被红光 / 绿光染成纯色不像样(真灯照上去只有受光的一面带色)
+        const l = (a[0] + a[1] + a[2]) / 3;
+        c.setTint(Math.min(1.6, l + (a[0] - l) * 0.5), Math.min(1.6, l + (a[1] - l) * 0.5), Math.min(1.6, l + (a[2] - l) * 0.5));
       };
       if (this.leader) {
         tint(this.leader, this.lx, this.lz);
@@ -1891,6 +2020,7 @@ class Dungeon {
     for (const h of this.halos) {
       h.setWorldRotation(_q);
     }
+    this.stepGlints();
     fx.update(dt, camNode);
   }
 
@@ -2249,6 +2379,9 @@ function boot(): void {
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);
+  }
+  if (param('dglint')) {
+    DUNGEON.glint = Number(param('dglint')) || 0;
   }
   if (param('dspot') === '1') {
     DUNGEON.spotShadow = true;
