@@ -1,13 +1,13 @@
-import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, EventKeyboard, EventMouse, game, input, Input, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, sys, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, EventKeyboard, EventMouse, game, input, Input, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { charKeys, G3DChar, loadChar } from './G3DChar';
-import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintRunes } from './G3DDungeonTex';
+import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
 import { addMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
-import { buildEnvCube, FX_CELL, paintShaft } from './G3DSkins';
+import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { mulberry32 } from './G3DTextures';
 import { FieldPost, loadPost, POST_CFG, PostCfg } from './TownPost3D';
 
@@ -67,10 +67,19 @@ export interface DungeonCfg {
   ambient: number;
   fluxK: number;
   lamp: number;
+  /** 壁灯往下打的那一束(聚光):在地上打出一片亮区。聚光要的数比点光大二三十倍。 */
+  lampSpot: number;
+  /**
+   * 这一束带不带投影(角色和柱子在灯下有影子)。默认不带:引擎里带投影的聚光是分多趟画的,
+   * 实测开了之后半透明 / 叠加色的东西(火苗、光晕、光柱、光锥)整个不画。留着开关(地址 &dspot=1)以后再查。
+   */
+  spotShadow: boolean;
   brazier: number;
   gate: number;
   rune: number;
   torch: number;
+  /** 每座烛台一盏很弱的暖色点光(烛火本身只是发光的片,照不亮东西)。 */
+  candle: number;
   /** 技能 / 出手时临时亮一下的灯。 */
   hit: number;
   shadow: number;
@@ -80,6 +89,10 @@ export interface DungeonCfg {
   wet: number;
   /** 石板地整体有多湿:粗糙度乘这个数(1 = 只有水洼反光,越小整片地面越像刚泼过水)。 */
   gloss: number;
+  /** 石板地法线的强度(越小石面越平,倒影越清楚)。 */
+  floorBump: number;
+  /** 壁灯下面那片光锥的亮度。 */
+  cone: number;
   post: number;
   env: number;
   shaft: number;
@@ -90,8 +103,8 @@ export interface DungeonCfg {
   bounce: number;
 }
 export const DUNGEON: DungeonCfg = {
-  moon: 1300000, ambient: 60, fluxK: 100, lamp: 17, brazier: 17, gate: 17, rune: 9, torch: 14, hit: 16,
-  shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.4, post: 2, env: 1, shaft: 0.16, glow: 1, fill: 1.0, bounce: 8,
+  moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
+  shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
 };
 
 interface Mob {
@@ -140,9 +153,12 @@ class Dungeon {
   private halos: Node[] = [];
   private flickers: Flicker[] = [];
   private pulses: Pulse[] = [];
-  private lights: Record<string, PointLight[]> = { lamp: [], brazier: [], gate: [], rune: [], torch: [], hit: [], fill: [], bounce: [] };
+  private lights: Record<string, PointLight[]> = { lamp: [], brazier: [], gate: [], rune: [], torch: [], candle: [], hit: [], fill: [], bounce: [] };
   private shaftMat: Material | null = null;
   private floorMat: Material | null = null;
+  private coneMat: Material | null = null;
+  private spots: SpotLight[] = [];
+  private candles: Vec3[] = [];
   private solids: Array<{ x: number; z: number; hx: number; hz: number; h: number }> = [];
   private blocker: Node | null = null;
   private rnd = mulberry32(417);
@@ -494,6 +510,130 @@ class Dungeon {
       });
     }
 
+    // ── 墙裙和腰线:沿两面长墙,让开壁龛、侧廊、壁柱 ──
+    const SEG_N: Array<[number, number]> = [[-12, -10.25], [-7.75, -6.6], [-5.4, -4.25], [-1.75, -0.6], [0.6, 1.75], [4.25, 5.4], [6.6, DAIS.x - 0.3]];
+    const SEG_S: Array<[number, number]> = [[-12, -10.25], [-7.75, -6.6], [-5.4, -4.25], [-1.75, -0.6], [0.6, HALL.x - HALL.half], [HALL.x + HALL.half, 5.4], [6.6, DAIS.x - 0.3]];
+    const BAND: Array<[number, number]> = [[-12, -6.5], [-5.5, -0.5], [0.5, 5.5], [6.5, 12]];
+    for (const [segs, z, s] of [[SEG_N, Z0, 1], [SEG_S, Z1, -1]] as Array<[Array<[number, number]>, number, number]>) {
+      for (const [xa, xb] of segs) {
+        at((xa + xb) / 2, () => {
+          rock.box(xb - xa, 0.52, 0.2, V((xa + xb) / 2, 0.26, z + s * 0.1), V(0, 0, 0), [0.62, 0.63, 0.67], UV_ROCK, rnd, 0.035, 0);
+        });
+      }
+      for (const [xa, xb] of BAND) {
+        at((xa + xb) / 2, () => {
+          rock.box(xb - xa, 0.2, 0.13, V((xa + xb) / 2, 4.42, z + s * 0.065), V(0, 0, 0), [0.66, 0.67, 0.71], UV_ROCK, rnd, 0.03);
+        });
+      }
+    }
+    // ── 烛台:柱子朝过道的一侧各立一座(铁架 + 三根蜡烛;火苗和光晕另做,不是真的灯)──
+    const candleStand = (x: number, z: number): void => {
+      at(x, () => {
+        for (let i = 0; i < 3; i += 1) {
+          const a = (i / 3) * Math.PI * 2 + 0.4;
+          iron.cylinder(0.014, 0.02, 0.34, 6, V(x + Math.cos(a) * 0.13, 0.13, z + Math.sin(a) * 0.13), V(-Math.sin(a) * 40, 0, Math.cos(a) * 40), [0.5, 0.5, 0.52], UV_IRON, rnd, 0, false);
+        }
+        iron.cylinder(0.018, 0.022, 1.25, 8, V(x, 0.86, z), V(0, 0, 0), [0.52, 0.52, 0.54], UV_IRON, rnd, undefined, false);
+        iron.lathe([[0.02, 0.6], [0.05, 0.63], [0.02, 0.66]], 10, { den: UV_IRON, tint: [0.5, 0.5, 0.52], smooth: false, xf: xform([x, 0, z]) });
+        iron.box(0.5, 0.025, 0.035, V(x, 1.44, z), V(0, 0, 0), [0.5, 0.5, 0.52], UV_IRON, rnd, 0.004);
+        for (const o of [-0.23, 0, 0.23]) {
+          const top = 1.48 + (o === 0 ? 0.2 : 0.06);
+          iron.lathe([[0.02, 1.45], [0.05, 1.47], [0.045, 1.485]], 10, { den: UV_IRON, tint: [0.5, 0.5, 0.52], smooth: false, xf: xform([x + o, o === 0 ? 0.08 : 0, z]) });
+          wax.cylinder(0.02, 0.022, top - 1.48 + (o === 0 ? 0.08 : 0) + 0.1, 8, V(x + o, (top + 1.48 + (o === 0 ? 0.08 : 0)) / 2 + 0.03, z), V(0, 0, 0), [0.86, 0.8, 0.66], 2, rnd);
+          this.candles.push(new Vec3(x + o, top + (o === 0 ? 0.08 : 0) + 0.1, z));
+        }
+      });
+      this.solids.push({ x, z, hx: 0.2, hz: 0.2, h: 1.6 });
+    };
+    const wax = new Sculpt();
+    for (const [x, z] of [[-6, -2.15], [-6, 2.15], [0, -2.15], [0, 2.15], [6, -2.15], [6, 2.15]]) {
+      candleStand(x + 0.75, z);
+    }
+    // ── 吊笼:从横梁上垂下一根铁链,挂一只空铁笼 ──
+    at(2.9, () => {
+      const cx = 2.9;
+      const cz = -4.1;
+      for (let i = 0; i < 9; i += 1) {
+        iron.box(0.03, 0.2, 0.03, V(cx, H - 0.6 - i * 0.2, cz), V(0, i % 2 ? 90 : 0, 6 * (i % 2 ? 1 : -1)), [0.5, 0.5, 0.52], UV_IRON, rnd, 0.004);
+      }
+      const y0 = 2.45;
+      for (const y of [y0, y0 + 0.62, y0 + 1.24]) {
+        iron.lathe([[0.4, y - 0.02], [0.43, y], [0.4, y + 0.02]], 18, { den: UV_IRON, tint: [0.5, 0.5, 0.52], smooth: false, xf: xform([cx, 0, cz]) });
+      }
+      for (let i = 0; i < 10; i += 1) {
+        const a = (i / 10) * Math.PI * 2;
+        iron.cylinder(0.014, 0.014, 1.24, 6, V(cx + Math.cos(a) * 0.41, y0 + 0.62, cz + Math.sin(a) * 0.41), V(0, 0, 0), [0.5, 0.5, 0.52], UV_IRON, rnd, undefined, false);
+      }
+      iron.cylinder(0.02, 0.42, 0.34, 10, V(cx, y0 + 1.41, cz), V(0, 0, 0), [0.48, 0.48, 0.5], UV_IRON, rnd, undefined, false);
+      iron.cylinder(0.43, 0.43, 0.025, 14, V(cx, y0 - 0.01, cz), V(0, 0, 0), [0.45, 0.45, 0.47], UV_IRON, rnd);
+    });
+    // ── 兵器架:北墙边,两根立柱两道横档,斜靠四杆长矛,旁边挂一面圆盾 ──
+    at(-7.1, () => {
+      const x0 = -7.6;
+      const x1 = -6.72;
+      const z = Z0 + 0.34;
+      for (const x of [x0, x1]) {
+        wood.box(0.08, 1.5, 0.08, V(x, 0.75, z), V(0, 0, 0), [0.6, 0.52, 0.42], UV_WOOD, rnd, 0.008, 0);
+      }
+      for (const y of [0.5, 1.36]) {
+        wood.box(x1 - x0 + 0.16, 0.07, 0.06, V((x0 + x1) / 2, y, z + 0.02), V(0, 0, 0), [0.56, 0.48, 0.4], UV_WOOD, rnd, 0.008);
+      }
+      for (let i = 0; i < 4; i += 1) {
+        const x = x0 + 0.12 + i * 0.215;
+        wood.cylinder(0.016, 0.018, 2.1, 7, V(x, 1.04, z + 0.11), V(7, 0, (i - 1.5) * 1.5), [0.66, 0.56, 0.44], UV_WOOD, rnd, undefined, false);
+        iron.cylinder(0.0, 0.03, 0.3, 6, V(x + (i - 1.5) * 0.028, 2.2, z - 0.02), V(7, 0, (i - 1.5) * 1.5), [0.72, 0.72, 0.76], UV_IRON, rnd, undefined, false);
+      }
+      bronze.lathe([[0.0, 0.1], [0.12, 0.09], [0.16, 0.04], [0.42, 0.02], [0.45, 0.0]], 24, { den: 2.4, tint: [0.5, 0.39, 0.22], xf: xform([-5.0, 1.75, Z0 + 0.03], [90, 0, 0]) });
+    });
+    // ── 倒下的一截柱子和碎块:北侧过道边 ──
+    at(2.2, () => {
+      wall.cylinder(0.43, 0.43, 1.45, 18, V(2.3, 0.43, -4.75), V(0, 28, 90), [0.86, 0.87, 0.9], UV_WALL * 2, rnd, 0);
+      wall.cylinder(0.43, 0.4, 0.62, 18, V(0.95, 0.31, -5.1), V(6, -40, 4), [0.8, 0.81, 0.85], UV_WALL * 2, rnd, 0);
+      for (let i = 0; i < 6; i += 1) {
+        const v = 0.62 + rnd() * 0.2;
+        const r = 0.09 + rnd() * 0.16;
+        rock.rock(r, V(1.2 + rnd() * 2.2, r * 0.45, -4.2 + rnd() * 0.7), [v, v, v * 1.04], UV_ROCK * 1.6, rnd, 0.7);
+      }
+    });
+    this.solids.push({ x: 2.3, z: -4.75, hx: 0.85, hz: 0.6, h: 0.9 }, { x: 0.95, z: -5.1, hx: 0.5, hz: 0.5, h: 0.7 });
+    // ── 天井四角垂下的铁链(末端一只钩)──
+    for (const [sx, sz, len] of [[-1, -1, 1.5], [1, -1, 1.1], [1, 1, 1.7], [-1, 1, 0.9]] as Array<[number, number, number]>) {
+      at(OC.x, () => {
+        const x = OC.x + sx * (OC.half - 0.08);
+        const z = OC.z + sz * (OC.half - 0.08);
+        const links = Math.round(len / 0.16);
+        for (let i = 0; i < links; i += 1) {
+          iron.box(0.026, 0.16, 0.026, V(x, H - 0.3 - i * 0.16, z), V(0, i % 2 ? 90 : 0, 5 * (i % 2 ? 1 : -1)), [0.5, 0.5, 0.52], UV_IRON, rnd, 0.004);
+        }
+        iron.lathe([[0.0, 0], [0.045, 0.03], [0.03, 0.09], [0.012, 0.13]], 8, { den: UV_IRON, tint: [0.5, 0.5, 0.52], xf: xform([x, H - 0.3 - links * 0.16 - 0.1, z]) });
+      });
+    }
+    // ── 旗幡:每根柱子朝过道的一面挂一幅(铁杆 + 旧布,下摆撕破)──
+    const cloth = new Sculpt();
+    for (const px of PILLAR_X) {
+      for (const pz of PILLAR_Z) {
+        const s = pz > 0 ? -1 : 1;
+        const z = pz + s * 0.47;
+        const seed = Math.round(px * 3 + pz * 7 + 40);
+        at(px, () => {
+          iron.box(0.8, 0.035, 0.035, V(px, 4.62, z), V(0, 0, 0), [0.5, 0.5, 0.52], UV_IRON, rnd, 0.005);
+        });
+        const rr = mulberry32(seed);
+        const rag = [0, 1, 2, 3, 4, 5, 6].map(() => rr() * 0.3);
+        const deep: Tint = seed % 2 ? [0.78, 0.13, 0.1] : [0.66, 0.1, 0.13];
+        cloth.surf(6, 10, (u, v, out) => {
+          const t = 1 - v;
+          const tear = t > 0.99 ? rag[Math.round(u * 6)] : 0;
+          out.set(px - 0.31 + u * 0.62, 4.6 - (2.2 - tear) * t, z + s * (0.012 + 0.03 * Math.sin(u * 6 + seed) * t + 0.02 * Math.sin(t * 7 + u * 3)));
+        }, { den: 8, twoSided: true, tint: (u, v) => {
+          const edge = u < 0.12 || u > 0.88 || v > 0.93;
+          const mark = Math.abs(u - 0.5) < 0.1 && v > 0.42 && v < 0.74;          // 中间一道竖纹
+          const k = 0.6 + 0.4 * v;
+          return edge || mark ? [0.86 * k, 0.64 * k, 0.26 * k] : [deep[0] * k, deep[1] * k, deep[2] * k];
+        } });
+      }
+    }
+
     // ── 按开间依次建:每个开间建完切一刀 ──
     for (let b = 0; b < BAYS; b += 1) {
       for (const j of jobs) {
@@ -522,7 +662,7 @@ class Dungeon {
       return m;
     };
     const floorMat = std(floor, false, 16, false);
-    floorMat.setProperty('normalStrength', 1);
+    floorMat.setProperty('normalStrength', DUNGEON.floorBump);
     floorMat.setProperty('roughness', DUNGEON.gloss);
     this.floorMat = floorMat;
     const wallMat = std(masonryPbr(1024), true, 8);
@@ -650,6 +790,81 @@ class Dungeon {
       addMesh(world, 'DgShaft', m, sm, false, false);
     }
 
+    // ── 旗幡、蜡烛 ──
+    const cl = paintCloth(256, 48);
+    const clothMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true });
+    clothMat.setProperty('mainTexture', tex(cl.albedo, true, 4));
+    clothMat.setProperty('normalMap', tex(cl.normal, true, 4));
+    clothMat.setProperty('roughness', 0.88);
+    clothMat.setProperty('metallic', 0);
+    for (const m of cloth.build()) {
+      addMesh(world, 'DgBanner', m, clothMat, true, true);
+    }
+    const waxMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
+    waxMat.setProperty('roughness', 0.55);
+    waxMat.setProperty('metallic', 0);
+    for (const m of wax.build()) {
+      addMesh(world, 'DgWax', m, waxMat, true, true);
+    }
+    for (const c of this.candles) {
+      halo(c.x, c.y + 0.06, c.z, 0.85, new Color(255, 176, 96, 255), 0.75);
+    }
+    // ── 墙上的污渍:墙脚往上一圈、天花板往下一圈(盖在墙面前的半透明暗色,不平铺出重复:每段取贴图的不同位置)──
+    const grime = new Sculpt();
+    const stain = (ax: number, az: number, bx: number, bz: number, y0: number, y1: number, flip: boolean, off: number): void => {
+      const len = Math.hypot(bx - ax, bz - az);
+      const u0 = off;
+      const u1 = off + len / 4.5;
+      const p = [V(ax, y0, az), V(bx, y0, bz), V(bx, y1, bz), V(ax, y1, az)];
+      const uv: Array<[number, number]> = flip ? [[u0, 0], [u1, 0], [u1, 1], [u0, 1]] : [[u0, 1], [u1, 1], [u1, 0], [u0, 0]];
+      grime.facet(p, uv, [1, 1, 1]);
+      grime.facet([p[1], p[0], p[3], p[2]], [uv[1], uv[0], uv[3], uv[2]], [1, 1, 1]);
+    };
+    const E = 0.014;
+    let off = 0;
+    for (const [segs, z, s] of [[SEG_N, Z0, 1], [SEG_S, Z1, -1]] as Array<[Array<[number, number]>, number, number]>) {
+      for (const [xa, xb] of segs) {
+        stain(xa, z + s * (0.2 + E), xb, z + s * (0.2 + E), 0, 0.52, false, off);       // 墙裙正面
+        stain(xa, z + s * E, xb, z + s * E, 0.52, 2.3, false, off);
+        off += 0.37;
+      }
+      for (const [xa, xb] of BAND) {
+        stain(xa, z + s * E, xb, z + s * E, 4.56, H, true, off);
+        off += 0.41;
+      }
+    }
+    stain(X1 - E, Z0, X1 - E, Z1, DAIS.h, 2.4, false, 0.2);
+    stain(X1 - E, Z0, X1 - E, Z1, 4.5, H, true, 0.6);
+    stain(X0 + E, Z0, X0 + E, -GATE.half - 0.5, 0, 2.3, false, 0.9);
+    stain(X0 + E, GATE.half + 0.5, X0 + E, Z1, 0, 2.3, false, 1.3);
+    stain(X0 + E, Z0, X0 + E, Z1, 4.9, H, true, 1.7);
+    const grimeMat = material('builtin-unlit', { USE_TEXTURE: true }, 3);
+    grimeMat.setProperty('mainTexture', tex(paintGrime(256), true, 4));
+    grimeMat.setProperty('mainColor', new Color(9, 8, 8, 120));
+    for (const m of grime.build()) {
+      addMesh(world, 'DgGrime', m, grimeMat, false, false);
+    }
+    // ── 壁灯下面的光锥:贴着墙往下、往外散开的两片叠加色的面 ──
+    const cone = new Sculpt();
+    for (const L of LAMPS) {
+      const z0 = L.z + L.nz * 0.55;
+      const fan = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): void => {
+        const p = [V(ax, 3.62, az), V(bx, 3.62, bz), V(cx, 0.05, cz), V(dx, 0.05, dz)];
+        const uv: Array<[number, number]> = [[0.2, 0.02], [0.8, 0.02], [1, 1], [0, 1]];
+        cone.facet(p, uv, [1, 1, 1]);
+        cone.facet([p[1], p[0], p[3], p[2]], [uv[1], uv[0], uv[3], uv[2]], [1, 1, 1]);
+      };
+      fan(L.x - 0.6, z0, L.x + 0.6, z0, L.x + 2.3, z0 + L.nz * 1.5, L.x - 2.3, z0 + L.nz * 1.5);
+      fan(L.x, z0 - L.nz * 0.3, L.x, z0 + L.nz * 0.3, L.x, z0 + L.nz * 3.4, L.x, z0 - L.nz * 0.35);
+    }
+    const coneMat = material('builtin-unlit', { USE_TEXTURE: true }, 2);
+    coneMat.setProperty('mainTexture', tex(paintShaft(128, 256), false, 2));
+    coneMat.setProperty('mainColor', new Color(150, 200, 255, 255));
+    this.coneMat = coneMat;
+    for (const m of cone.build()) {
+      addMesh(world, 'DgLampCone', m, coneMat, false, false);
+    }
+
     // ── 灯 ──
     const point = (kind: string, x: number, y: number, z: number, color: Color, range: number): PointLight => {
       const n = new Node(`DgLight_${kind}`);
@@ -663,7 +878,18 @@ class Dungeon {
       return L;
     };
     for (const L of LAMPS) {
-      point('lamp', L.x, 3.5, L.z + L.nz * 1.0, new Color(150, 204, 255, 255), 8);
+      // 一盏点光照亮灯周围的墙,一盏往下打的聚光(带投影)照地面
+      point('lamp', L.x, 3.6, L.z + L.nz * 0.78, new Color(150, 204, 255, 255), 6.5);
+      const sn = new Node('DgLampSpot');
+      world.addChild(sn);
+      sn.setPosition(L.x, 3.6, L.z + L.nz * 0.7);
+      sn.lookAt(new Vec3(L.x, 0, L.z + L.nz * 3.3));
+      const S = sn.addComponent(SpotLight);
+      S.color = new Color(150, 204, 255, 255);
+      S.range = 11;
+      S.spotAngle = 112;
+      S.luminousFlux = 0;
+      this.spots.push(S);
     }
     BRAZIERS.forEach((b, i) => {
       const L = point('brazier', b.x, 1.9, b.z, new Color(255, 146, 72, 255), 7.5);
@@ -679,6 +905,11 @@ class Dungeon {
     }
     point('fill', this.lx, 2.6, this.lz, new Color(214, 226, 255, 255), 4.6);
     point('bounce', RING.x, 1.4, RING.z, new Color(150, 190, 255, 255), 7.5);
+    for (let i = 1; i < this.candles.length; i += 3) {
+      const c = this.candles[i];      // 每座烛台三根蜡烛,取中间那根的位置
+      const L = point('candle', c.x, c.y + 0.12, c.z, new Color(255, 170, 92, 255), 3.8);
+      this.flickers.push({ light: L, base: 1, seed: i * 1.9, amp: 0.1 });
+    }
     // 月光:投影的范围以房间正中为心,要罩住整间房 —— 范围外的东西不进投影图,会被月光直接照到
     const moonNode = new Node('DgMoon');
     world.addChild(moonNode);
@@ -835,11 +1066,11 @@ class Dungeon {
     // 后期:沿用野外那套,数值按「暗房间、亮灯」重新给
     const cfg: PostCfg = { ...POST_CFG,
       aoRadius: 0.55, aoIntensity: 1.9, aoStrength: 0.86, aoTint: [0.04, 0.05, 0.08],
-      bloomThreshold: 1.0, bloomIntensity: 0.62, bloomScatter: 0.78,
+      bloomThreshold: 1.0, bloomIntensity: 0.78, bloomScatter: 0.82,
       exposure: 0.96, contrast: 1.17, pivot: 0.18, toe: 0.05, saturation: 1.1, shoulder: 0.72,
       shadowTint: [0.94, 1.0, 1.08], highlightTint: [1.04, 1.0, 0.96],
       vignette: 0.34, vignetteStart: 0.45, vignetteEnd: 1.1,
-      fog: true, fogColor: [0.05, 0.075, 0.12], fogAway: [0.05, 0.075, 0.12], fogStart: 2.5, fogDensity: 0.06, fogMax: 0.6, fogLobe: 0 };
+      fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
     this.post = new FieldPost(this.cam!, cfg);
     if (DUNGEON.post > 0) {
       this.post.enable(DUNGEON.post);
@@ -860,8 +1091,20 @@ class Dungeon {
     set('gate', DUNGEON.gate);
     set('rune', DUNGEON.rune);
     set('torch', DUNGEON.torch);
+    set('candle', DUNGEON.candle);
     set('fill', DUNGEON.fill);
     set('bounce', DUNGEON.bounce);
+    for (const S of this.spots) {
+      S.luminousFlux = DUNGEON.lampSpot * k;
+      S.shadowEnabled = DUNGEON.spotShadow;
+      if (DUNGEON.spotShadow) {
+        S.shadowPcf = renderer.scene.PCFType.SOFT_2X;
+        S.shadowBias = 0.0005;
+        S.shadowNormalBias = 0.02;
+      }
+    }
+    this.coneMat?.setProperty('colorScale', new Vec3(DUNGEON.cone, DUNGEON.cone, DUNGEON.cone));
+    this.floorMat?.setProperty('normalStrength', DUNGEON.floorBump);
     if (this.moon) {
       this.moon.illuminance = DUNGEON.moon;
     }
@@ -1067,6 +1310,13 @@ class Dungeon {
       }
       fx.emit({ x: HALL.x + 0.4 + R(-0.05, 0.05), y: 1.72, z: Z1 + HALL.depth - 0.5 + R(-0.05, 0.05), vy: R(0.7, 1.3), life: R(0.3, 0.55), s0: R(0.2, 0.3), s1: 0.06,
         c0: [1, 0.7, 0.3], c1: [0.9, 0.16, 0.03], a: 0.55, cell: R(0, 1) < 0.5 ? FX_CELL.flameA : FX_CELL.flameB, rot: R(-0.25, 0.25), drag: 0.3, fadeIn: 0.15 });
+      // 蜡烛的火苗(很小的一撮,每根隔几帧补一片)
+      for (const c of this.candles) {
+        if (R(0, 1) < 0.6) {
+          fx.emit({ x: c.x + R(-0.004, 0.004), y: c.y + 0.03, z: c.z + R(-0.004, 0.004), vy: R(0.12, 0.22), life: R(0.28, 0.42), s0: R(0.075, 0.095), s1: 0.025,
+            c0: [1, 0.8, 0.44], c1: [1, 0.32, 0.06], a: 0.9, cell: R(0, 1) < 0.5 ? FX_CELL.flameA : FX_CELL.flameB, rot: R(-0.15, 0.15), drag: 0.2, fadeIn: 0.2 });
+        }
+      }
       // 光柱里的浮尘
       if (R(0, 1) < 0.6) {
         const k = R(0, 1);
@@ -1077,7 +1327,7 @@ class Dungeon {
       }
       for (const f of this.flickers) {
         const n = 0.5 * Math.sin(t * 9.7 + f.seed) + 0.3 * Math.sin(t * 23.1 + f.seed * 2.3) + 0.2 * Math.sin(t * 41.7 + f.seed * 5.1);
-        const kind = this.lights.brazier.indexOf(f.light) >= 0 ? DUNGEON.brazier : DUNGEON.torch;
+        const kind = this.lights.brazier.indexOf(f.light) >= 0 ? DUNGEON.brazier : this.lights.candle.indexOf(f.light) >= 0 ? DUNGEON.candle : DUNGEON.torch;
         f.light.luminousFlux = kind * DUNGEON.fluxK * (1 + f.amp * n);
       }
       for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
@@ -1464,6 +1714,9 @@ function boot(): void {
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);
+  }
+  if (param('dspot') === '1') {
+    DUNGEON.spotShadow = true;
   }
   if (param('dreflect') === '0') {
     DUNGEON.reflect = false;

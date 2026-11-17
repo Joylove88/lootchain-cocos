@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """地宫小样的交付图:借常驻预览(dungeon_dev.py start 要先在后台跑着)截一套,再和参考 FPS 左右并排。
 
-  python tools/proto3d/dungeon/dungeon_shots.py <输出目录> [--fps=<参考 FPS 截图目录>] [--only=shots,sheet,compare]
+  python tools/proto3d/dungeon/dungeon_shots.py <输出目录> [--fps=<参考 FPS 截图目录>] [--only=shots,sheet,compare,versus] [--tag=第二版 --no=03]
+  --tag 给了就另存一套(原图放「原图_<tag>」,文件名带 tag、从 --no 开始编号),并多出一张「上一版 / 这一版」的前后对比(versus)。
 
 出的图:
   01_地宫小样_六个镜头.jpg       大厅全景、贴地看倒影、玩家视角、铁栅门、石台和火盆、打怪
@@ -21,8 +22,11 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1:] if a.startswith('--'))
 OUT = ARGS[0] if ARGS else os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa', 'g3dd_shots')
 FPS = OPT.get('fps', '')
-ONLY = [x for x in OPT.get('only', 'shots,sheet,compare').split(',') if x]
-RAW = os.path.join(OUT, '原图')
+ONLY = [x for x in OPT.get('only', 'shots,sheet,compare,versus').split(',') if x]
+TAG = OPT.get('tag', '')
+NO = int(OPT.get('no', '1'))
+OLD = os.path.join(OUT, '原图')
+RAW = os.path.join(OUT, '原图_' + TAG) if TAG else OLD
 os.makedirs(RAW, exist_ok=True)
 
 
@@ -104,7 +108,8 @@ def main():
     size = (960, 540)
     if 'sheet' in ONLY:
         tiles = [tag(load(n, size), label) for n, label, _p, _c in SHOTS] + [tag(load('fight', size), '打怪:砍中的一刻(火星 + 临时亮一下的灯)')]
-        sheet(tiles, 2, '地宫小样 · 整间由代码生成(材质、几何、灯),角色是 AI 图转 3D 的模型;预览地址带 ?g3ddungeon=1', os.path.join(OUT, '01_地宫小样_六个镜头.jpg'))
+        sheet(tiles, 2, '地宫小样%s · 整间由代码生成(材质、几何、灯),角色是 AI 图转 3D 的模型;预览地址带 ?g3ddungeon=1' % (' ' + TAG if TAG else ''),
+              os.path.join(OUT, '%02d_地宫小样%s_六个镜头.jpg' % (NO, '_' + TAG if TAG else '')))
     if 'compare' in ONLY and FPS:
         rows = [
             (('fps_hall', '参考 FPS · 大厅'), ('hall', '地宫小样 · 大厅')),
@@ -117,7 +122,13 @@ def main():
             tiles += [tag(load(a, size, base=FPS), la), tag(load(b, size), lb)]
         tiles += [tag(load('fps_floor', size, (1180, 560, 1820, 920), FPS), '参考 FPS · 局部放大(墙 + 地面)'),
                   tag(load('floor', size, (640, 620, 1280, 980)), '地宫小样 · 局部放大(地面)')]
-        sheet(tiles, 2, '和参考的那个 FPS 并排(左 = 参考,右 = 地宫小样;都是 1920 宽的原始截图缩小,同一台电脑)', os.path.join(OUT, '02_和参考FPS并排对比.jpg'))
+        sheet(tiles, 2, '和参考的那个 FPS 并排(左 = 参考,右 = 地宫小样%s;都是 1920 宽的原始截图缩小,同一台电脑)' % (' ' + TAG if TAG else ''),
+              os.path.join(OUT, '%02d_和参考FPS并排对比%s.jpg' % (NO + 1, '_' + TAG if TAG else '')))
+    if 'versus' in ONLY and TAG and os.path.isdir(OLD):
+        tiles = []
+        for n, label in (('hall', '大厅'), ('follow', '玩家视角'), ('floor', '贴地'), ('dais', '石台')):
+            tiles += [tag(load(n, size, base=OLD), '上一版 · ' + label), tag(load(n, size), TAG + ' · ' + label)]
+        sheet(tiles, 2, '地宫小样 · 上一版(左)和%s(右),同样的机位' % TAG, os.path.join(OUT, '%02d_上一版和%s对比.jpg' % (NO + 2, TAG)))
 
 
 if __name__ == '__main__':

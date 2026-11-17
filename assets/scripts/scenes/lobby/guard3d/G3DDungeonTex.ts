@@ -216,7 +216,7 @@ export function floorPbr(W: number, H: number, plan: FloorPlan): Pbr {
       const crackLine = Math.abs(mid.at(wx / 3.1 + id * 9, wz / 3.1 + id2 * 5) - 0.5);
       const crack = id3 > 0.72 ? (1 - sstep(0.002, 0.008, crackLine)) * body : 0;
       const pit = sstep(0.7, 0.78, fine.at(wx / 1.1 + 0.5, wz / 1.1)) * body;
-      let h = 0.36 + 0.05 * (id - 0.5) + tilt + 0.3 * (nb - 0.5) + 0.07 * (nm - 0.5) + 0.03 * (nf - 0.5) + 0.012 * (ng - 0.5);
+      let h = 0.36 + 0.05 * (id - 0.5) + tilt + 0.3 * (nb - 0.5) + 0.05 * (nm - 0.5) + 0.014 * (nf - 0.5) + 0.005 * (ng - 0.5);
       h = h * (0.6 + 0.4 * bevel) - 0.05 * crack - 0.03 * pit;
       h = mixn(0.2, h, body);
       // 铜环:天井正下方嵌在地上的两圈铜条 + 八个方位的短条,略低于石面
@@ -400,6 +400,33 @@ export function paintRunes(W: number, H: number, seed: number, rowsN: number): {
   draw(a, '#0b0c0e', Math.max(2, cell * 0.075), 0);
   draw(g, '#ffffff', Math.max(1.5, cell * 0.05), cell * 0.12);
   return { albedo, glow };
+}
+
+/**
+ * 墙上的污渍(盖在墙面前的一层半透明暗色):下沿最浓、往上淡出,带一道道往下挂的水痕;左右可平铺。白色 + 透明度(颜色由材质给)。
+ * 贴的时候上下颠倒过来就是「天花板下面熏黑的一圈」。
+ */
+export function paintGrime(S: number): Cv {
+  const cv = makeCanvas(S, S);
+  const c = ctxOf(cv);
+  const img = c.createImageData(S, S);
+  for (let y = 0; y < S; y += 1) {
+    for (let x = 0; x < S; x += 1) {
+      const u = (x + 0.5) / S;
+      const t = 1 - (y + 0.5) / S;            // 0 底 → 1 顶
+      const cloud = pfbm(u, t, 6, 3, 4, 311);
+      const drip = sstep(0.42, 0.75, pfbm(u, t, 36, 2, 3, 317));
+      const reach = 0.35 + 0.5 * cloud + 0.35 * drip;      // 这一列的污渍爬到多高
+      const a = (1 - sstep(reach * 0.25, reach, t)) * (0.55 + 0.45 * cloud);
+      const p = (y * S + x) * 4;
+      img.data[p] = 255;
+      img.data[p + 1] = 255;
+      img.data[p + 2] = 255;
+      img.data[p + 3] = Math.round(255 * clamp01(a));
+    }
+  }
+  c.putImageData(img, 0, 0);
+  return cv;
 }
 
 /** 一团软的圆光(中心亮、边上淡出到 0):灯芯外面那圈光晕、火苗的芯子用。白色 + 透明度。 */
