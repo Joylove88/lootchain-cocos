@@ -1,4 +1,4 @@
-import { Camera, Color, DirectionalLight, director, EventKeyboard, EventMouse, game, Input, input, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, renderer, RenderTexture, TextureCube, UITransform, utils, Vec3 } from 'cc';
+import { Camera, Color, DirectionalLight, director, EventKeyboard, EventMouse, EventTouch, game, Input, input, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, renderer, RenderTexture, TextureCube, UITransform, utils, Vec3 } from 'cc';
 import { material } from './G3DKit';
 import { buildEnvCube } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -198,6 +198,15 @@ export class TownWorld3D {
    * 雾在这个距离上已经很浓,东西是从雾里淡出来的,不是凭空冒出来。
    */
   readonly range = { big: 46, small: 21, unit: 28 };
+  /**
+   * 镜头碰撞用的「实心的东西」(栅栏、营帐、石堆、遗迹…;树不算 —— 树干细,挡镜头时淡掉就行):
+   * 一个个立着的方盒子(3D 世界里的中心 x / z、半宽、半深、高,米)。TownProps3D 每轮扫摆件时填。
+   */
+  solids: Array<{ x: number; z: number; hx: number; hz: number; h: number }> = [];
+  /** 镜头这一帧实际离队长多远(被东西挡住时比想要的近;拉近是立刻的,放回去是慢慢的)。 */
+  private pull = 14;
+  /** 触屏转镜头:按下去没被界面吃掉的手指(编号 → 位置)。一根 = 转,两根 = 捏合缩放。 */
+  private fingers = new Map<number, { x: number; y: number }>();
   /** 现在用的是哪套灯光方案;打开时被它改掉的原值(关掉时放回去)。 */
   lookName = 'day';
   private lookSaved: { cfg: Record<string, unknown>; post: Record<string, unknown> } | null = null;
@@ -501,7 +510,100 @@ export class TownWorld3D {
     input.on(Input.EventType.MOUSE_WHEEL, this.onMouseWheel, this);
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+    input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
+    input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+    input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+    input.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
     game.canvas?.addEventListener('contextmenu', this.noMenu);
+    this.pull = this.view.dist;
+    this.fingers.clear();
+  }
+
+  /**
+   * 触屏(电脑上鼠标左键也算):在没有界面的地方拖动 = 转镜头 / 压低,两根手指捏合 = 缩放。
+   * 摇杆、技能按钮这些界面会把自己那根手指吃掉,这里收不到 —— 正好:左手推摇杆的同时右手可以转镜头。
+   */
+  private onTouchStart(e: EventTouch): void {
+    const p = e.getLocation();
+    this.fingers.set(e.getID() ?? 0, { x: p.x, y: p.y });
+  }
+
+  private onTouchMove(e: EventTouch): void {
+    const id = e.getID() ?? 0;
+    const f = this.fingers.get(id);
+    if (!f) {
+      return;
+    }
+    const p = e.getLocation();
+    const k = 1920 / Math.max(480, game.canvas?.width ?? 1920);      // 按屏幕宽度折算:不管分辨率多高,横着划过半个屏幕转的角度一样
+    if (this.fingers.size >= 2) {
+      // 捏合:另一根手指不动,看这一根挪动前后两指的距离变了多少
+      let other: { x: number; y: number } | null = null;
+      this.fingers.forEach((o, oid) => {
+        if (oid !== id && !other) {
+          other = o;
+        }
+      });
+      if (other) {
+        const o = other as { x: number; y: number };
+        const d0 = Math.hypot(f.x - o.x, f.y - o.y);
+        const d1 = Math.hypot(p.x - o.x, p.y - o.y);
+        if (d0 > 8 && d1 > 8) {
+          this.view.dist *= d0 / d1;
+        }
+      }
+    } else {
+      this.view.yaw -= (p.x - f.x) * 0.24 * k;
+      this.view.pitch -= (p.y - f.y) * 0.16 * k;
+    }
+    f.x = p.x;
+    f.y = p.y;
+  }
+
+  private onTouchEnd(e: EventTouch): void {
+    this.fingers.delete(e.getID() ?? 0);
+  }
+
+  /** 从队长往镜头那边看过去,最近的实心东西在多远(米;没挡住返回 max)。 */
+  private blockedAt(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): number {
+    let best = max;
+    for (const b of this.solids) {
+      // 射线和立着的方盒子求交(三个方向各夹一段,取交集)
+      let t0 = 0;
+      let t1 = best;
+      const lo = [b.x - b.hx, 0, b.z - b.hz];
+      const hi = [b.x + b.hx, b.h, b.z + b.hz];
+      const o = [ox, oy, oz];
+      const d = [dx, dy, dz];
+      let hit = true;
+      for (let i = 0; i < 3; i += 1) {
+        if (Math.abs(d[i]) < 1e-6) {
+          if (o[i] < lo[i] || o[i] > hi[i]) {
+            hit = false;
+            break;
+          }
+          continue;
+        }
+        let a = (lo[i] - o[i]) / d[i];
+        let c = (hi[i] - o[i]) / d[i];
+        if (a > c) {
+          const s = a;
+          a = c;
+          c = s;
+        }
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, c);
+        if (t0 > t1) {
+          hit = false;
+          break;
+        }
+      }
+      // t0 = 0 说明起点(队长)本来就在盒子里:不算(贴着东西站的时候别把镜头拉到脸上)
+      if (hit && t0 > 0.05 && t0 < best) {
+        best = t0;
+      }
+    }
+    return best;
   }
 
   private exitFree(): void {
@@ -513,6 +615,12 @@ export class TownWorld3D {
     input.off(Input.EventType.MOUSE_WHEEL, this.onMouseWheel, this);
     input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+    input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
+    input.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+    input.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+    input.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
+    this.fingers.clear();
+    this.solids = [];
     game.canvas?.removeEventListener('contextmenu', this.noMenu);
     this.drag.on = false;
     this.turn = 0;
@@ -633,7 +741,16 @@ export class TownWorld3D {
     const cp = Math.cos(pitch);
     const cam = this.cam;
     cam.fov = v.fov;
-    cam.node.setPosition(this.look.x + Math.sin(yaw) * cp * e.dist, this.look.y + Math.sin(pitch) * e.dist, this.look.z + Math.cos(yaw) * cp * e.dist);
+    // 镜头碰撞:队长和镜头之间夹着实心的东西(栅栏、营帐、石堆)时,镜头拉到它前面来,不穿过去。拉近立刻到位,放回去慢慢放
+    const dx = Math.sin(yaw) * cp;
+    const dy = Math.sin(pitch);
+    const dz = Math.cos(yaw) * cp;
+    const reach = this.blockedAt(this.look.x, this.look.y, this.look.z, dx, dy, dz, e.dist);
+    // 最近只拉到 3.2 米:队长贴着墙站的时候不把镜头怼到脸上,镜头留在墙里 / 墙后,那堵墙按「挡镜头」淡掉
+    const want = reach < e.dist ? Math.max(Math.min(3.2, e.dist), reach - 0.4) : e.dist;
+    this.pull = want < this.pull ? want : Math.min(want, this.pull + (want - this.pull) * (1 - Math.exp(-4 * dt)) + 0.001);
+    const dist = Math.min(e.dist, this.pull);
+    cam.node.setPosition(this.look.x + dx * dist, this.look.y + dy * dist, this.look.z + dz * dist);
     cam.node.lookAt(this.look);
     this.focus.set(this.look.x, 0, this.look.z);
     this.mapX = lead?.x ?? 0;

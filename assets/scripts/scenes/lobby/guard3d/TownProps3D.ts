@@ -100,6 +100,11 @@ export function fadeRenderers(renderers: MeshRenderer[], shared: Material[], fad
 export interface PropBuilder {
   /** 这个生成器管不管这个摆件(按贴图路径认)。 */
   match(asset: string): boolean;
+  /**
+   * 只在自由视角下顶替手绘图。第五轮补的那批小件(树桩、蘑菇、兽骨、晾架、断柱、荒原的石头)做得不如手绘的细:
+   * 固定镜头下手绘图立牌和 2D 里一模一样,没必要换;自由视角下立牌是跟着镜头转的纸片,才换成模型。
+   */
+  freeOnly?: boolean;
   /** w / h = 这个摆件在 3D 世界里该有多宽多高(米,按 2D 贴图的大小换算);seed = 每个摆件固定的随机种子。 */
   build(parent: Node, asset: string, w: number, h: number, seed: number, flip: boolean): Built | null;
 }
@@ -234,6 +239,24 @@ class TownProps3D implements FieldExtra {
       }
     }
     this.stats.shown = shown;
+    if (free) {
+      // 镜头碰撞用:显示着的、带碰撞框的、不是树的摆件,各算一个立着的方盒子(碰撞框的宽深 + 摆件的高)
+      const U = world.cfg.unitsPerM;
+      const solids: TownWorld3D['solids'] = [];
+      for (const item of this.items.values()) {
+        const prop = props[item.index];
+        if (!item.node.active || !prop || !prop.block || /tree/.test(prop.asset)) {
+          continue;
+        }
+        const p = item.node.position;
+        const hM = item.h / world.upUnits();
+        if (hM < 1.2) {
+          continue;        // 矮的(小石堆、木箱)挡不住镜头
+        }
+        solids.push({ x: p.x, z: p.z, hx: prop.block.w / 2 / U, hz: prop.block.d / 2 / world.upUnits(), h: hM * 0.9 });
+      }
+      world.solids = solids;
+    }
   }
 
   private build(self: any, world: TownWorld3D, node2d: Node, index: number): Item | null {
@@ -254,7 +277,7 @@ class TownProps3D implements FieldExtra {
     let made: Built | null = null;
     let kind: Item['kind'] = 'card';
     if (this.cfg.mesh) {
-      const b = builders.find((x) => x.match(prop.asset));
+      const b = builders.find((x) => x.match(prop.asset) && (!x.freeOnly || world.free));
       if (b) {
         try {
           made = b.build(this.root!, prop.asset, wM, hM, seed, flip);

@@ -38,10 +38,17 @@ interface Tree {
 }
 
 /** 树种(贴图路径里的关键字 → 用哪个生成器)、标准宽高(米)、占比。 */
-const KINDS: Array<{ asset: string; w: number; h: number; share: number }> = [
+interface OutKind { asset: string; w: number; h: number; share: number }
+/** 林地:松为主,夹着阔叶树。 */
+const FOREST: OutKind[] = [
   { asset: 'w3_tree_pine', w: 3.2, h: 7.3, share: 0.66 },
   { asset: 'w3_tree_oak', w: 4.4, h: 6.2, share: 0.22 },
   { asset: 'w3_tree_autumn', w: 3.6, h: 5.4, share: 0.12 },
+];
+/** 荒原 / 枯木林:地图里没有青松的,外面也不种 —— 换成大石堆和枯树,稀得多。 */
+const BARREN: OutKind[] = [
+  { asset: 'fld_g_boulders_l', w: 3.4, h: 2.4, share: 0.56 },
+  { asset: 'fld_dead_tree', w: 2.8, h: 4.2, share: 0.44 },
 ];
 
 function rand(ix: number, iz: number, salt: number): number {
@@ -124,6 +131,10 @@ class TownOutskirts3D implements FieldExtra {
     const cz0 = Math.floor(-hz / CELL) - n;
     const cz1 = Math.ceil(hz / CELL) + n;
     this.trees = [];
+    // 地图里有没有青松:有 = 林地那套,没有 = 荒原那套(稀一半)
+    const forest = ((def.props ?? []) as Array<{ asset: string }>).some((p) => /w3_tree_pine/.test(p.asset));
+    const kinds = forest ? FOREST : BARREN;
+    const thin = forest ? 1 : 0.45;
     for (let iz = cz0; iz <= cz1; iz += 1) {
       for (let ix = cx0; ix <= cx1; ix += 1) {
         const x = (ix + 0.15 + rand(ix, iz, 1) * 0.7) * CELL;
@@ -133,15 +144,15 @@ class TownOutskirts3D implements FieldExtra {
         if (out < 0.6 || out > BAND) {
           continue;
         }
-        if (rand(ix, iz, 3) > (out < INNER ? 0.84 : 0.5)) {
+        if (rand(ix, iz, 3) > (out < INNER ? 0.84 : 0.5) * thin) {
           continue;
         }
         if (gaps.some((g) => Math.hypot(g[0] - x, g[1] - z) < 6.5)) {
           continue;
         }
         let pick = rand(ix, iz, 4);
-        let kind = KINDS[0];
-        for (const k of KINDS) {
+        let kind = kinds[0];
+        for (const k of kinds) {
           if (pick < k.share) {
             kind = k;
             break;

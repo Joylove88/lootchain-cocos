@@ -501,6 +501,8 @@ function paintBanner(W: number, H: number): Cv {
 interface Mats {
   contact: Material; dark: Material; barkPine: Material; barkOak: Material; rock: Material; wood: Material; iron: Material; canvas: Material; banner: Material;
   oak: Material; autumn: Material; shrub: Material; spray: Material; grass: Material; dry: Material; frond: Material;
+  /** 年轮断面(树桩顶)、只吃顶点色的素面(蘑菇、骨头)、火苗(不受光的贴片)、炭火(自发光)。 */
+  endGrain: Material; plain: Material; flame: Material; ember: Material;
 }
 let MATS: Mats | null = null;
 
@@ -575,8 +577,62 @@ function mats(): Mats {
     grass: cutout(paintGrass(256, 31, false), 0.9),
     dry: cutout(paintGrass(256, 32, true), 0.9),
     frond: cutout(paintFrond(128, 512, 41), 0.85),
+    endGrain: full(endGrainPbr(256), [1.22, 1.08, 0.9], 1),
+    plain: plainMat(0.62),
+    flame: flameMat(),
+    ember: emberMat(),
   };
   return MATS;
+}
+
+/** 只吃顶点色的素面材质(蘑菇、骨头这种小东西,不值得单配一套贴图)。 */
+function plainMat(rough: number): Material {
+  const m = new Material();
+  m.initialize({ effectName: 'builtin-standard', defines: { USE_VERTEX_COLOR: true } });
+  m.setProperty('roughness', rough);
+  m.setProperty('metallic', 0);
+  m.setProperty('specularIntensity', 0.4);
+  return m;
+}
+
+/** 火苗:一张上尖下圆、芯白边橙的贴片,不受光、半透明叠上去。 */
+function flameMat(): Material {
+  const S = 128;
+  const cv = makeCanvas(S, S * 2);
+  const ctx = ctxOf(cv);
+  ctx.clearRect(0, 0, S, S * 2);
+  const layers: Array<[number, number, string, string]> = [[0.46, 0.96, 'rgba(255,120,30,0.0)', 'rgba(255,110,24,0.75)'], [0.34, 0.8, 'rgba(255,170,50,0.0)', 'rgba(255,176,60,0.9)'],
+    [0.2, 0.56, 'rgba(255,240,170,0.0)', 'rgba(255,246,200,1)']];
+  for (const [w, h, c0, c1] of layers) {
+    const g = ctx.createLinearGradient(0, S * 2 * (1 - h), 0, S * 2);
+    g.addColorStop(0, c0);
+    g.addColorStop(0.35, c1);
+    g.addColorStop(1, c1);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    // 火苗的轮廓:底下圆、往上收成一个歪一点的尖
+    ctx.moveTo(S * 0.5, S * 2 * (1 - h));
+    ctx.bezierCurveTo(S * (0.5 + w * 0.5), S * 2 * (1 - h * 0.55), S * (0.5 + w), S * 2 * (1 - h * 0.2), S * 0.5, S * 2 * 0.99);
+    ctx.bezierCurveTo(S * (0.5 - w), S * 2 * (1 - h * 0.2), S * (0.5 - w * 0.75), S * 2 * (1 - h * 0.5), S * 0.5, S * 2 * (1 - h));
+    ctx.fill();
+  }
+  const m = new Material();
+  m.initialize({ effectName: 'builtin-unlit', technique: 1, defines: { USE_TEXTURE: true }, states: { rasterizerState: { cullMode: gfx.CullMode.NONE } } });
+  m.setProperty('mainTexture', tex(cv, false, 1));
+  m.setProperty('mainColor', new Color(255, 255, 255, 235));
+  return m;
+}
+
+/** 炭火:暗红的底色 + 自发光(开了后期会泛光)。 */
+function emberMat(): Material {
+  const m = new Material();
+  m.initialize({ effectName: 'builtin-standard', defines: { USE_VERTEX_COLOR: true } });
+  m.setProperty('mainColor', new Color(60, 26, 14, 255));
+  m.setProperty('roughness', 0.9);
+  m.setProperty('metallic', 0);
+  m.setProperty('emissive', new Color(255, 120, 40, 255));
+  m.setProperty('emissiveScale', new Vec3(2.6, 2.6, 2.6));
+  return m;
 }
 
 // ───────────────────────── 网格:带自定义法线的片 ─────────────────────────
@@ -1716,6 +1772,253 @@ function buildTent(hr: number, seed: number): Variant {
   return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: dark, mat: M.dark, cast: false }, { batch: canvas, mat: M.canvas, cast: true }, { batch: wood, mat: M.wood, cast: true }]);
 }
 
+// ───────────────────────── 第五轮补的小件(原来是手绘图立牌,自由视角下是跟着镜头转的纸片)─────────────────────────
+/** 树桩(宽 = 1):带板根的一截树干,顶上是锯断 / 劈断的年轮面(略歪),脚边长草。 */
+function buildStump(hr: number, seed: number): Variant {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const bark = new Leafy();
+  const top = new Leafy();
+  const grass = new Leafy();
+  const shade = new Leafy();
+  const R = 0.2 + rnd() * 0.04;
+  const H = Math.min(0.52, Math.max(0.26, hr * 0.42)) * (0.85 + rnd() * 0.3);
+  const lobes = 4 + Math.floor(rnd() * 3);
+  const ph = rnd() * TAU;
+  const tilt = (rnd() - 0.5) * 0.12;
+  // 树干:越靠地面越往外撇成几道板根
+  bark.lathe([[R * 2.0, -0.02], [R * 1.5, 0.04], [R * 1.12, H * 0.34], [R * 1.0, H * 0.7], [R * 0.97, H]], 16, {
+    den: 2.2, tint: (u, v) => {
+      const k = 0.9 + 0.5 * Math.min(1, v * 2.2);
+      return [k, k * 0.95, k * 0.88];
+    },
+    fold: (ang, v) => 1 + (1 - v) * (1 - v) * 0.34 * Math.max(0, Math.sin(ang * lobes + ph)) + 0.03 * Math.sin(ang * 9 + ph * 2),
+    bend: (v, p) => {
+      p.y += p.x * tilt * v;
+    },
+  });
+  // 年轮面:一圈三角形扇面,整张年轮图正好盖住这一面(圆心对圆心);顶面跟着树干歪的方向斜
+  const n = 14;
+  const at = (i: number): Vec3 => {
+    const a = (i / n) * TAU;
+    const k = 0.95 * (1 + 0.03 * Math.sin(a * 9 + ph * 2));
+    const x = Math.cos(a) * R * 0.97 * k;
+    return v3(x, H + x * tilt + 0.002, Math.sin(a) * R * 0.97 * k);
+  };
+  const uv = (p: Vec3): [number, number] => [0.5 + p.x / (R * 2.1), 0.5 + p.z / (R * 2.1)];
+  const mid = v3(0, H - 0.006, 0);
+  for (let i = 0; i < n; i += 1) {
+    const p0 = at(i + 1);
+    const p1 = at(i);
+    top.facet([mid, p0, p1], [uv(mid), uv(p0), uv(p1)], [0.95, 0.93, 0.88]);
+  }
+  addContact(shade, 0, 0.02, R * 2.6, R * 2.2, 0.9);
+  addTufts(grass, rnd, [[-R * 1.7, R * 0.6, 0.15], [R * 1.6, R * 0.9, 0.13], [R * 0.2, -R * 1.6, 0.14], [R * 0.4, R * 1.8, 0.12]]);
+  return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: bark, mat: M.barkOak, cast: true }, { batch: top, mat: M.endGrain, cast: false }, { batch: grass, mat: M.grass, cast: false }]);
+}
+
+/** 一丛蘑菇(宽 = 1):五六朵大小不一、各歪一点的伞菇,伞面红褐带浅斑,伞底和菌柄发白。 */
+function buildMushrooms(hr: number, seed: number): Variant {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const b = new Leafy();
+  const shade = new Leafy();
+  const n = 5 + Math.floor(rnd() * 3);
+  const hue: Tint = rnd() < 0.5 ? [0.74, 0.25, 0.18] : [0.66, 0.42, 0.24];
+  for (let i = 0; i < n; i += 1) {
+    const a = rnd() * TAU;
+    const d = i === 0 ? 0 : 0.12 + rnd() * 0.26;
+    const x = Math.cos(a) * d;
+    const z = Math.sin(a) * d * 0.8;
+    const big = i === 0 ? 1 : 0.45 + rnd() * 0.5;
+    const h = (0.3 + rnd() * 0.12) * big * Math.min(1.3, Math.max(0.8, hr));
+    const cap = (0.17 + rnd() * 0.05) * big;
+    const lean: [number, number, number] = [(rnd() - 0.5) * 22, rnd() * 360, (rnd() - 0.5) * 22];
+    const T = xform([x, 0, z], lean);
+    // 菌柄:下粗上细,略带弧度
+    b.lathe([[cap * 0.3, 0], [cap * 0.22, h * 0.3], [cap * 0.17, h * 0.8], [cap * 0.2, h * 0.92]], 7, { xf: T, tint: (u, v) => {
+      const k = 0.7 + 0.25 * v;
+      return [k, k * 0.96, k * 0.86];
+    } });
+    // 伞盖:上面一个扁的半球(红褐,顶上亮、边上暗),底下一圈浅色的菌褶面
+    b.lathe([[cap * 0.99, h * 0.86], [cap * 1.0, h * 0.9], [cap * 0.9, h * 1.0], [cap * 0.62, h * 1.1], [cap * 0.25, h * 1.16], [0.004, h * 1.18]], 10, { xf: T, tint: (u, v) => {
+      const spot = Math.sin(u * 23 + i * 3) * Math.sin(v * 9 + i) > 0.72 ? 0.3 : 0;
+      const k = 0.62 + 0.42 * v;
+      return [Math.min(1, hue[0] * k + spot), Math.min(1, hue[1] * k + spot), Math.min(1, hue[2] * k + spot * 0.9)];
+    } });
+    b.lathe([[cap * 0.2, h * 0.9], [cap * 0.98, h * 0.86]], 10, { xf: T, flip: true, smooth: false, tint: [0.78, 0.72, 0.6] });
+  }
+  addContact(shade, 0, 0, 0.5, 0.42, 0.7);
+  return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: b, mat: M.plain, cast: true }]);
+}
+
+/** 一副大兽的残骨(宽 = 1):一根弯的脊梁,两排往上拱的肋骨(有几根断了、倒了),一头是一个头骨的大概形状。 */
+function buildBones(hr: number, seed: number): Variant {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const b = new Leafy();
+  const shade = new Leafy();
+  const bone = (k: number): Tint => [0.8 * k, 0.72 * k, 0.55 * k];
+  const L = 0.8;
+  const spine = (t: number): Vec3 => v3((t - 0.5) * L, 0.07 + 0.05 * Math.sin(t * Math.PI), Math.sin(t * 2.4) * 0.05);
+  const path: Vec3[] = [];
+  for (let i = 0; i <= 8; i += 1) {
+    path.push(spine(i / 8));
+  }
+  b.tube(path, (t) => 0.05 * (1 - 0.45 * t), 7, { tint: (u, v) => bone(0.78 + 0.16 * Math.sin(v * 40)) });
+  const ribs = 6;
+  const Hh = Math.min(0.36, Math.max(0.2, hr * 0.34));
+  for (let i = 0; i < ribs; i += 1) {
+    const t = 0.16 + (i / (ribs - 1)) * 0.56;
+    const c = spine(t);
+    const size = Hh * (0.75 + 0.25 * Math.sin((i / (ribs - 1)) * Math.PI));
+    for (const side of [-1, 1]) {
+      const broken = rnd() < 0.22;
+      const fallen = !broken && rnd() < 0.14;
+      const pts: Vec3[] = [];
+      const n = broken ? 3 : 6;
+      for (let k = 0; k <= n; k += 1) {
+        const a = (k / 6) * 2.2;
+        // 从脊梁往外、往上拱,再往里收
+        const out = Math.sin(a) * size * 0.9;
+        const up = (1 - Math.cos(a)) * size * 0.62;
+        pts.push(fallen ? v3(c.x + (rnd() - 0.5) * 0.02, 0.02 + up * 0.12, c.z + side * (0.03 + out * 1.2)) : v3(c.x + (k / 6) * 0.03, c.y + up, c.z + side * (0.02 + out)));
+      }
+      const shade2 = 0.72 + rnd() * 0.26;
+      b.tube(pts, (tt) => 0.03 * (1 - 0.55 * tt), 6, { tint: (u, v) => bone(shade2 * (0.86 + 0.14 * v)) });
+    }
+  }
+  // 头骨:一个压扁的椭球 + 往前伸的吻部
+  const head = spine(1);
+  b.ball(0.11, 0.085, 0.095, [head.x + 0.08, 0.09, head.z], 10, { tint: bone(0.95) });
+  b.ball(0.1, 0.05, 0.06, [head.x + 0.2, 0.06, head.z], 9, { tint: bone(0.86) });
+  addContact(shade, 0, 0, 0.62, 0.36, 0.55);
+  return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: b, mat: M.plain, cast: true }]);
+}
+
+/** 营火(宽 = 1):一圈石头围着几根搭起来的柴,中间是炭和火苗(火苗几片交叉的贴片,单独一组,随风晃)。 */
+function buildCampfire(hr: number, seed: number): { base: Variant; fire: Variant } {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const rock = new Leafy();
+  const wood = new Leafy();
+  const ember = new Leafy();
+  const shade = new Leafy();
+  const fire = new Leafy();
+  const n = 9;
+  for (let i = 0; i < n; i += 1) {
+    const a = (i / n) * TAU + rnd() * 0.3;
+    const r = 0.07 + rnd() * 0.035;
+    addRock(rock, r, v3(Math.cos(a) * 0.34, -r * 0.2, Math.sin(a) * 0.34), 0.8 + rnd() * 0.3, 1, rnd, 0.1);
+  }
+  // 柴:四五根往中间搭成锥形,烧黑了的一头朝里
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * TAU + rnd() * 0.5;
+    const len = 0.42 + rnd() * 0.1;
+    const cx = Math.cos(a) * 0.12;
+    const cz = Math.sin(a) * 0.12;
+    wood.cylinder(0.026, 0.034, len, 6, v3(cx, 0.13, cz), v3(Math.sin(a) * 58, 0, -Math.cos(a) * 58), [0.36, 0.3, 0.26], 2.4, rnd, undefined, true);
+  }
+  ember.ball(0.17, 0.05, 0.17, [0, 0.03, 0], 9, { tint: [1, 1, 1] });
+  addContact(shade, 0, 0, 0.6, 0.5, 0.9);
+  const up = norm(0, 1, 0);
+  const H = Math.min(0.7, Math.max(0.42, hr * 0.6));
+  for (let i = 0; i < 3; i += 1) {
+    const a = (i / 3) * Math.PI + 0.3;
+    fire.card(v3(0, H * 0.5 + 0.04, 0), v3(Math.cos(a) * H * 0.3, 0, Math.sin(a) * H * 0.3), v3(0, H * 0.5, 0), [0, 0, 1, 1], [up, up, up, up], [[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]]);
+  }
+  return { base: partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: rock, mat: M.rock, cast: true }, { batch: wood, mat: M.wood, cast: true }, { batch: ember, mat: M.ember, cast: false }]),
+    fire: partsOf([{ batch: fire, mat: M.flame, cast: false }]) };
+}
+
+/** 晾皮子的架子(宽 = 1):两根立柱、一根横梁,中间绷着一张兽皮(四角用绳拉着,皮面有垂度)。 */
+function buildRack(hr: number, seed: number): Variant {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const wood = new Leafy();
+  const hide = new Leafy();
+  const shade = new Leafy();
+  const H = Math.min(0.95, Math.max(0.6, hr * 0.8));
+  const W = 0.4;
+  const yaw = -18;
+  const T = xform([0, 0, 0], [0, yaw, 0]);
+  const Pt = (x: number, y: number, z: number): Vec3 => Vec3.transformMat4(new Vec3(), v3(x, y, z), T);
+  for (const sx of [-1, 1]) {
+    const base = Pt(sx * W, 0, 0);
+    wood.cylinder(0.022, 0.03, H + 0.1, 7, v3(base.x, (H + 0.1) / 2 - 0.02, base.z), v3((rnd() - 0.5) * 5, rnd() * 360, (rnd() - 0.5) * 5), [0.6, 0.55, 0.48], 2.4, rnd, 0, true);
+    // 斜撑
+    wood.tube([Pt(sx * W, H * 0.55, 0), Pt(sx * (W + 0.02), 0.01, 0.22)], 0.014, 5, { den: 3, tint: [0.56, 0.5, 0.44] });
+  }
+  wood.tube([Pt(-W - 0.08, H, 0), Pt(0, H - 0.008, 0), Pt(W + 0.08, H, 0)], 0.019, 6, { den: 2.4, tint: [0.58, 0.53, 0.46] });
+  // 兽皮:四角绷着,边上往里收,中间往后鼓一点
+  hide.surf(9, 9, (u, v, out) => {
+    const pinch = 1 - 0.14 * Math.sin(v * Math.PI);
+    const x = (u - 0.5) * 2 * W * 0.82 * pinch;
+    const y = lerp(H * 0.16, H * 0.9, v) + Math.sin(u * Math.PI) * 0.03 * (v - 0.5);
+    out.set(x, y, -0.03 * Math.sin(u * Math.PI) * Math.sin(v * Math.PI));
+  }, { den: 2.2, xf: T, twoSided: true, tint: (u, v) => {
+    const k = 0.62 + 0.2 * Math.sin(u * Math.PI) * Math.sin(v * Math.PI) + 0.06 * Math.sin(u * 17 + v * 11);
+    return [k, k * 0.9, k * 0.74];
+  } });
+  for (const [sx, sy] of [[-1, 0.9], [1, 0.9], [-1, 0.16], [1, 0.16]]) {
+    wood.tube([Pt(sx * W * 0.8, H * sy, 0), Pt(sx * W, H * (sy > 0.5 ? 0.97 : 0.1), 0)], 0.005, 4, { den: 6, tint: [0.84, 0.76, 0.56] });
+  }
+  addContact(shade, 0, 0.02, 0.56, 0.3, 0.8);
+  return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: wood, mat: M.wood, cast: true }, { batch: hide, mat: M.canvas, cast: true }]);
+}
+
+/** 遗迹的断柱(宽 = 1):方的基座、一截截带凹槽的柱身(各节错开一点),顶上是斜着断掉的茬口,脚边掉着几块碎石。 */
+function buildRuinPillar(hr: number, seed: number): Variant {
+  const rnd = mulberry32(seed);
+  const M = mats();
+  const b = new Leafy();
+  const shade = new Leafy();
+  const grass = new Leafy();
+  const R = 0.2;
+  const H = Math.min(3.2, Math.max(1.2, hr * 0.92));
+  b.box(R * 2.9, 0.16, R * 2.9, v3(0, 0.08, 0), v3(0, 8, 0), [0.86, 0.86, 0.84], 1.1, rnd, 0.02);
+  b.box(R * 2.4, 0.1, R * 2.4, v3(0, 0.21, 0), v3(0, 8, 0), [0.9, 0.9, 0.88], 1.1, rnd, 0.015);
+  const drums = Math.max(2, Math.round((H - 0.26) / 0.52));
+  const dh = (H - 0.26) / drums;
+  for (let i = 0; i < drums; i += 1) {
+    const y0 = 0.26 + i * dh;
+    const off: [number, number, number] = [(rnd() - 0.5) * 0.03, y0, (rnd() - 0.5) * 0.03];
+    const last = i === drums - 1;
+    const turn = rnd() * 40;
+    const k = 0.84 + rnd() * 0.14;
+    b.lathe([[R, 0], [R * 0.98, dh * 0.5], [R * (last ? 0.9 : 0.97), dh * (last ? 0.82 + rnd() * 0.16 : 0.985)]], 18, {
+      den: 1.2, xf: xform(off, [(rnd() - 0.5) * 2.5, turn, (rnd() - 0.5) * 2.5]),
+      tint: (u, v) => {
+        const kk = k * (0.82 + 0.18 * v);
+        return [kk, kk, kk * 0.98];
+      },
+      fold: (ang) => 1 - 0.045 * Math.max(0, Math.cos(ang * 12)),
+      // 最上面一节:断口是斜的
+      bend: last ? (v, p) => {
+        p.y += v * v * (p.x * 0.5 + p.z * 0.3);
+      } : undefined,
+    });
+    // 每节的顶面
+    const ring: Array<[number, number]> = [];
+    for (let j = 0; j < 12; j += 1) {
+      const a = -(j / 12) * TAU;
+      ring.push([Math.cos(a) * R * 0.9, Math.sin(a) * R * 0.9]);
+    }
+    if (last) {
+      b.prism(ring, dh * 0.8, dh * 0.84, 0.9, [k * 0.8, k * 0.8, k * 0.78], 1.2, xform(off, [14, turn, 9]), false);
+    }
+  }
+  for (let i = 0; i < 4; i += 1) {
+    const a = rnd() * TAU;
+    const d = R * (2.2 + rnd() * 1.6);
+    const r = 0.05 + rnd() * 0.07;
+    addRock(b, r, v3(Math.cos(a) * d, -r * 0.15, Math.sin(a) * d * 0.8), 0.7 + rnd() * 0.3, 2, rnd, 0.5);
+  }
+  addContact(shade, 0, 0.02, R * 3.4, R * 3.0, 1);
+  addTufts(grass, rnd, [[-R * 2.0, R * 1.2, 0.2], [R * 1.9, R * 1.4, 0.18], [R * 0.4, -R * 2.0, 0.16]]);
+  return partsOf([{ batch: shade, mat: M.contact, cast: false }, { batch: b, mat: M.rock, cast: true }, { batch: grass, mat: M.grass, cast: false }]);
+}
+
 // ───────────────────────── 挂进场景 ─────────────────────────
 function mount(parent: Node, v: Variant, out: MeshRenderer[]): void {
   syncEdges();
@@ -1754,6 +2057,8 @@ interface Kind {
   real?: boolean;
   /** 整体再放大 / 缩小一点(生成的标准尺寸和 2D 贴图里实际占的大小对不上的时候微调)。 */
   scale?: number;
+  /** 只在自由视角下顶替手绘图(见 PropBuilder.freeOnly)。 */
+  free?: boolean;
 }
 
 const KINDS: Kind[] = [
@@ -1772,6 +2077,17 @@ const KINDS: Kind[] = [
   { test: /w3_camp_palisade/, count: 1, sway: 0, real: true, make: (hr, seed, w) => buildPalisade(hr, seed, w * 0.86) },
   { test: /w3_camp_crates/, count: 1, sway: 0, make: (hr, seed) => buildCrates(hr, seed) },
   { test: /w3_camp_tent/, count: 1, sway: 0, make: (hr, seed) => buildTent(hr, seed) },
+  { test: /w3_hunter_tent/, count: 1, sway: 0, free: true, make: (hr, seed) => buildTent(hr, seed) },
+  { test: /fld_forest_stump|w3_stump/, count: 4, sway: 0, spin: true, free: true, make: (hr, seed) => buildStump(hr, seed) },
+  { test: /w3_mushrooms/, count: 4, sway: 0, spin: true, free: true, make: (hr, seed) => buildMushrooms(hr, seed) },
+  { test: /w3_bones|gray4_bones/, count: 3, sway: 0, spin: true, free: true, make: (hr, seed) => buildBones(hr, seed) },
+  { test: /w3_hunter_rack/, count: 1, sway: 0, free: true, make: (hr, seed) => buildRack(hr, seed) },
+  { test: /w3_ruin_pillar/, count: 2, sway: 0, spin: true, free: true, make: (hr, seed) => buildRuinPillar(hr, seed) },
+  // 灰岩荒原 / 枯木林的石头、枯草(手绘的是航拍照片的质感,固定镜头下留着;自由视角下换成同一套岩石和草的模型)
+  { test: /gray4_boulders_l|dead4_boulders_l/, count: 3, sway: 0, spin: true, free: true, make: (hr, seed) => buildRocks(hr, seed, 'boulder') },
+  { test: /gray4_boulders_m|dead4_boulders_m/, count: 3, sway: 0, spin: true, free: true, make: (hr, seed) => buildRocks(hr, seed, 'pile') },
+  { test: /gray4_stones|dead4_stones/, count: 4, sway: 0, spin: true, free: true, make: (hr, seed) => buildRocks(hr, seed, 'scatter') },
+  { test: /gray4_dry_grass|dead4_dry_grass/, count: 3, sway: 2.6, spin: true, free: true, make: (hr, seed) => buildGrass(hr, seed, mats().dry) },
 ];
 
 function install(): void {
@@ -1779,6 +2095,7 @@ function install(): void {
     const kind = KINDS[k];
     addPropBuilder({
       match: (asset) => kind.test.test(asset),
+      freeOnly: !!kind.free,
       build: (parent, asset, w, h, seed, flip) => {
         const hr = Math.round((h / w) * 20) / 20;
         const vi = Math.floor(seed * kind.count) % kind.count;
@@ -1801,6 +2118,29 @@ function install(): void {
       },
     });
   }
+  // 营火:石头和柴不动,火苗单独一组(随风晃)
+  addPropBuilder({
+    match: (asset) => /campfire/.test(asset),
+    freeOnly: true,
+    build: (parent, asset, w, h, seed, flip) => {
+      const hr = Math.round((h / w) * 20) / 20;
+      const key = `campfire:${hr}`;
+      let c = (variants.get(key) as any) as { base: Variant; fire: Variant } | undefined;
+      if (!c) {
+        c = buildCampfire(hr, 5151);
+        variants.set(key, c as any);
+      }
+      const node = new Node('Flora_campfire');
+      parent.addChild(node);
+      node.setScale(flip ? -w : w, w, w);
+      const renderers: MeshRenderer[] = [];
+      mount(node, c.base, renderers);
+      const fire = new Node('Fire');
+      node.addChild(fire);
+      mount(fire, c.fire, renderers);
+      return { node, renderers, sway: [fire], swayAmp: 7 };
+    },
+  });
   // 旗:杆不动,旗面单独摆
   addPropBuilder({
     match: (asset) => /w3_camp_banner/.test(asset),
