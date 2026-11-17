@@ -1,7 +1,8 @@
-import { Camera, Color, game, gfx, Material, Mesh, MeshRenderer, Node, RenderTexture, sys, UITransform, utils, Vec3, Vec4 } from 'cc';
+import { Camera, Color, EffectAsset, game, gfx, Graphics, Material, Mesh, MeshRenderer, Node, RenderTexture, resources, sys, UITransform, utils, Vec3, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { addFieldExtra } from './TownUnits3D';
 import type { FieldExtra } from './TownUnits3D';
+import { linearBlend } from './TownPost3D';
 import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 
 /**
@@ -15,6 +16,16 @@ import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
  * 于是 2D 的骨骼动画、换帧、淡出全都照常(还是 2D 那边在画),但它在 3D 里有了深度:该被树挡的被挡、
  * 会往地上投影、会被树荫和技能的光照到。没被挡住时颜色和 2D 里一样(平板法线朝上,受光和地面相同)。
  *
+ * 开了后期(高动态,线性空间里混合)时那张贴图要先换算一遍:贴图里存的是「颜色 × 覆盖率」,标准材质读它时会当成
+ * 普通颜色去平方(显示颜色 → 线性),半透明的边缘就按覆盖率的平方变暗。不开后期时画面是在显示颜色里混合的,正好抵消;
+ * 线性空间里混合 2D 角色就多一圈黑边。做法:再加一台相机,把整张贴图过一遍 resources/effects/g3d-unpremul
+ * (颜色除以覆盖率的平方根)画进第二张贴图,平板改读第二张 —— 标准材质一平方,正好是「线性颜色 × 覆盖率」。
+ * 平板在画面上和贴图是一个像素对一个像素的,所以第二张用最近点取样(换算过的颜色不能再插值)。
+ * (试过另一条路:把引擎的标准着色器拷一份、改成读的时候除回覆盖率。结果一样,但那份着色器编译出来 1.7 MB,会进包,弃了。)
+ *
+ * 开了后期处理(TownPost3D)时每块平板后面再垫一块「只写深度」的平板(按透明度裁出轮廓、不出颜色):
+ * 环境光遮蔽是照着深度图算的,2D 的东西不写深度的话,它身后的遮蔽会透到它身上、它脚下也压不出接地的暗部。
+ *
  * 已知的小毛病:两个这样的实体在画面上重叠、中间又夹着一个 3D 物体时,前面那块平板里会带着后面那个实体的像素
  * (贴图是整屏一张),夹在中间的 3D 物体会被它错误地盖住一小块。
  * 主城传送阵这类「平铺在地上」的图直接交给地表相机(画进地面),角色永远踩在它上面。
@@ -22,6 +33,8 @@ import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 
 /** 这些 2D 东西单独一层:只有「2D 实体相机」看。 */
 export const ENT_LAYER = 1 << 13;
+/** 换算贴图用的那块满屏方块单独一层:只有「换算相机」看。 */
+const ENT_FIX_LAYER = 1 << 14;
 /** 2D 骨骼单位(英雄 / 怪)取多大一块(地图单位):左右各 HALF_W,脚线往下 BELOW、往上 ABOVE。 */
 const HALF_W = 300;
 const BELOW = 90;
@@ -34,6 +47,9 @@ interface Item {
   unit: boolean;
   card: Node;
   mat: Material;
+  /** 只写深度的那块(开了后期才有)。 */
+  depthCard: Node | null;
+  depthMat: Material | null;
   layers: Array<[Node, number]>;
   restore: Array<() => void>;
 }
@@ -41,13 +57,39 @@ interface Item {
 const _p = new Vec3();
 const _to = new Vec4();
 
+/** 换算贴图用的着色器(读一次,全场共用);null = 还没读到 / 读失败(读失败就不换算:开后期时 2D 角色边缘会有一圈黑边,别的不受影响)。 */
+let fixEffect: EffectAsset | null = null;
+let fixEffectState = 0;      // 0 没读 / 1 在读 / 2 读完(成功或失败)
+function loadFixEffect(): boolean {
+  if (fixEffectState === 0) {
+    fixEffectState = 1;
+    resources.load('effects/g3d-unpremul', EffectAsset, (error, asset) => {
+      if (error || !asset) {
+        console.warn('[f3d] load g3d-unpremul', error?.message);
+      } else {
+        asset.addRef();
+        fixEffect = asset;
+      }
+      fixEffectState = 2;
+    });
+  }
+  return fixEffectState === 2;
+}
+
 class TownEnts3D implements FieldExtra {
   private self: any = null;
   private root: Node | null = null;
   private cam: Camera | null = null;
   private rt: RenderTexture | null = null;
+  /** 线性空间里用的:换算过的那一张(只在开了后期的高动态渲染下有)。 */
+  private rt2: RenderTexture | null = null;
+  private fixCam: Camera | null = null;
+  private fixMat: Material | null = null;
+  private fixMesh: Mesh | null = null;
+  private linear = false;
   private mesh: Mesh | null = null;
   private base: Material | null = null;
+  private depthBase: Material | null = null;
   private items = new Map<Node, Item>();
   private flat = new Map<Node, () => void>();
   private tick = 0;
@@ -64,6 +106,17 @@ class TownEnts3D implements FieldExtra {
     const entities: Node | null = self.entityRoot ?? null;
     if (!entities || !entities.isValid) {
       return;
+    }
+    if (!loadFixEffect()) {
+      return;      // 着色器还在读:这几帧 2D 的东西照旧由界面相机画
+    }
+    // 画面是不是在线性空间里混合(开了后期的高动态):变了的话平板的贴图 / 相机要换一套,整个重来
+    const linear = world.post.linear() && !!fixEffect;
+    if (this.linear !== linear) {
+      if (this.root) {
+        this.stop();
+      }
+      this.linear = linear;
     }
     if (this.self !== self) {
       this.stop();
@@ -132,6 +185,41 @@ class TownEnts3D implements FieldExtra {
       cam.clearColor = new Color(0, 0, 0, 0);
       cam.priority = -19;
       this.cam = cam;
+      if (this.linear && fixEffect) {
+        // 换算相机:排在 2D 实体相机之后、3D 相机之前;只看一块铺满的方块(方块的着色器直接给屏幕坐标,相机怎么摆无所谓,
+        // 只要方块在它的视野里不被裁掉)
+        const fixNode = new Node('TownEnts3DFixCam');
+        this.root.addChild(fixNode);
+        const fc = fixNode.addComponent(Camera);
+        fc.projection = Camera.ProjectionType.ORTHO;
+        fc.orthoHeight = 1;
+        fc.near = 0.1;
+        fc.far = 10;
+        fc.visibility = ENT_FIX_LAYER;
+        fc.clearFlags = Camera.ClearFlag.SOLID_COLOR;
+        fc.clearColor = new Color(0, 0, 0, 0);
+        fc.priority = -18;
+        this.fixCam = fc;
+        if (!this.fixMesh) {
+          this.fixMesh = utils.MeshUtils.createMesh({
+            positions: [-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, 0.5, 0],
+            uvs: [0, 0, 1, 0, 0, 1, 1, 1],
+            indices: [0, 1, 2, 2, 1, 3],
+          }, undefined, { calculateBounds: true });
+        }
+        const quad = new Node('TownEnts3DFix');
+        quad.layer = ENT_FIX_LAYER;
+        fixNode.addChild(quad);
+        quad.setPosition(0, 0, -2);
+        const qr = quad.addComponent(MeshRenderer);
+        qr.mesh = this.fixMesh;
+        const fm = new Material();
+        fm.initialize({ effectAsset: fixEffect });
+        this.fixMat = fm;
+        qr.setSharedMaterial(fm, 0);
+        qr.shadowCastingMode = MeshRenderer.ShadowCastingMode.OFF;
+        qr.receiveShadow = MeshRenderer.ShadowReceivingMode.OFF;
+      }
     }
     if (!this.mesh) {
       this.mesh = utils.MeshUtils.createMesh({
@@ -142,32 +230,64 @@ class TownEnts3D implements FieldExtra {
       }, undefined, { calculateBounds: true });
     }
     const canvas = game.canvas!;
-    if (!this.rt || this.rt.width !== canvas.width || this.rt.height !== canvas.height) {
+    // 后期的放大档位下 3D 画面比窗口大,这张贴图跟着放大(同地表贴图),免得 2D 角色被放大再缩小糊一遍
+    const scale = world.post.scale();
+    const rw = Math.max(4, Math.round(canvas.width * scale));
+    const rh = Math.max(4, Math.round(canvas.height * scale));
+    if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
       const old = this.rt;
+      const old2 = this.rt2;
       const rt = new RenderTexture();
-      rt.reset({ width: Math.max(4, canvas.width), height: Math.max(4, canvas.height) });
+      rt.reset({ width: rw, height: rh });
       rt.setFilters(RenderTexture.Filter.LINEAR, RenderTexture.Filter.LINEAR);
       rt.setWrapMode(RenderTexture.WrapMode.CLAMP_TO_EDGE, RenderTexture.WrapMode.CLAMP_TO_EDGE);
       this.rt = rt;
       this.cam!.targetTexture = rt;
-      for (const item of this.items.values()) {
-        item.mat.setProperty('mainTexture', rt);
+      let rt2: RenderTexture | null = null;
+      if (this.fixCam) {
+        rt2 = new RenderTexture();
+        rt2.reset({ width: rw, height: rh });
+        rt2.setFilters(RenderTexture.Filter.NEAREST, RenderTexture.Filter.NEAREST);
+        rt2.setWrapMode(RenderTexture.WrapMode.CLAMP_TO_EDGE, RenderTexture.WrapMode.CLAMP_TO_EDGE);
+        this.fixCam.targetTexture = rt2;
+        this.fixMat?.setProperty('mainTexture', rt);
       }
-      this.base?.setProperty('mainTexture', rt);
+      this.rt2 = rt2;
+      const shown = rt2 ?? rt;
+      for (const item of this.items.values()) {
+        item.mat.setProperty('mainTexture', shown);
+        item.depthMat?.setProperty('mainTexture', rt);
+      }
+      this.base?.setProperty('mainTexture', shown);
+      this.depthBase?.setProperty('mainTexture', rt);
       old?.destroy();
+      old2?.destroy();
     }
     if (!this.base) {
-      // 贴图里是「颜色 × 覆盖率」(画在透明底上的结果),所以用预乘的混合;按透明度裁掉空白处(投影也按这个轮廓)
+      // 贴图里是「颜色 × 覆盖率」(画在透明底上的结果),所以用预乘的混合;按透明度裁掉空白处(投影也按这个轮廓)。
+      // 线性空间下读的是换算过的那一张(见文件头)
       const m = new Material();
+      const BF = gfx.BlendFactor;
       m.initialize({ effectName: 'builtin-standard', technique: 1, defines: { USE_ALBEDO_MAP: true, USE_ALPHA_TEST: true },
         states: { rasterizerState: { cullMode: gfx.CullMode.NONE },
-          blendState: { targets: [{ blend: true, blendSrc: gfx.BlendFactor.ONE, blendDst: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA, blendSrcAlpha: gfx.BlendFactor.ONE, blendDstAlpha: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA }] } } });
-      m.setProperty('mainTexture', this.rt);
+          blendState: { targets: [{ blend: true, blendSrc: BF.ONE, blendDst: BF.ONE_MINUS_SRC_ALPHA, blendSrcAlpha: BF.ONE, blendDstAlpha: BF.ONE_MINUS_SRC_ALPHA }] } } });
+      m.setProperty('mainTexture', this.rt2 ?? this.rt);
       m.setProperty('roughness', 1);
       m.setProperty('metallic', 0);
       m.setProperty('specularIntensity', 0);
       m.setProperty('alphaThreshold', 0.02);
       this.base = m;
+    }
+    if (!this.depthBase) {
+      // 只写深度:不受光的最简单的着色器,颜色通道全关,透明度过半的地方才算「有东西」。
+      // 要排在半透明那一批里画(开着混合就会被排过去):放在不透明那一批的话,它会抢在身后的地面前面写深度,地面那几个像素就画不上了(露黑)
+      const m = new Material();
+      m.initialize({ effectName: 'builtin-unlit', technique: 1, defines: { USE_TEXTURE: true, USE_ALPHA_TEST: true },
+        states: { rasterizerState: { cullMode: gfx.CullMode.NONE }, depthStencilState: { depthTest: true, depthWrite: true },
+          blendState: { targets: [{ blend: true, blendColorMask: gfx.ColorMask.NONE }] } } });
+      m.setProperty('mainTexture', this.rt);
+      m.setProperty('alphaThreshold', 0.5);
+      this.depthBase = m;
     }
     // 取景跟界面相机一致(和地表相机同一套)
     const ui = world.uiCamera();
@@ -194,10 +314,26 @@ class TownEnts3D implements FieldExtra {
     mr.mesh = this.mesh;
     const mat = new Material();
     mat.copy(this.base!);
-    mat.setProperty('mainTexture', this.rt);
+    linearBlend(mat);
+    mat.setProperty('mainTexture', this.rt2 ?? this.rt);
     mr.setSharedMaterial(mat, 0);
     mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
     mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
+    let depthCard: Node | null = null;
+    let depthMat: Material | null = null;
+    if (world.post.isOn()) {
+      depthCard = new Node('EntDepth');
+      depthCard.layer = FIELD_LAYER;
+      this.root!.addChild(depthCard);
+      const dr = depthCard.addComponent(MeshRenderer);
+      dr.mesh = this.mesh;
+      depthMat = new Material();
+      depthMat.copy(this.depthBase!);
+      depthMat.setProperty('mainTexture', this.rt);
+      dr.setSharedMaterial(depthMat, 0);
+      dr.shadowCastingMode = MeshRenderer.ShadowCastingMode.OFF;
+      dr.receiveShadow = MeshRenderer.ShadowReceivingMode.OFF;
+    }
     const restore: Array<() => void> = [];
     const holder: Node | null = unit ? owner.node : owner;
     const contact = holder?.getChildByName('Contact') ?? null;
@@ -205,7 +341,13 @@ class TownEnts3D implements FieldExtra {
       contact.active = false;         // 2D 的假影子:换成真投影了
       restore.push(() => contact.isValid && (contact.active = true));
     }
-    const item: Item = { art, owner, unit, card, mat, layers, restore };
+    // 单位节点自己身上的程序椭圆影(在界面那一层,会盖在立进 3D 的角色上面):同样关掉
+    const oval = unit && holder ? (holder.getComponent(Graphics) as Graphics | null) : null;
+    if (oval && oval.enabled) {
+      oval.enabled = false;
+      restore.push(() => oval.isValid && (oval.enabled = true));
+    }
+    const item: Item = { art, owner, unit, card, mat, depthCard, depthMat, layers, restore };
     this.items.set(art, item);
     this.place(world, item);
   }
@@ -251,6 +393,16 @@ class TownEnts3D implements FieldExtra {
     const hh2 = world.halfH * U;
     _to.set((x1 - x0) / (2 * hw), h / (2 * hh2), (x0 - (world.mapX - hw)) / (2 * hw), (y0 - (world.mapY - hh2)) / (2 * hh2));
     item.mat.setProperty('tilingOffset', _to);
+    if (item.depthCard && item.depthMat) {
+      // 比出颜色的那块靠后 3 厘米(颜色那块的深度测试要「比已有的近」才过得去);顺着镜头的视线退,画面上的位置不变
+      const pr = (world.cfg.pitch * Math.PI) / 180;
+      item.depthCard.setPosition(_p.x, _p.y - Math.sin(pr) * 0.03, _p.z - Math.cos(pr) * 0.03);
+      item.depthCard.setScale(item.card.scale);
+      if (item.depthCard.active !== visible) {
+        item.depthCard.active = visible;
+      }
+      item.depthMat.setProperty('tilingOffset', _to);
+    }
   }
 
   private remove(item: Item): void {
@@ -270,6 +422,10 @@ class TownEnts3D implements FieldExtra {
       item.card.destroy();
     }
     item.mat.destroy();
+    if (item.depthCard && item.depthCard.isValid) {
+      item.depthCard.destroy();
+    }
+    item.depthMat?.destroy();
   }
 
   stop(): void {
@@ -289,7 +445,13 @@ class TownEnts3D implements FieldExtra {
     this.self = null;
     this.rt?.destroy();
     this.rt = null;
+    this.rt2?.destroy();
+    this.rt2 = null;
+    this.fixCam = null;
+    this.fixMat?.destroy();
+    this.fixMat = null;
     this.base = null;
+    this.depthBase = null;
     this.stats.flat = 0;
   }
 
@@ -298,7 +460,7 @@ class TownEnts3D implements FieldExtra {
   }
 
   info(): unknown {
-    return { ents: { ...this.stats, rt: this.rt ? [this.rt.width, this.rt.height] : null, cfg: { ...this.cfg } } };
+    return { ents: { ...this.stats, rt: this.rt ? [this.rt.width, this.rt.height] : null, linear: this.linear, fix: !!this.rt2, cfg: { ...this.cfg } } };
   }
 }
 

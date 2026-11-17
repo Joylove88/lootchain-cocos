@@ -1,10 +1,12 @@
-import { Color, Director, director, Node, Sprite, sys, tween, UIOpacity, UITransform, Vec3 } from 'cc';
+import { Color, Director, director, Graphics, Node, Sprite, sys, tween, UIOpacity, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { LobbyTownRenderer } from '../LobbyTownRenderer';
 import { G3DChar, hasChar, loadChar } from './G3DChar';
 import type { CharTemplate } from './G3DChar';
 import { loadKit } from './G3DKit';
 import { G3DStudio, STUDIO_LAYER } from './G3DStudio';
+import { loadPost, postLevel } from './TownPost3D';
+import type { PostCfg } from './TownPost3D';
 import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 import type { WorldCfg } from './TownWorld3D';
 
@@ -254,9 +256,17 @@ class TownUnits3D {
     if (!this.kitAsked) {
       this.kitAsked = true;
       loadKit(['g3d-standard'], (missing) => {
-        this.ready = missing.length === 0;
-        if (!this.ready) {
+        const ok = missing.length === 0;
+        if (!ok) {
           this.lastError = 'missing g3d-standard';
+        }
+        if (mode === 2 && postLevel() > 0) {
+          // 后期的着色器先读好再建 3D 世界:开不开后期决定带透明边的材质用软边还是硬裁切,不能建到一半才知道
+          loadPost(() => {
+            this.ready = ok;
+          });
+        } else {
+          this.ready = ok;
         }
       });
     }
@@ -584,11 +594,6 @@ class TownUnits3D {
     spine.active = false;
     u.spine = spine;
     u.top = u.spec.height * w.upUnits();
-    const contact: Node | null = owner.node.getChildByName('Contact');
-    if (contact && contact.active) {
-      contact.active = false;
-      u.restore.push(() => contact.isValid && (contact.active = true));
-    }
     this.groundDecals(u);
     if (!u.hero) {
       for (const [n, dy] of [[owner.hpBar?.node, 14], [owner.nameLabel?.node, 34]] as Array<[Node | undefined, number]>) {
@@ -607,12 +612,27 @@ class TownUnits3D {
     return true;
   }
 
-  /** 单位节点下面贴地的东西(队长光圈 / 精英光圈):交给地表相机画。之后才长出来的隔一会儿补一遍。 */
+  /**
+   * 单位节点下面贴地的东西:光圈(队长 / 精英)交给地表相机画;2D 的假影子(柔边暗斑 Contact + 单位节点自己画的那块程序椭圆影)关掉
+   * —— 它们在界面那一层,留着就是盖在 3D 模型上面的一块灰影,真投影已经有了。
+   * 隔一会儿补一遍:光圈有之后才长出来的;假影子会被别的模块放回来(模型还没到的那几帧这个单位是「2D 立进 3D」那边管的,
+   * 那边也关过一遍,模型一到它撤走时又原样打开了)。
+   */
   private groundDecals(u: Unit): void {
     const w = this.world;
     const node: Node = u.owner.node;
     if (!w || !node || !node.isValid) {
       return;
+    }
+    const contact = node.getChildByName('Contact');
+    if (contact && contact.active) {
+      contact.active = false;
+      u.restore.push(() => contact.isValid && (contact.active = true));
+    }
+    const oval = node.getComponent(Graphics) as Graphics | null;
+    if (oval && oval.enabled) {
+      oval.enabled = false;
+      u.restore.push(() => oval.isValid && (oval.enabled = true));
     }
     for (const child of node.children) {
       if (/Ring$/.test(child.name) && child.layer === node.layer) {
@@ -971,6 +991,23 @@ class TownUnits3D {
     this.world?.applyCfg(patch);
     return this.info();
   }
+
+  /**
+   * 后期处理现场换档(0 关 / 1 标准 / 2 高 / 3 超高)。换档会改带透明边的材质(软边 ↔ 硬裁切)和 2D 贴图的大小,
+   * 所以整层撤掉、下一帧按新档位重建。
+   */
+  postLevel(level: number): void {
+    loadPost(() => {
+      (globalThis as any).__LC_FIELD_POST = level;
+      this.stop();
+    });
+  }
+
+  /** 后期处理的参数现场调(不换档)。 */
+  setPost(patch: Partial<PostCfg>): Record<string, unknown> | null {
+    this.world?.post.set(patch);
+    return this.world?.post.info() ?? null;
+  }
 }
 
 /** 这个角色 / 怪现在是不是 3D 模型(真 3D 场景里);是的话返回它的身高(米),不是返回 0。 */
@@ -1035,6 +1072,7 @@ function install(): void {
   });
   (globalThis as any).__f3d = { toggle: (on: boolean | number) => units.toggle(on), info: () => units.info(), dump: () => units.dump(), set: (p: Partial<FieldCfg>) => units.set(p),
     world: (p?: Partial<WorldCfg>) => (p ? units.setWorld(p) : units.world?.info() ?? null), raw: () => units };
+  (globalThis as any).__f3dpost = { level: (n: number) => units.postLevel(n), set: (p: Partial<PostCfg>) => units.setPost(p), info: () => units.world?.post.info() ?? null };
 }
 
 if (!EDITOR && sys.isBrowser) {

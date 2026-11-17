@@ -61,8 +61,30 @@ class TownFx3D implements FieldExtra {
   private lastX = 0;
   private lastY = 0;
   private stats = { slashes: 0, hits: 0, skills: 0, shots: 0, deaths: 0 };
-  /** flux = 技能点光的总倍数(线性直出下亮了会把地面照成一片白,0.34 是对着画面调的)。 */
-  cfg = { on: true, flux: 0.34, motes: true, dust: true };
+  /**
+   * flux = 技能点光的总倍数(线性直出下亮了会把地面照成一片白,0.34 是对着画面调的);glow / rune = 发光特效 / 贴地符文的亮度倍数。
+   * 带 Hdr 的是开了后期(高动态 + 泛光 + 高光肩部)时用的那一组:特效本身比线性直出时亮一些(超过 1 的部分变成光晕),
+   * 但不能给太足 —— 几片发光的东西叠在一起就是一团死白(3.0 试过,旋风斩中心白成一片),2.2 是对着画面调的;
+   * 打在地上的光更要收着:地面一被照到超过 1 就整片跟着泛光,糊成一团(0.6 试过,太炸),所以比不开后期时还低一点。
+   */
+  cfg = { on: true, flux: 0.34, fluxHdr: 0.26, glow: 1.5, glowHdr: 2.2, rune: 1.3, runeHdr: 2.0, motes: true, dust: true };
+  /** 现在画面是不是高动态的(开了后期)。 */
+  private hdr = false;
+
+  private fluxK(): number {
+    return this.hdr ? this.cfg.fluxHdr : this.cfg.flux;
+  }
+
+  /** 按现在是不是高动态,把特效材质的亮度倍数设好。 */
+  private tone(): void {
+    if (!this.fx) {
+      return;
+    }
+    const g = this.hdr ? this.cfg.glowHdr : this.cfg.glow;
+    const r = this.hdr ? this.cfg.runeHdr : this.cfg.rune;
+    this.fx.mats[3].setProperty('colorScale', new Vec3(g, g, g));
+    this.fx.mats[1].setProperty('colorScale', new Vec3(r, r, r));
+  }
 
   /** 现在是不是该出 3D 特效(真 3D 场景开着,且这个渲染器就是当前这个)。 */
   active(self: any): boolean {
@@ -118,7 +140,7 @@ class TownFx3D implements FieldExtra {
     this.stepFlashes(dt);
     this.drawSlashes(dt);
     if (this.gate) {
-      this.gate.luminousFlux = 420 * this.cfg.flux * (0.82 + 0.18 * Math.sin(this.time * 2.1));
+      this.gate.luminousFlux = 420 * this.fluxK() * (0.82 + 0.18 * Math.sin(this.time * 2.1));
     }
     fx.update(dt, world.cam.node);
   }
@@ -132,9 +154,9 @@ class TownFx3D implements FieldExtra {
     this.root.layer = FIELD_LAYER;
     world.root.addChild(this.root);
     this.fx = new FxWorld(this.root, bounds);
-    // 这套材质原来是给「高动态 + 泛光」调的(亮度乘 5);这里是线性直出,压回来
-    this.fx.mats[3].setProperty('colorScale', new Vec3(1.5, 1.5, 1.5));
-    this.fx.mats[1].setProperty('colorScale', new Vec3(1.3, 1.3, 1.3));
+    // 这套材质原来是给摄影棚的「高动态 + 泛光」调的(亮度乘 5):线性直出时压到 1.5;野外开了后期时给到 3 左右(见 cfg)
+    this.hdr = world.post.isOn();
+    this.tone();
     this.arc = new DynMesh(this.root, 'TownFxSlash', this.fx.mats[3], 2600, 15000, false, false, bounds);
     for (let i = 0; i < 3; i += 1) {
       const n = new Node('TownFxLight');
@@ -181,9 +203,9 @@ class TownFx3D implements FieldExtra {
     L.node.setPosition(_p);
     L.color = new Color(Math.round(color[0] * 255), Math.round(color[1] * 255), Math.round(color[2] * 255), 255);
     L.range = range;
-    L.luminousFlux = flux * this.cfg.flux;
+    L.luminousFlux = flux * this.fluxK();
     L.enabled = true;
-    this.flashes.push({ light: L, age: 0, life, flux: flux * this.cfg.flux });
+    this.flashes.push({ light: L, age: 0, life, flux: flux * this.fluxK() });
   }
 
   private stepFlashes(dt: number): void {
@@ -527,6 +549,7 @@ class TownFx3D implements FieldExtra {
 
   set(patch: Partial<TownFx3D['cfg']>): void {
     Object.assign(this.cfg, patch);
+    this.tone();
   }
 
   info(): unknown {

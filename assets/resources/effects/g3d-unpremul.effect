@@ -1,0 +1,48 @@
+// 野外真 3D 场景 ·「2D 的东西立进 3D」那张贴图的一步换算(TownEnts3D,2026-11-17;只在开了后期的高动态渲染下用)。
+//
+// 那张贴图里存的是「颜色 × 覆盖率」(2D 的东西画在透明底上的结果)。引擎的标准材质读贴图时会把它当普通颜色去平方
+// (显示颜色 → 线性),半透明的边缘就成了「线性颜色 × 覆盖率的平方」—— 在显示颜色里混合时正好抵消,看不出来;
+// 开了后期之后画面是在线性空间里混合的,2D 角色的边缘会多一圈黑边。
+// 这里把整张图过一遍:颜色除以覆盖率的平方根。标准材质再平方,得到的正好是「线性颜色 × 覆盖率」,混合就对了。
+// 画的是一块铺满的方块,顶点直接给屏幕坐标,不用相机的矩阵。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: unpremul-vs:vert
+      frag: unpremul-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      rasterizerState:
+        cullMode: none
+      properties:
+        mainTexture: { value: black }
+}%
+
+CCProgram unpremul-vs %{
+  precision highp float;
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+
+  out vec2 v_uv;
+
+  vec4 vert () {
+    v_uv = a_texCoord;
+    return vec4(a_position.xy * 2.0, 0.0, 1.0);
+  }
+}%
+
+CCProgram unpremul-fs %{
+  precision highp float;
+
+  in vec2 v_uv;
+
+  uniform sampler2D mainTexture;
+
+  vec4 frag () {
+    vec4 c = texture(mainTexture, v_uv);
+    c.rgb = min(c.rgb / sqrt(max(c.a, 0.004)), vec3(1.0));
+    return c;
+  }
+}%

@@ -49,6 +49,7 @@ CAMP = OPT.get('camp', '')
 VIEW = OPT.get('view', 'pc')
 REC = float(OPT.get('rec', '0'))
 ROAM = OPT.get('roam', '0') == '1'
+POSTS = [int(x) for x in OPT.get('posts', '').split(',') if x != '']      # bench:真 3D 场景的后期各档位分别测(如 --posts=0,1,2,3)
 os.makedirs(OUT, exist_ok=True)
 
 os.environ.setdefault('EDGE_PORT', '9365')
@@ -290,9 +291,18 @@ async def run(port):
         elif MODE == 'bench':
             log('tp', await js(CAMP_JS + TP + " clearInterval(window.__lcKeepAlive); window.__lcKeepAlive = setInterval(() => { try { const tt = window.__root.lobbyTownRenderer; tt.leaderHp = tt.leaderMaxHp || 99999; tt.followers.forEach(a => { a.hp = a.maxHp || 99999; a.down = false; }); } catch (e) {} }, 80);"
                                 " tp(camp.x - 200, camp.y); await sleep(5000); return JSON.stringify(F.info());"))
-            res = await js(FREEZE + " await sleep(200); " + SWITCH + BENCH + " const out = { canvas: [cc.game.canvas.width, cc.game.canvas.height] };"
-                           " out.info = await setOn(true); run(30); out.on = run(150); await setOn(false); run(30); out.off = run(150); out.back = await setOn(true); " + UNFREEZE
-                           + " clearInterval(window.__lcKeepAlive); return JSON.stringify(out);", 900)
+            if POSTS:
+                # 真 3D 场景的后期各档位分别测(--posts=0,1,2,3):每换一档整层撤掉重建,同一定格画面
+                res = await js(FREEZE + " await sleep(200); " + SWITCH + BENCH + " const out = { canvas: [cc.game.canvas.width, cc.game.canvas.height] };"
+                               " await setOn(false); run(30); out.off = run(150);"
+                               " for (const lv of %s) { window.__LC_FIELD_POST = lv; await setOn(false); const info = await setOn(true); run(40); const r = run(150);"
+                               " r.post = info.world && info.world.post ? info.world.post.last : null; out['post' + lv] = r; }"
+                               " delete window.__LC_FIELD_POST; await setOn(false); out.back = await setOn(true); " % json.dumps(POSTS) + UNFREEZE
+                               + " clearInterval(window.__lcKeepAlive); return JSON.stringify(out);", 1800)
+            else:
+                res = await js(FREEZE + " await sleep(200); " + SWITCH + BENCH + " const out = { canvas: [cc.game.canvas.width, cc.game.canvas.height] };"
+                               " out.info = await setOn(true); run(30); out.on = run(150); await setOn(false); run(30); out.off = run(150); out.back = await setOn(true); " + UNFREEZE
+                               + " clearInterval(window.__lcKeepAlive); return JSON.stringify(out);", 900)
             log('bench', res)
             open(os.path.join(OUT, f'bench_{VIEW}_gpu{os.environ.get("QA_GPU", "1")}.json'), 'w', encoding='utf-8').write(res if isinstance(res, str) else json.dumps(res))
 
@@ -304,7 +314,10 @@ async def run(port):
                  " world3d: !!(sc.getChildByName('TownWorld3D') || {}).active, tone: g.postSettings ? g.postSettings.toneMappingType : null, mainCamOn: mc ? mc.getComponent(cc.Camera).enabled : null,"
                  " offLayer: (() => { let n = 0; t.world.walk(x => { if (x.layer !== t.world.layer) n++; }); return n; })(), artHidden: (() => { let n = 0; t.entityRoot.children.forEach(x => { const a = x.getChildByName('Art'); if (a && !a.active) n++; }); return n; })(),"
                  " shadowLayerOn: (() => { const s2 = t.groundRoot.getChildByName('Shadows'); return s2 ? s2.active : null; })(),"
-                 " spinesHidden: [t.leader, ...t.followers].filter(a => a.spineNode && !a.spineNode.active).length }; };")
+                 " spinesHidden: [t.leader, ...t.followers].filter(a => a.spineNode && !a.spineNode.active).length,"
+                 " floatOut: !!cc.director.root.pipeline.getMacroBool('CC_USE_FLOAT_OUTPUT'), camPost: cc.director.root.cameraList.filter(c => c.pipelineSettings).length,"
+                 " ovalOff: [t.leader, ...t.followers, ...t.monsters].filter(a => { const g = a.node && a.node.getComponent(cc.Graphics); return g && !g.enabled; }).length,"
+                 " contactOff: [t.leader, ...t.followers, ...t.monsters].filter(a => { const c = a.node && a.node.getChildByName('Contact'); return c && !c.active; }).length }; };")
             before = await js(G + " return JSON.stringify({ f3d: F.info().on, snap: snap() });")
             log('关着(进图时没带开关)', before)
             await shot('switch_a_关着')

@@ -1,6 +1,7 @@
 import { Camera, Color, DirectionalLight, director, game, Layers, Material, Mesh, MeshRenderer, Node, renderer, RenderTexture, UITransform, utils, Vec3 } from 'cc';
 import { material } from './G3DKit';
 import { buildEnvCube } from './G3DSkins';
+import { FieldPost, postLevel } from './TownPost3D';
 
 /**
  * 野外的真 3D 场景(实验,2026-11-16;?field3d=2,默认关)。
@@ -71,6 +72,8 @@ export class TownWorld3D {
   readonly root: Node;
   readonly cam: Camera;
   readonly cfg: WorldCfg;
+  /** 后期处理(环境光遮蔽 / 泛光 / 调色),挂在 3D 相机上;档位见 TownPost3D.postLevel()。 */
+  readonly post: FieldPost;
   /** 这一帧镜头正中对着的地面点(3D 世界坐标)、画面的一半有多宽多高(米)。 */
   readonly focus = new Vec3();
   halfW = 1;
@@ -114,6 +117,7 @@ export class TownWorld3D {
     cam.clearColor = new Color(0, 0, 0, 255);
     cam.priority = 20;                 // 主相机(0)之后、界面相机(1 << 30)之前
     this.cam = cam;
+    this.post = new FieldPost(cam);
 
     // 地表相机:和界面相机同一个位置、同一个取景,只看贴地层,画进贴图(优先级最低 = 最先画,同一帧 3D 地面就能用上)
     const gNode = new Node('TownWorld3DGroundCam');
@@ -259,6 +263,10 @@ export class TownWorld3D {
     }
     this.applyGlobals();
     this.light.enabled = true;
+    const level = postLevel();
+    if (level > 0) {
+      this.post.enable(level);
+    }
   }
 
   close(): void {
@@ -266,6 +274,7 @@ export class TownWorld3D {
       return;
     }
     this.opened = false;
+    this.post.disable();
     this.root.active = false;
     this.unlayer();
     const s = this.saved;
@@ -377,8 +386,12 @@ export class TownWorld3D {
     g.orthoHeight = ui.orthoHeight;
     g.near = ui.near;
     g.far = ui.far;
-    if (!this.rt || this.rt.width !== canvas.width || this.rt.height !== canvas.height) {
-      this.resizeTarget(canvas.width, canvas.height);
+    // 开了后期的放大档位时 3D 画面比窗口大:地表贴图跟着放大(2D 地表按更高的分辨率画进来),不然地表会被「先放大再缩小」糊一遍
+    const s = this.post.scale();
+    const rw = Math.round(canvas.width * s);
+    const rh = Math.round(canvas.height * s);
+    if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
+      this.resizeTarget(rw, rh);
     }
     this.aimSun();
     this.layerGround(self);
@@ -486,7 +499,7 @@ export class TownWorld3D {
 
   info(): Record<string, unknown> {
     return { open: this.opened, cfg: { ...this.cfg }, focus: [+this.focus.x.toFixed(2), +this.focus.z.toFixed(2)], half: [+this.halfW.toFixed(2), +this.halfH.toFixed(2)],
-      rt: this.rt ? [this.rt.width, this.rt.height] : null, uiCam: this.uiCam?.node.name ?? null };
+      rt: this.rt ? [this.rt.width, this.rt.height] : null, uiCam: this.uiCam?.node.name ?? null, post: this.post.info() };
   }
 
   destroy(): void {

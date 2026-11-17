@@ -1,0 +1,439 @@
+// 野外真 3D 场景的后期处理(实验,2026-11-17):环境光遮蔽 / 泛光 / 电影感调色 / 输出。
+// 一张材质 8 个通道,由 TownPost3D.ts 里的自定义管线步骤按顺序调用(每个通道的 pass 名 = 管线里那一步的布局名)。
+// 所有通道共用同一个参数块 LcPost(6 个四维数,含义各通道自己定,见各片元着色器开头的注释),贴图槽统一叫 lcTexA / lcTexB / lcTexC / lcDepth。
+// 画面在这里全程是线性空间的高动态颜色(RGBA16F),到「调色」那一步才压回 0~1 并转成显示用的颜色;
+// 设备不支持半浮点渲染目标时走低动态(输入已经是显示用的颜色,ldr 标记 = 1,着色器里先解回线性)。
+CCEffect %{
+  techniques:
+  - passes:
+    # 0 环境光遮蔽:从深度图算每个像素被周围挡住多少
+    - vert: post-vs
+      frag: ao-fs
+      pass: lc-post-ao
+      rasterizerState: &rs
+        cullMode: none
+      depthStencilState: &ds
+        depthTest: false
+        depthWrite: false
+    # 1 遮蔽的保边模糊(横、竖各一遍)
+    - vert: post-vs
+      frag: ao-blur-fs
+      pass: lc-post-ao-blur
+      rasterizerState: *rs
+      depthStencilState: *ds
+    # 2 把遮蔽乘到画面上(结果 = 原画面 × 遮蔽)
+    - vert: post-vs
+      frag: ao-apply-fs
+      pass: lc-post-ao-apply
+      rasterizerState: *rs
+      depthStencilState: *ds
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: zero
+          blendDst: src_color
+          blendSrcAlpha: zero
+          blendDstAlpha: one
+    # 3 泛光:取出超过阈值的亮部,缩到一半
+    - vert: post-vs
+      frag: bloom-pre-fs
+      pass: lc-post-bloom-pre
+      rasterizerState: *rs
+      depthStencilState: *ds
+    # 4 泛光:逐级缩小
+    - vert: post-vs
+      frag: bloom-down-fs
+      pass: lc-post-bloom-down
+      rasterizerState: *rs
+      depthStencilState: *ds
+    # 5 泛光:逐级放大并和上一级混合(结果 = 这一级 × (1 - 扩散) + 放大的低一级 × 扩散)
+    - vert: post-vs
+      frag: bloom-up-fs
+      pass: lc-post-bloom-up
+      rasterizerState: *rs
+      depthStencilState: *ds
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: zero
+          blendDstAlpha: one
+    # 6 调色:加泛光、曝光、对比、饱和、冷暖分色、高光肩部,转成显示用的颜色
+    - vert: post-vs
+      frag: grade-fs
+      pass: lc-post-grade
+      rasterizerState: *rs
+      depthStencilState: *ds
+    # 7 输出到屏幕:把放大渲染的画面缩回窗口大小、锐化、暗角、抖动
+    - vert: post-vs
+      frag: final-fs
+      pass: lc-post-final
+      rasterizerState: *rs
+      depthStencilState: *ds
+}%
+
+CCProgram post-vs %{
+  precision highp float;
+  #include <legacy/decode-standard>
+  #include <post-process/pipeline>
+
+  out vec2 v_uv;
+
+  void main () {
+    StandardVertInput In;
+    CCDecode(In);
+    FLIP_VULKAN_NDC(In.position);
+    gl_Position = In.position;
+    // 不翻转上下:引擎自带的泛光每一步都翻一次(靠步数是偶数翻回来),这里的步骤有的走 3 步有的走 2 步,翻了会对不上
+    v_uv = a_texCoord;
+  }
+}%
+
+CCProgram post-ubo %{
+  #pragma rate LcPost pass
+  uniform LcPost {
+    vec4 lcP0;
+    vec4 lcP1;
+    vec4 lcP2;
+    vec4 lcP3;
+    vec4 lcP4;
+    vec4 lcP5;
+  };
+}%
+
+// ───────────────────────── 环境光遮蔽 ─────────────────────────
+// 相机是正交的:深度图的值和离镜头的距离成正比,画面上的偏移和世界里的偏移也成正比,所以一个像素的三维位置直接算得出来。
+// lcP0 = 深度图一个像素有多大(xy)、画面的一半有多宽多高(米,zw)
+// lcP1 = 近平面、远平面、取样半径(米)、仰角偏置(低于这个仰角的不算遮挡:压掉平面上的噪点)
+// lcP2 = 强度、指数、有效距离(半径的几倍,平方)、每帧转一点的角度(现在不用,固定 0)
+CCProgram ao-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcDepth pass
+  uniform sampler2D lcDepth;
+
+  layout(location = 0) out vec4 fragColor;
+
+  #define LC_AO_SAMPLES 12
+
+  float viewDist (vec2 uv) {
+    return lcP1.x + texture(lcDepth, uv).r * (lcP1.y - lcP1.x);
+  }
+
+  vec3 viewPos (vec2 uv, float d) {
+    return vec3((uv * 2.0 - 1.0) * lcP0.zw, -d);
+  }
+
+  void main () {
+    vec2 px = lcP0.xy;
+    vec2 ox = vec2(px.x, 0.0);
+    vec2 oy = vec2(0.0, px.y);
+    float dc = viewDist(v_uv);
+    vec3 P = viewPos(v_uv, dc);
+    // 法线从深度反推:左右、上下各取离得近的那一侧(跨过物体边缘的那一侧不要)
+    float dl = viewDist(v_uv - ox);
+    float dr = viewDist(v_uv + ox);
+    float db = viewDist(v_uv - oy);
+    float dt = viewDist(v_uv + oy);
+    vec3 ddx = abs(dr - dc) < abs(dc - dl) ? viewPos(v_uv + ox, dr) - P : P - viewPos(v_uv - ox, dl);
+    vec3 ddy = abs(dt - dc) < abs(dc - db) ? viewPos(v_uv + oy, dt) - P : P - viewPos(v_uv - oy, db);
+    vec3 N = normalize(cross(ddx, ddy));
+
+    float R = lcP1.z;
+    float reach = R * R * lcP2.z;
+    // 每个像素把取样的圆盘转一个角度(相邻像素角度错开),之后靠模糊把噪点抹平
+    float rot = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) * 6.2831853 + lcP2.w;
+    float occ = 0.0;
+    for (int i = 0; i < LC_AO_SAMPLES; i++) {
+      float fi = float(i);
+      float r = R * sqrt((fi + 0.5) / float(LC_AO_SAMPLES));
+      float a = rot + fi * 2.39996323;
+      vec2 off = vec2(cos(a), sin(a)) * r;              // 画面平面上的偏移(米)
+      float sd = viewDist(v_uv + off / (2.0 * lcP0.zw));
+      vec3 v = vec3(off, dc - sd);                       // 取样点相对这个像素的位置
+      float vv = dot(v, v);
+      float fall = max(1.0 - vv / reach, 0.0);           // 离得远的不算
+      // 取样点高出这个像素所在平面的仰角(正弦):越高挡得越多
+      occ += fall * max(dot(v, N) * inversesqrt(vv + 0.000001) - lcP1.w, 0.0);
+    }
+    float ao = clamp(1.0 - lcP2.x * occ / float(LC_AO_SAMPLES), 0.0, 1.0);
+    ao = pow(ao, lcP2.y);
+    // 深度一起带出去(拆成两个 8 位),模糊时用它保边
+    float d01 = clamp((dc - lcP1.x) / (lcP1.y - lcP1.x), 0.0, 0.99999);
+    float hi = floor(d01 * 255.0) / 255.0;
+    float lo = fract(d01 * 255.0);
+    fragColor = vec4(ao, hi, lo, 1.0);
+  }
+}%
+
+// lcP0 = 这一遍的方向 × 一个像素(xy)、深度差多少就不混(倒数,z)
+CCProgram ao-blur-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  float depthOf (vec4 c) {
+    return c.g + c.b / 255.0;
+  }
+
+  void main () {
+    vec4 c = texture(lcTexA, v_uv);
+    float dc = depthOf(c);
+    float sum = c.r * 0.2;
+    float wsum = 0.2;
+    for (int i = 1; i <= 4; i++) {
+      float fi = float(i);
+      float g = 0.2 * exp(-fi * fi / 9.0);
+      vec2 o = lcP0.xy * fi;
+      vec4 a = texture(lcTexA, v_uv + o);
+      vec4 b = texture(lcTexA, v_uv - o);
+      float wa = g * max(1.0 - abs(depthOf(a) - dc) * lcP0.z, 0.0);
+      float wb = g * max(1.0 - abs(depthOf(b) - dc) * lcP0.z, 0.0);
+      sum += a.r * wa + b.r * wb;
+      wsum += wa + wb;
+    }
+    fragColor = vec4(sum / wsum, c.g, c.b, 1.0);
+  }
+}%
+
+// lcP0 = 力度(0 = 不压暗,1 = 全量)、低动态标记、只看遮蔽(调试)
+// lcP1 = 被挡住的地方往什么颜色压(rgb;纯黑会显脏,偏冷一点像环境光照不到的阴处)
+CCProgram ao-apply-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  void main () {
+    float ao = texture(lcTexA, v_uv).r;
+    ao = mix(1.0, ao, lcP0.x);
+    vec3 k = mix(lcP1.rgb, vec3(1.0), ao);
+    // 低动态时画面里存的是显示用的颜色(≈ 线性值开方),乘数也要开方才等效
+    k = lcP0.y > 0.5 ? sqrt(k) : k;
+    fragColor = vec4(k, 1.0);
+  }
+}%
+
+// ───────────────────────── 泛光 ─────────────────────────
+// lcP0 = 输入图一个像素有多大(xy)、阈值、软膝(阈值的几成)
+// lcP1 = 亮度上限(压掉个别特别亮的点,防闪)、低动态标记
+CCProgram bloom-pre-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  vec3 tap (float x, float y) {
+    vec3 c = texture(lcTexA, v_uv + vec2(x, y) * lcP0.xy).rgb;
+    c = lcP1.y > 0.5 ? c * c : c;
+    return min(c, vec3(lcP1.x));
+  }
+
+  // 每组先按「1 / (1 + 亮度)」加权再合:单个特别亮的像素不会把一整片带亮(镜头一动就闪的毛病)
+  vec4 group (vec3 a, vec3 b, vec3 c, vec3 d) {
+    vec3 s = (a + b + c + d) * 0.25;
+    float w = 1.0 / (1.0 + max(s.r, max(s.g, s.b)));
+    return vec4(s * w, w);
+  }
+
+  void main () {
+    vec3 a = tap(-2.0, -2.0);
+    vec3 b = tap(0.0, -2.0);
+    vec3 c = tap(2.0, -2.0);
+    vec3 d = tap(-2.0, 0.0);
+    vec3 e = tap(0.0, 0.0);
+    vec3 f = tap(2.0, 0.0);
+    vec3 g = tap(-2.0, 2.0);
+    vec3 h = tap(0.0, 2.0);
+    vec3 i = tap(2.0, 2.0);
+    vec3 j = tap(-1.0, -1.0);
+    vec3 k = tap(1.0, -1.0);
+    vec3 l = tap(-1.0, 1.0);
+    vec3 m = tap(1.0, 1.0);
+    vec4 acc = group(j, k, l, m) * 0.5
+      + group(a, b, d, e) * 0.125 + group(b, c, e, f) * 0.125
+      + group(d, e, g, h) * 0.125 + group(e, f, h, i) * 0.125;
+    vec3 col = acc.rgb / max(acc.a, 0.0001);
+    // 阈值(带软膝):低于阈值的不泛,刚过阈值的渐渐起来
+    float br = max(col.r, max(col.g, col.b));
+    float knee = lcP0.z * lcP0.w + 0.0001;
+    float soft = clamp(br - lcP0.z + knee, 0.0, 2.0 * knee);
+    soft = soft * soft / (4.0 * knee);
+    float keep = max(soft, br - lcP0.z) / max(br, 0.0001);
+    fragColor = vec4(col * keep, 1.0);
+  }
+}%
+
+// lcP0 = 输入图一个像素有多大(xy)
+CCProgram bloom-down-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  vec3 tap (float x, float y) {
+    return texture(lcTexA, v_uv + vec2(x, y) * lcP0.xy).rgb;
+  }
+
+  void main () {
+    vec3 col = tap(0.0, 0.0) * 0.125
+      + (tap(-2.0, -2.0) + tap(2.0, -2.0) + tap(-2.0, 2.0) + tap(2.0, 2.0)) * 0.03125
+      + (tap(0.0, -2.0) + tap(-2.0, 0.0) + tap(2.0, 0.0) + tap(0.0, 2.0)) * 0.0625
+      + (tap(-1.0, -1.0) + tap(1.0, -1.0) + tap(-1.0, 1.0) + tap(1.0, 1.0)) * 0.125;
+    fragColor = vec4(col, 1.0);
+  }
+}%
+
+// lcP0 = 低一级图一个像素有多大(xy)、取样半径(像素)、扩散(低一级占多少)
+CCProgram bloom-up-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  vec3 tap (float x, float y) {
+    return texture(lcTexA, v_uv + vec2(x, y) * lcP0.xy * lcP0.z).rgb;
+  }
+
+  void main () {
+    vec3 col = tap(0.0, 0.0) * 4.0
+      + (tap(-1.0, 0.0) + tap(1.0, 0.0) + tap(0.0, -1.0) + tap(0.0, 1.0)) * 2.0
+      + tap(-1.0, -1.0) + tap(1.0, -1.0) + tap(-1.0, 1.0) + tap(1.0, 1.0);
+    fragColor = vec4(col / 16.0, lcP0.w);
+  }
+}%
+
+// ───────────────────────── 调色 ─────────────────────────
+// lcTexA = 画面(线性高动态;低动态时是显示用的颜色)、lcTexB = 泛光、lcTexC = 遮蔽(只在调试时看)
+// lcP0 = 曝光、泛光强度、对比、对比的轴心(线性亮度)
+// lcP1 = 饱和度、肩部从多亮开始(线性值)、低动态标记、调试(0 正常 / 1 只看遮蔽 / 2 只看泛光 / 3 不调色直出)
+// lcP2 = 暗部染色(rgb)、分色的分界亮度
+// lcP3 = 亮部染色(rgb)、暗部压黑(趾部力度)
+CCProgram grade-fs %{
+  precision highp float;
+  #include <post-ubo>
+  #include <common/color/gamma>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+  #pragma rate lcTexB pass
+  uniform sampler2D lcTexB;
+  #pragma rate lcTexC pass
+  uniform sampler2D lcTexC;
+
+  layout(location = 0) out vec4 fragColor;
+
+  void main () {
+    vec3 c = texture(lcTexA, v_uv).rgb;
+    c = lcP1.z > 0.5 ? c * c : c;
+    vec3 bloom = texture(lcTexB, v_uv).rgb;
+    float dbg = lcP1.w;
+    if (dbg > 3.5) {
+      // 看深度:每 1.3 米一条由黑到白的带子
+      vec4 a = texture(lcTexC, v_uv);
+      fragColor = vec4(vec3(fract((a.g + a.b / 255.0) * 200.0)), 1.0);
+      return;
+    }
+    if (dbg > 2.5) {
+      fragColor = vec4(LinearToSRGB(clamp(c, 0.0, 1.0)), 1.0);
+      return;
+    }
+    if (dbg > 1.5) {
+      fragColor = vec4(LinearToSRGB(clamp(bloom * lcP0.y, 0.0, 1.0)), 1.0);
+      return;
+    }
+    if (dbg > 0.5) {
+      fragColor = vec4(vec3(texture(lcTexC, v_uv).r), 1.0);
+      return;
+    }
+    c = max(c + bloom * lcP0.y, 0.0) * lcP0.x;
+    // 对比:以轴心亮度为不动点,暗的更暗、亮的更亮(亮过头的交给后面的肩部收)
+    float piv = lcP0.w;
+    c = piv * pow(c / piv, vec3(lcP0.z));
+    // 暗部再压一点(趾部):只动轴心以下
+    float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    float toe = 1.0 - lcP3.w * (1.0 - smoothstep(0.0, piv, lum));
+    c *= toe;
+    lum *= toe;
+    // 饱和度
+    c = mix(vec3(lum), c, lcP1.x);
+    // 冷暖分色:暗部往冷、亮部往暖
+    c *= mix(lcP2.rgb, lcP3.rgb, smoothstep(0.0, lcP2.w, lum));
+    // 肩部:低于起点的原样,高于起点的平滑趋近 1(特别亮的地方发白而不是一刀切平)
+    float t = lcP1.y;
+    vec3 over = max(c - t, 0.0);
+    c = min(c, vec3(t)) + (1.0 - t) * (1.0 - exp(-over / (1.0 - t)));
+    fragColor = vec4(LinearToSRGB(c), 1.0);
+  }
+}%
+
+// ───────────────────────── 输出 ─────────────────────────
+// lcTexA = 调完色的画面(显示用的颜色,可能比窗口大)
+// lcP0 = 输入图一个像素有多大(xy)、缩小时四个取样点散开多少(输入图的像素,0 = 不缩)、锐化
+// lcP1 = 暗角力度、从哪里开始(离中心,0~1)、到哪里最暗、往正圆靠多少(0 = 跟画面一样扁的椭圆)
+// lcP2 = 抖动(几个色阶)、窗口一个像素有多大(yz)
+CCProgram final-fs %{
+  precision highp float;
+  #include <post-ubo>
+
+  in vec2 v_uv;
+
+  #pragma rate lcTexA pass
+  uniform sampler2D lcTexA;
+
+  layout(location = 0) out vec4 fragColor;
+
+  void main () {
+    vec2 o = lcP0.xy * lcP0.z;
+    vec3 c = (texture(lcTexA, v_uv + vec2(-o.x, -o.y)).rgb + texture(lcTexA, v_uv + vec2(o.x, -o.y)).rgb
+      + texture(lcTexA, v_uv + vec2(-o.x, o.y)).rgb + texture(lcTexA, v_uv + vec2(o.x, o.y)).rgb) * 0.25;
+    if (lcP0.w > 0.001) {
+      // 锐化:和上下左右的平均比,把差值加回去一部分;差值限幅,硬边不出白边
+      vec2 q = lcP2.yz;
+      vec3 n = (texture(lcTexA, v_uv + vec2(q.x, 0.0)).rgb + texture(lcTexA, v_uv - vec2(q.x, 0.0)).rgb
+        + texture(lcTexA, v_uv + vec2(0.0, q.y)).rgb + texture(lcTexA, v_uv - vec2(0.0, q.y)).rgb) * 0.25;
+      c += clamp((c - n) * lcP0.w, -0.06, 0.06);
+    }
+    // 暗角:椭圆跟着画面的形状走(四个角 = 1,左右边的中点 ≈ 0.71),lcP1.w = 往正圆靠多少
+    vec2 p = (v_uv - 0.5) * 2.0;
+    p.y *= mix(1.0, 0.5625, lcP1.w);
+    float vig = 1.0 - lcP1.x * smoothstep(lcP1.y, lcP1.z, length(p) * 0.7071);
+    c *= vig;
+    // 抖动:8 位输出的暗部渐变容易出条带,加不到一个色阶的噪点打散
+    float nz = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+    c += nz * lcP2.x / 255.0;
+    fragColor = vec4(c, 1.0);
+  }
+}%

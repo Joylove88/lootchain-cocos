@@ -1,4 +1,4 @@
-import { Color, director, gfx, Mat4, Material, Mesh, MeshRenderer, Node, sys, Texture2D, Vec3 } from 'cc';
+import { Color, gfx, Mat4, Material, Mesh, MeshRenderer, Node, sys, Texture2D, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { tex } from './G3DKit';
 import type { Tint } from './G3DMesh';
@@ -7,6 +7,7 @@ import { barkPbr, canvasPbr, contactBlob, endGrainPbr, fbm3, ironPbr, rockPbr, w
 import type { Pbr } from './G3DFieldTex';
 import { ctxOf, makeCanvas, mulberry32 } from './G3DTextures';
 import type { Ctx, Cv } from './G3DTextures';
+import { fieldSoftEdges } from './TownPost3D';
 import { addPropBuilder } from './TownProps3D';
 import { FIELD_LAYER } from './TownWorld3D';
 
@@ -43,17 +44,24 @@ const smooth = (a: number, b: number, v: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-let msaaFlag: boolean | null = null;
-function msaa(): boolean {
-  if (msaaFlag === null) {
-    try {
-      const gl = (director.root!.device as any).gl as WebGLRenderingContext;
-      msaaFlag = !!gl && gl.getParameter(gl.SAMPLES) > 1;
-    } catch (error) {
-      msaaFlag = false;
-    }
+/**
+ * 带透明边的贴片材质(叶、松针、草、旗)全场共用,软边 / 硬裁切两种状态现场切:
+ * 直接画到屏幕(有多重采样)时用「透明度转覆盖率」的软边;开了后期(离屏渲染,没有多重采样)时改回硬裁切。
+ * 摆件每次挂进场景前对一遍(syncEdges),状态变了就把这些材质统一改过来 —— 变体的网格和材质是缓存的,不能靠重建。
+ */
+const CUTS: Array<{ m: Material; soft: number; hard: number }> = [];
+let edgeSoft: boolean | null = null;
+
+function syncEdges(): void {
+  const soft = fieldSoftEdges();
+  if (edgeSoft === soft) {
+    return;
   }
-  return msaaFlag;
+  edgeSoft = soft;
+  for (const c of CUTS) {
+    c.m.overridePipelineStates({ rasterizerState: { cullMode: gfx.CullMode.NONE }, blendState: { isA2C: soft } });
+    c.m.setProperty('alphaThreshold', soft ? c.soft : c.hard);
+  }
 }
 
 // ───────────────────────── 贴图 ─────────────────────────
@@ -498,11 +506,12 @@ let MATS: Mats | null = null;
 
 /** 带透明边的贴片材质:按透明度裁切,两面都画;画布开了多重采样时边缘用「透明度转覆盖率」抗锯齿。 */
 function cutout(cv: Cv, rough: number): Material {
-  const a2c = msaa();
+  const a2c = fieldSoftEdges();
   const m = new Material();
   m.initialize({ effectName: 'builtin-standard', defines: { USE_ALBEDO_MAP: true, USE_VERTEX_COLOR: true, USE_ALPHA_TEST: true },
     states: { rasterizerState: { cullMode: gfx.CullMode.NONE }, blendState: { isA2C: a2c } } });
   m.setProperty('alphaThreshold', a2c ? 0.14 : 0.42);
+  CUTS.push({ m, soft: 0.14, hard: 0.42 });
   m.setProperty('mainTexture', alphaTex(cv));
   m.setProperty('roughness', rough);
   m.setProperty('metallic', 0);
@@ -539,6 +548,7 @@ function mats(): Mats {
   if (MATS) {
     return MATS;
   }
+  edgeSoft = fieldSoftEdges();      // 下面新建的贴片材质就是按现在的状态建的
   // 脚下接地的暗斑:不受光,柔边黑斑按透明度压在地面上
   const contact = new Material();
   contact.initialize({ effectName: 'builtin-unlit', technique: 1, defines: { USE_TEXTURE: true } });
@@ -1697,6 +1707,7 @@ function buildTent(hr: number, seed: number): Variant {
 
 // ───────────────────────── 挂进场景 ─────────────────────────
 function mount(parent: Node, v: Variant, out: MeshRenderer[]): void {
+  syncEdges();
   for (const p of v.parts) {
     const n = new Node('P');
     n.layer = FIELD_LAYER;

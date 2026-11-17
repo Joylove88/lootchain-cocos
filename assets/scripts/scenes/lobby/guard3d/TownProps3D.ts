@@ -1,7 +1,8 @@
-import { Color, director, gfx, Material, Mesh, MeshRenderer, Node, Sprite, SpriteFrame, sys, UITransform, utils, Vec3 } from 'cc';
+import { Color, gfx, Material, Mesh, MeshRenderer, Node, Sprite, SpriteFrame, sys, UITransform, utils, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { addFieldExtra } from './TownUnits3D';
 import type { FieldExtra } from './TownUnits3D';
+import { fieldSoftEdges, linearBlend } from './TownPost3D';
 import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 
 /**
@@ -73,7 +74,6 @@ class TownProps3D implements FieldExtra {
   private key = '';
   private tick = 0;
   private time = 0;
-  private msaa: boolean | null = null;
   /**
    * 现场开关:mesh = 登记了生成器的摆件用代码生成的模型(G3DFlora),没登记的还是手绘图立牌;false = 全部用立牌。
    * 第一版程序模型不如手绘(树偏平、岩石偏素),当时默认关;用户 11-16「继续磨程序模型」「要 3A 级别的效果」之后重做了
@@ -203,25 +203,16 @@ class TownProps3D implements FieldExtra {
   }
 
   // ───────────────────────── 立牌 ─────────────────────────
-  private hasMsaa(): boolean {
-    if (this.msaa === null) {
-      try {
-        const gl = (director.root!.device as any).gl as WebGLRenderingContext;
-        this.msaa = !!gl && gl.getParameter(gl.SAMPLES) > 1;
-      } catch (error) {
-        this.msaa = false;
-      }
-    }
-    return this.msaa;
-  }
-
-  /** 贴一张 2D 图的 3D 材质:粗糙不反光、按透明度裁切、两面都画。 */
+  /**
+   * 贴一张 2D 图的 3D 材质:粗糙不反光、按透明度裁切、两面都画。
+   * 直接画到屏幕(有多重采样)时边缘用「透明度转覆盖率」的软边;开了后期(离屏,没有多重采样)时是硬裁切 —— 两种各建各的。
+   */
   private cardMaterial(frame: SpriteFrame, tint?: [number, number, number]): Material {
     const tex = frame.texture;
-    const key = `${(tex as any)._id || (tex as any).uuid || tex.getHash()}:${tint ? tint.join(',') : ''}`;
+    const a2c = fieldSoftEdges();
+    const key = `${(tex as any)._id || (tex as any).uuid || tex.getHash()}:${tint ? tint.join(',') : ''}:${a2c ? 's' : 'h'}`;
     let m = this.mats.get(key);
     if (!m) {
-      const a2c = this.hasMsaa();
       m = new Material();
       m.initialize({ effectName: 'builtin-standard', defines: { USE_ALBEDO_MAP: true, USE_ALPHA_TEST: true },
         states: { rasterizerState: { cullMode: gfx.CullMode.NONE }, blendState: { isA2C: a2c } } });
@@ -300,8 +291,13 @@ class TownProps3D implements FieldExtra {
     this.stats.faded = faded;
   }
 
-  /** 淡出靠材质实例上的不透明度(配合「透明度转覆盖率」得到半透明);恢复到 1 就换回共用材质。 */
+  /**
+   * 淡出靠材质实例上的不透明度;恢复到 1 就换回共用材质。
+   * - 有多重采样时:配合「透明度转覆盖率」得到半透明(不用排序);
+   * - 开了后期(没有多重采样)时:实例改成真的半透明混合。深度照写、裁切线跟着不透明度一起降(不然整棵被裁没)。
+   */
   private applyFade(item: Item): void {
+    const soft = fieldSoftEdges();
     for (let i = 0; i < item.renderers.length; i += 1) {
       const mr = item.renderers[i];
       if (!mr.isValid) {
@@ -311,10 +307,24 @@ class TownProps3D implements FieldExtra {
         mr.setSharedMaterial(item.shared[i], 0);
         continue;
       }
+      const shared = item.shared[i];
+      const fresh = mr.sharedMaterials[0] === shared;
       const inst = mr.getMaterialInstance(0);
-      if (inst) {
-        const base = (item.shared[i].getProperty('mainColor') as Color | null) ?? Color.WHITE;
-        inst.setProperty('mainColor', new Color(base.r, base.g, base.b, Math.round(255 * item.fade)));
+      if (!inst) {
+        continue;
+      }
+      if (!soft && fresh) {
+        linearBlend(inst);       // 先摘「混合通道」的标记,再开混合(顺序反了着色器会按「直接输出显示颜色」的那一版编)
+        inst.overridePipelineStates({ blendState: { targets: [{ blend: true, blendSrc: gfx.BlendFactor.SRC_ALPHA, blendDst: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA,
+          blendSrcAlpha: gfx.BlendFactor.ZERO, blendDstAlpha: gfx.BlendFactor.ONE }] } }, 0);
+      }
+      const base = (shared.getProperty('mainColor') as Color | null) ?? Color.WHITE;
+      inst.setProperty('mainColor', new Color(base.r, base.g, base.b, Math.round(255 * item.fade)));
+      if (!soft) {
+        const cut = shared.getProperty('alphaThreshold');
+        if (typeof cut === 'number') {
+          inst.setProperty('alphaThreshold', cut * item.fade);
+        }
       }
     }
   }
@@ -421,7 +431,7 @@ class TownProps3D implements FieldExtra {
   }
 
   info(): unknown {
-    return { props: { ...this.stats, items: this.items.size, mats: this.mats.size, msaa: this.msaa, cfg: { ...this.cfg } } };
+    return { props: { ...this.stats, items: this.items.size, mats: this.mats.size, soft: fieldSoftEdges(), cfg: { ...this.cfg } } };
   }
 }
 

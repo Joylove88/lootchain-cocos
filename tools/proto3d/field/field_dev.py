@@ -110,14 +110,22 @@ async def enter(tab, qs, world, set_metrics=True):
     if set_metrics:
         await metrics(tab)
     page = 'http://localhost:' + os.environ.get('PREVIEW_PORT', '7456') + '/' + qs
-    await tab.call('Page.navigate', {'url': page})
-    log('page', page, '| cc', await tab.raw(bps.JS_CC, 400))
     view = ''
-    for _ in range(240):
-        view = await tab.js("return root ? root.currentView : 'noroot';")
+    for attempt in range(5):
+        await tab.call('Page.navigate', {'url': page})
+        log('page', page, '| cc', await tab.raw(bps.JS_CC, 400))
+        view = ''
+        for _ in range(240 if attempt == 4 else 40):
+            view = await tab.js("return root ? root.currentView : 'noroot';")
+            if view in ('login', 'lobby', 'loginAccount'):
+                break
+            await asyncio.sleep(1)
         if view in ('login', 'lobby', 'loginAccount'):
             break
-        await asyncio.sleep(1)
+        # 刚改完脚本、编辑器还在重新打包的时候进页面,会加载到半截的代码(控制台报 Unable to resolve bare specifier),
+        # 游戏起不来:等几秒重新进一遍
+        log('页面没起来,重进一遍:', str(view)[:80])
+        await asyncio.sleep(6)
     if view != 'lobby':
         await tab.js(f"root.loginFlow.setInputs({{string:'{ACCOUNT}'}}, {{string:'{PASSWORD}'}}); try {{ root.loginFlow.acceptedAgreement = true; }} catch(e){{}} root.run(() => root.loginFlow.login()); return 'login';")
     for _ in range(400):
