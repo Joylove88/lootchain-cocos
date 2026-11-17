@@ -12,7 +12,7 @@ import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
 import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN } from './G3DCity';
-import { paintMoon, paintSkyline, paintWindow, plasterPbr, plazaPbr, slatePbr } from './G3DCityTex';
+import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaPbr, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
@@ -1392,6 +1392,8 @@ class Dungeon {
     const TK = DUNGEON.texK;
     const stoneMat = std(masonryPbr(Math.round(1024 * TK)), true, 8);
     stoneMat.setProperty('albedoScale', new Vec3(0.86, 0.85, 0.85));
+    const rubbleMat = std(rubblePbr(Math.round(512 * TK)), true, 8);
+    rubbleMat.setProperty('albedoScale', new Vec3(0.78, 0.77, 0.77));
     const plasterMat = std(plasterPbr(Math.round(512 * TK)), true, 8);
     plasterMat.setProperty('albedoScale', new Vec3(0.45, 0.43, 0.41));          // 第三轮:墙面压成灰褐(原型的房子是暗的,不是奶油色)
     const timberMat = std(woodPbr(Math.round(512 * TK)), true, 8);
@@ -1428,7 +1430,7 @@ class Dungeon {
       addMesh(world, 'DgOuter', m, outerMat, false, true);
     }
     let tris = 0;
-    const parts: Array<[MeshBatch, Material, string, boolean]> = [[C.stone, stoneMat, 'DgStone', true], [C.plaster, plasterMat, 'DgPlaster', true], [C.timber, timberMat, 'DgTimber', true],
+    const parts: Array<[MeshBatch, Material, string, boolean]> = [[C.stone, stoneMat, 'DgStone', true], [C.rubble, rubbleMat, 'DgRubble', true], [C.plaster, plasterMat, 'DgPlaster', true], [C.timber, timberMat, 'DgTimber', true],
       [C.slate, slateMat, 'DgSlate', true], [C.iron, ironMat, 'DgIron', true], [C.bark, barkMat, 'DgBark', true], [C.cloth, clothMat, 'DgCloth', true],
       [C.goods, goodsMat, 'DgGoods', true], [C.leaf, leafMat, 'DgLeaf', true], [C.winDark, darkGlass, 'DgWinDark', false]];
     for (const [batch, mat, name, cast] of parts) {

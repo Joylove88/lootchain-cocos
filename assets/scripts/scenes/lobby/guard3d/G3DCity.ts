@@ -29,6 +29,7 @@ export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: 5, z: 0, r: 4
 
 export interface CityScene {
   stone: Sculpt;      // 砌石:教堂、房子的底层、水井、栏杆的石柱
+  rubble: Sculpt;     // 乱石墙:房子和铁匠铺的底层
   plaster: Sculpt;    // 灰泥墙
   timber: Sculpt;     // 木构架、门、摊位的木料
   slate: Sculpt;      // 石板瓦屋顶
@@ -59,7 +60,7 @@ const V = (x: number, y: number, z: number): Vec3 => new Vec3(x, y, z);
 export function buildCityScene(rnd: () => number): CityScene {
   const mk = (): Sculpt => new Sculpt();
   const s: CityScene = {
-    stone: mk(), plaster: mk(), timber: mk(), slate: mk(), iron: mk(), bark: mk(), cloth: mk(), goods: mk(), leaf: mk(),
+    stone: mk(), rubble: mk(), plaster: mk(), timber: mk(), slate: mk(), iron: mk(), bark: mk(), cloth: mk(), goods: mk(), leaf: mk(),
     winHouse: mk(), winLancet: mk(), winRose: mk(), winDark: mk(), coal: mk(), glass: mk(),
     solids: [], lamps: [], doorLamps: [], forge: { x: -10, y: 1.0, z: -13.2 }, smoke: { x: -6, y: 11, z: -11 }, npcs: [], plan: CITY_PLAN,
   };
@@ -117,6 +118,8 @@ export function buildCityScene(rnd: () => number): CityScene {
   };
 
   const HS: Tint = [0.64, 0.64, 0.68];
+  const RB: Tint = [0.92, 0.92, 0.94];
+  const QS: Tint = [0.72, 0.72, 0.76];
   /** 一块斜着的地方(铁匠铺)挡路:碰撞只认正放的方块,所以切成小格,每格登记一个。 */
   const solidRot = (f: Frame, x0: number, x1: number, z0: number, z1: number, h: number): void => {
     const nx = Math.max(1, Math.round((x1 - x0) / 2));
@@ -168,7 +171,7 @@ export function buildCityScene(rnd: () => number): CityScene {
    * gableFront = 山墙朝着广场(屋脊垂直于正面);否则屋檐朝着广场,屋面上开老虎窗。lit = 亮几扇窗。
    * 第三轮(用户:「建筑还是需要打磨一下,还原型不像」):屋顶加陡、加封檐板 / 博风板 / 屋脊、加老虎窗、木构架加密、门加门框和石阶、烟囱加烟囱帽。
    */
-  const house = (ox: number, oz: number, yaw: number, w: number, d: number, o: { upper?: number; gableFront?: boolean; lit?: number; door?: number; stoneGround?: boolean; tone?: number; dormers?: number }): Frame => {
+  const house = (ox: number, oz: number, yaw: number, w: number, d: number, o: { upper?: number; gableFront?: boolean; lit?: number; door?: number; stoneGround?: boolean; tone?: number; dormers?: number; steep?: number }): Frame => {
     const f = frame(ox, oz, yaw);
     const g = 3.0;
     const u = 2.7;
@@ -178,7 +181,16 @@ export function buildCityScene(rnd: () => number): CityScene {
     const PL: Tint = [tone, tone * 0.98, tone * 0.95];
     const DS = 0.5;
     // 底层
-    f.box(o.stoneGround === false ? s.plaster : s.stone, 0, g / 2, -d / 2, w, g, d, o.stoneGround === false ? PL : HS, o.stoneGround === false ? 0.3 : DS, 0.03);
+    f.box(o.stoneGround === false ? s.plaster : s.rubble, 0, g / 2, -d / 2, w, g, d, o.stoneGround === false ? PL : RB, o.stoneGround === false ? 0.3 : 0.4, 0.03);
+    if (o.stoneGround !== false) {
+      // 墙角的角石:一长一短交错的方石
+      for (const sd of [-1, 1]) {
+        for (let k = 0; k < 6; k += 1) {
+          const lw = k % 2 ? 0.34 : 0.56;
+          f.box(s.stone, sd * (w / 2 - lw / 2 + 0.03), 0.62 + k * 0.42, -0.12, lw, 0.4, 0.3, QS, DS, 0.02);
+        }
+      }
+    }
     f.box(s.stone, 0, 0.2, -d / 2 + 0.06, w + 0.2, 0.4, d + 0.12, [0.52, 0.52, 0.56], DS, 0.04);
     const doorX = o.door ?? R(-w * 0.25, w * 0.25);
     f.box(s.timber, doorX, 1.08, 0.02, 1.15, 2.16, 0.1, [0.4, 0.32, 0.25], 0.9, 0.02);
@@ -239,7 +251,7 @@ export function buildCityScene(rnd: () => number): CityScene {
     const RIDGE: Tint = [0.62, 0.64, 0.72];
     let roofAt: (x: number) => number;
     if (o.gableFront) {
-      const ridge = top + w * 0.56;
+      const ridge = top + w * (o.steep ?? 0.56);
       roofAt = (x: number): number => ridge - (Math.abs(x) / hw) * (ridge - top + 0.15);
       f.face(s.slate, [[-hw, top - 0.15, zb], [-hw, top - 0.15, zfo], [0, ridge, zfo], [0, ridge, zb]], 0.42, SLATE);
       f.face(s.slate, [[hw, top - 0.15, zfo], [hw, top - 0.15, zb], [0, ridge, zb], [0, ridge, zfo]], 0.42, SLATE);
@@ -321,16 +333,22 @@ export function buildCityScene(rnd: () => number): CityScene {
   const G = frame(-11.8, -11.8, SMY);
   {
     const mp = G.P(-3.5, 0, 0);
-    house(mp.x, mp.z, SMY, 8, 8, { upper: 1, gableFront: true, lit: 3, door: -1.6, tone: 0.9 });
+    house(mp.x, mp.z, SMY, 8, 8, { upper: 1, gableFront: true, lit: 3, door: -1.6, tone: 0.9, steep: 0.68 });
     solidRot(G, -7.6, 7.4, -8, 0.4, 6);
     // 炉房:石墙,屋檐朝外的陡屋顶
     const wp = G.P(3.9, 0, 0);
     const W = frame(wp.x, wp.z, SMY);
     const WS: Tint = [0.6, 0.6, 0.64];
-    W.box(s.stone, 0, 1.85, -3.5, 6.8, 3.7, 7, WS, 0.5, 0.04);
+    W.box(s.rubble, 0, 1.85, -3.5, 6.8, 3.7, 7, RB, 0.4, 0.04);
+    for (const sd of [-1, 1]) {
+      for (let k = 0; k < 8; k += 1) {
+        const lw = k % 2 ? 0.34 : 0.56;
+        W.box(s.stone, sd * (3.4 - lw / 2 + 0.03), 0.62 + k * 0.4, -0.12, lw, 0.38, 0.3, QS, 0.5, 0.02);
+      }
+    }
     W.box(s.stone, 0, 0.2, -3.44, 7.0, 0.4, 7.12, [0.5, 0.5, 0.54], 0.5, 0.04);
     const ey = 3.6;
-    const ry = 8.0;
+    const ry = 8.7;
     const zf0 = 0.75;
     const zb0 = -7.75;
     const zc0 = -3.5;
@@ -341,7 +359,7 @@ export function buildCityScene(rnd: () => number): CityScene {
     const wang = (Math.atan2(ry - ey, zf0 - zc0) * 180) / Math.PI;
     for (const sd of [-1, 1]) {
       const xe = sd * 3.42;
-      W.face(s.stone, sd > 0 ? [[xe, 3.7, 0], [xe, 3.7, -7], [xe, ry - 0.3, zc0]] : [[xe, 3.7, -7], [xe, 3.7, 0], [xe, ry - 0.3, zc0]], 0.5, WS);
+      W.face(s.rubble, sd > 0 ? [[xe, 3.7, 0], [xe, 3.7, -7], [xe, ry - 0.3, zc0]] : [[xe, 3.7, -7], [xe, 3.7, 0], [xe, ry - 0.3, zc0]], 0.4, RB);
       W.box(s.timber, sd * hw0, (ey + ry) / 2, (zf0 + zc0) / 2, 0.12, 0.24, wlen, [0.3, 0.27, 0.24], 0.9, 0.01, [wang, 0, 0]);
       W.box(s.timber, sd * hw0, (ey + ry) / 2, (zb0 + zc0) / 2, 0.12, 0.24, wlen, [0.3, 0.27, 0.24], 0.9, 0.01, [-wang, 0, 0]);
     }
@@ -349,6 +367,7 @@ export function buildCityScene(rnd: () => number): CityScene {
     W.box(s.slate, 0, ry + 0.03, zc0, 7.8, 0.14, 0.32, [0.62, 0.64, 0.72], 0.42, 0.02);
     const wm = (ry - ey) / (zf0 - zc0);
     dormer(W, 1.9, 0.06, ey + (zf0 - 0.06) * wm, wm, [0.86, 0.84, 0.8], true);
+    dormer(W, -1.8, 0.06, ey + (zf0 - 0.06) * wm, wm, [0.86, 0.84, 0.8], false);
     windowAt(W, 2.6, 2.0, 0.02, 0.7, 0.9, true);
     // 锻炉:拱形的炉口(黑洞洞的,里面是炭火),上面一道石砌的烟罩
     const FX = -0.4;
@@ -364,6 +383,13 @@ export function buildCityScene(rnd: () => number): CityScene {
     s.coal.box(1.7, 0.1, 0.5, W.P(FX, 0.94, -0.2), V(0, SMY, 0), [1, 1, 1], 1, rnd, 0);
     s.forge = { x: W.P(FX, 1.2, 0.5).x, y: 1.2, z: W.P(FX, 1.2, 0.5).z };
     W.box(s.stone, FX, 3.28, 0.12, 4.0, 0.56, 0.32, [0.54, 0.54, 0.58], 0.5, 0.04);
+    // 炉口上面挑出一片石板瓦的小披檐(塞在屋檐底下,两根斜撑托着):原型里铁匠铺的屋顶是一层压一层的
+    W.face(s.slate, [[FX - 2.6, 2.98, 1.75], [FX + 2.6, 2.98, 1.75], [FX + 2.6, 3.74, 0.22], [FX - 2.6, 3.74, 0.22]], 0.42, SLATE);
+    W.box(s.timber, FX, 3.3, 0.98, 5.1, 0.07, 1.72, TIMBER, 0.9, 0.01, [26.4, 0, 0]);
+    W.box(s.timber, FX, 2.93, 1.72, 5.3, 0.14, 0.1, TIMBER, 0.9, 0.01);
+    for (const sx of [-2.35, 2.35]) {
+      W.box(s.timber, FX + sx, 2.72, 0.82, 0.12, 0.12, 1.75, TIMBER, 0.9, 0.01, [-28, 0, 0]);
+    }
     // 屋后一根粗烟囱(烟从这里冒)
     W.box(s.stone, 2.0, 7.0, -5.2, 1.5, 6.6, 1.4, [0.58, 0.58, 0.62], 0.5, 0.04);
     W.box(s.stone, 2.0, 10.4, -5.2, 1.8, 0.3, 1.7, [0.5, 0.5, 0.54], 0.5, 0.03);
@@ -536,21 +562,8 @@ export function buildCityScene(rnd: () => number): CityScene {
       F.box(s.stone, (x0 + x1) / 2, y0 - 0.08, lz, x1 - x0 + 0.3, 0.16, 0.24, SD, D, 0.01);
     };
 
-    // 台基、台阶、台阶两侧的矮墙和灯
+    // 台基(第四轮:台阶挪到广场东沿的台地上去了,教堂只剩一圈矮台基)
     f.box(s.stone, 0, BY / 2, -14, 36, BY, 31, SD, D, 0.04);
-    for (let i = 0; i < 8; i += 1) {
-      const dep = 0.6 * (8 - i);
-      f.box(s.stone, 0, 0.1 + 0.2 * i, 1 + dep / 2, 11, 0.2, dep, i % 2 ? ST : SD, D, 0.02);
-    }
-    for (const sd of [-1, 1]) {
-      f.box(s.stone, sd * 6.0, 1.05, 3.4, 0.9, 2.1, 5.0, SD, D, 0.04);
-      f.box(s.stone, sd * 6.0, 2.2, 5.6, 1.1, 0.2, 1.1, ST, D, 0.03);
-      const lp = f.P(sd * 6.0, 2.3, 5.6);
-      s.iron.box(0.3, 0.06, 0.3, V(lp.x, lp.y + 0.03, lp.z), V(0, CY, 0), [0.3, 0.3, 0.32], 1.6, rnd, 0.01);
-      s.glass.box(0.22, 0.34, 0.22, V(lp.x, lp.y + 0.24, lp.z), V(0, CY, 0), [1, 1, 1], 1, rnd, 0);
-      s.iron.prism([[0.2, 0.2], [-0.2, 0.2], [-0.2, -0.2], [0.2, -0.2]], 0, 0.22, 0, [0.3, 0.3, 0.32], 1.6, xform([lp.x, lp.y + 0.42, lp.z], [0, CY, 0]));
-      s.doorLamps.push({ x: lp.x, y: lp.y + 0.26, z: lp.z });
-    }
 
     // 中殿的正面:一面高墙,上面是三角的山墙(两条斜边压着石檐、一排卷叶石块,尖顶一个十字)
     f.box(s.stone, 0, BY + 8.5, -1, 10.4, 17, 2, ST, D, 0.04);
@@ -565,6 +578,9 @@ export function buildCityScene(rnd: () => number): CityScene {
       }
     }
     lancet(f, 0, BY + 19.6, 0.04, 0.85, 2.7, true);
+    for (const sd of [-1, 1]) {
+      lancet(f, sd * 1.55, BY + 18.7, 0.04, 0.6, 1.8, false);
+    }
     f.box(s.stone, 0, BY + 17.0, 0.1, 10.6, 0.5, 0.44, SL, D, 0.03);
     f.box(s.stone, 0, BY + 9.9, 0.08, 10.5, 0.3, 0.34, SL, D, 0.03);
 
@@ -622,6 +638,7 @@ export function buildCityScene(rnd: () => number): CityScene {
       }
       arcade(f, tx - 2.0, tx + 2.0, BY + 7.85, 1.4, 0.66, 6);
       arcade(f, tx - 2.0, tx + 2.0, BY + 16.05, 1.4, 0.66, 6);
+      arcade(f, tx - 2.0, tx + 2.0, BY + 0.5, 2.6, 0.66, 5);          // 塔基:一排高的盲拱(以前是一面光墙)
       gablet(f, tx, BY + 24.15, 1.75, 1.6, 0.72, 0.22);
       for (const yy of [9.4, 17.6]) {
         f.box(s.stone, tx, BY + yy, -1.9, 5.3, 0.4, 5.3, SL, D, 0.04);
@@ -649,6 +666,10 @@ export function buildCityScene(rnd: () => number): CityScene {
       s.iron.box(0.05, 0.05, 0.42, V(tp.x, tp.y + 9.85, tp.z), V(0, CY, 0), [0.4, 0.4, 0.42], 1.6, rnd, 0);
       for (const [cx2, cz2] of [[-2.45, -2.45], [2.45, -2.45], [2.45, 2.45], [-2.45, 2.45]]) {
         pinnacle(f, tx + cx2, BY + 26.45, -1.9 + cz2, 0.72, 2.2, 3.6);
+      }
+      // 四边正中再各一根矮一些的:塔顶一圈八根小尖塔
+      for (const [cx2, cz2] of [[0, 2.5], [0, -2.5], [2.5, 0], [-2.5, 0]]) {
+        pinnacle(f, tx + cx2, BY + 26.45, -1.9 + cz2, 0.5, 1.3, 2.6);
       }
       // 扶壁:贴在塔的外侧和内侧,分三段往上收,每段顶上一道斜的披水石,最上面一根小尖塔
       for (const bx of [tx + sd * 2.9, tx - sd * 2.9]) {
@@ -708,49 +729,98 @@ export function buildCityScene(rnd: () => number): CityScene {
     f.box(s.stone, 0, BY + 23.2, -15, 1.2, 2.6, 1.2, ST, D, 0.03);
     const fp = f.P(0, BY + 24.5, -15);
     s.slate.prism(oct(0.52), 0, 6.5, 0.02, [0.8, 0.82, 0.88], 0.42, xform([fp.x, fp.y, fp.z], [0, CY, 0]));
+    // 屋脊上一排石头的小脊饰
+    for (let k = 0; k < 13; k += 1) {
+      if (Math.abs(-3.2 - k * 2.1 + 15) > 1.2) {
+        f.box(s.stone, 0, BY + 22.95, -3.2 - k * 2.1, 0.2, 0.7, 0.2, SL, D, 0.02);
+      }
+    }
     // 挡路:主角出不了广场东沿,这几块只管镜头别钻进楼里
     solid(32, -2, 8, 12, 30);
-    solid(23, -1.3, 1.8, 4.2, 2);
     solid(23.4, 8.6, 1.4, 2.6, 30);
   }
 
-  // ── 教堂前的栏杆:一排石柱,柱间是铁栏;栏后面是柏树和一尊立像 ──
-  for (const sd of [-1, 1]) {
-    const z0 = sd < 0 ? 6.3 : 3.7;
-    for (let i = 0; i < 5; i += 1) {
-      const z = sd * (z0 + i * 2.5);
-      s.stone.box(0.7, 1.9, 0.7, V(CITY.X1 + 0.3, 0.95, z), V(0, 0, 0), [0.7, 0.71, 0.76], 0.25, rnd, 0.04);
-      s.stone.box(0.9, 0.18, 0.9, V(CITY.X1 + 0.3, 1.98, z), V(0, 0, 0), [0.62, 0.63, 0.68], 0.25, rnd, 0.03);
-      if (i < 4) {
-        for (const yy of [0.5, 1.5]) {
-          s.iron.box(0.04, 0.04, 2.5, V(CITY.X1 + 0.3, yy, z + sd * 1.25), V(0, 0, 0), [0.3, 0.3, 0.33], 1.6, rnd, 0);
+  // ── 教堂前的台地(第四轮,照原型):广场东沿一道石挡墙,墙顶一排石柱和铁栏;正中一段宽台阶上到台地,台阶两头各一根带灯的石柱。
+  //    教堂、柏树、立像都站在台地上(以前是平地上一排栏杆,台阶跟着教堂斜过去)──
+  {
+    const TX = CITY.X1 + 0.6;
+    const TH = 0.9;
+    const SZ0 = -6.5;
+    const SZ1 = 2.5;
+    const TS: Tint = [0.62, 0.63, 0.67];
+    const TL: Tint = [0.76, 0.77, 0.82];
+    const O0 = V(0, 0, 0);
+    const slab = (x0: number, x1: number, z0: number, z1: number): void => {
+      s.stone.box(x1 - x0, TH, z1 - z0, V((x0 + x1) / 2, TH / 2, (z0 + z1) / 2), O0, TS, 0.5, rnd, 0.03);
+    };
+    slab(TX, 48, -24, SZ0);
+    slab(TX, 48, SZ1, 24);
+    slab(TX + 2.2, 48, SZ0, SZ1);
+    // 台阶:六级,整段比广场宽出来的那一截嵌在台地里
+    for (let i = 0; i < 6; i += 1) {
+      const x0 = TX + 0.36 * i;
+      s.stone.box(TX + 2.2 - x0, 0.15, SZ1 - SZ0, V((x0 + TX + 2.2) / 2, 0.15 * i + 0.075, (SZ0 + SZ1) / 2), O0, i % 2 ? TL : TS, 0.5, rnd, 0.02);
+    }
+    /** 一根石柱(lampOn = 顶上一盏灯)。 */
+    const post = (x: number, z: number, h: number, w: number, lampOn: boolean): void => {
+      s.stone.box(w, h, w, V(x, h / 2, z), O0, TL, 0.5, rnd, 0.04);
+      s.stone.box(w + 0.2, 0.18, w + 0.2, V(x, h + 0.09, z), O0, [0.84, 0.85, 0.9], 0.5, rnd, 0.03);
+      if (lampOn) {
+        s.iron.box(0.34, 0.06, 0.34, V(x, h + 0.21, z), O0, [0.3, 0.3, 0.32], 1.6, rnd, 0.01);
+        s.glass.box(0.26, 0.4, 0.26, V(x, h + 0.44, z), O0, [1, 1, 1], 1, rnd, 0);
+        s.iron.prism([[0.23, 0.23], [-0.23, 0.23], [-0.23, -0.23], [0.23, -0.23]], 0, 0.26, 0, [0.3, 0.3, 0.32], 1.6, xform([x, h + 0.64, z]));
+        for (const [ox, oz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+          s.iron.box(0.03, 0.42, 0.03, V(x + ox * 0.13, h + 0.44, z + oz * 0.13), O0, [0.2, 0.2, 0.22], 1.6, rnd, 0);
         }
-        for (let k = 1; k < 9; k += 1) {
-          s.iron.box(0.03, 1.5, 0.03, V(CITY.X1 + 0.3, 0.95, z + sd * (k * 0.28)), V(0, 0, 0), [0.3, 0.3, 0.33], 1.6, rnd, 0);
+        s.doorLamps.push({ x: x - 0.25, y: h + 0.44, z });
+      }
+    };
+    for (const [z0, z1, zs] of [[-22, SZ0 - 0.55, SZ0 - 0.55], [SZ1 + 0.55, 22, SZ1 + 0.55]] as Array<[number, number, number]>) {
+      // 台阶这一头:一根粗石柱带灯,顺着台阶的侧墙
+      post(TX + 0.25, zs, TH + 1.75, 0.9, true);
+      s.stone.box(2.2, TH + 0.45, 0.5, V(TX + 1.3, (TH + 0.45) / 2, zs), O0, TS, 0.5, rnd, 0.03);
+      // 墙顶:一道矮石栏,上面是铁栏,隔一段一根石柱
+      const len = z1 - z0;
+      const zm = (z0 + z1) / 2;
+      s.stone.box(0.42, 0.42, len, V(TX + 0.25, TH + 0.21, zm), O0, TS, 0.5, rnd, 0.02);
+      s.stone.box(0.54, 0.1, len, V(TX + 0.25, TH + 0.47, zm), O0, TL, 0.5, rnd, 0.02);
+      for (const yy of [TH + 0.62, TH + 1.3]) {
+        s.iron.box(0.04, 0.04, len, V(TX + 0.25, yy, zm), O0, [0.3, 0.3, 0.33], 1.6, rnd, 0);
+      }
+      const np = Math.round(len / 0.3);
+      for (let k = 1; k < np; k += 1) {
+        s.iron.box(0.03, 0.92, 0.03, V(TX + 0.25, TH + 0.98, z0 + (len * k) / np), O0, [0.3, 0.3, 0.33], 1.6, rnd, 0);
+      }
+      const ns = Math.round(len / 3.2);
+      for (let k = 0; k <= ns; k += 1) {
+        const z = z0 + (len * k) / ns;
+        if (Math.abs(z - zs) > 1) {
+          post(TX + 0.25, z, TH + 1.5, 0.62, false);
         }
       }
+      solid(TX + 0.4, zm, 0.6, len / 2 + 0.6, 3);
     }
-    solid(CITY.X1 + 0.3, sd * (z0 + 5), 0.4, 5.3, 2);
     // 柏树:北边那块空出来的台地上多几棵,南边贴着侧廊的墙角
-    for (const [cx2, cz2, hh] of (sd < 0 ? [[22.3, 8.0, 5.6], [24.6, 9.4, 6.4], [26.4, 12.6, 5.2], [23.2, 14.6, 6.0]] : [[21.5, 8.4, 5.4], [21.4, 11.8, 4.8], [23.4, 13.8, 6.2]]) as Array<[number, number, number]>) {
-      s.bark.cylinder(0.1, 0.13, 0.9, 6, V(cx2, 0.45, sd * cz2), V(0, 0, 0), [0.4, 0.36, 0.32], 0.5, rnd);
-      // 柏树:又瘦又高的一团墨绿(第一版是八棱的锥子,被月光一照像石锥)
-      // (光滑的一根又像炮弹,拧着的纹路又像裹着布:表面要一团一团地鼓出来,深浅不一)
-      const ph = R(0, 6.28);
-      const lump = (u: number, v: number): number => Math.sin(u * 6.2832 * 6 + ph) * Math.sin(v * 26 + ph) * 0.65 + Math.sin(u * 6.2832 * 11 + ph * 2) * Math.sin(v * 47 + 1.3) * 0.35;
-      s.leaf.surf(24, 28, (u, v, out) => {
-        const prof = Math.pow(Math.sin(Math.PI * Math.min(1, v * 0.97 + 0.03)), 0.55) * (1 - 0.45 * v);
-        const r = 0.6 * prof * (1 + 0.26 * lump(u, v));
-        out.set(cx2 + Math.cos(u * 6.2832) * r, 0.6 + v * hh, sd * cz2 + Math.sin(u * 6.2832) * r);
-      }, { closeU: true, tint: (u: number, v: number) => { const t = 0.8 + 0.7 * lump(u, v); return [0.014 * t, 0.026 * t, 0.016 * t] as Tint; } });
+    for (const sd of [-1, 1]) {
+      for (const [cx2, cz2, hh] of (sd < 0 ? [[22.3, 8.4, 5.6], [24.6, 9.6, 6.4], [26.4, 12.6, 5.2], [23.2, 14.6, 6.0]] : [[21.9, 8.4, 5.4], [21.8, 11.8, 4.8], [23.6, 13.8, 6.2]]) as Array<[number, number, number]>) {
+        s.bark.cylinder(0.1, 0.13, 0.9, 6, V(cx2, TH + 0.45, sd * cz2), O0, [0.4, 0.36, 0.32], 0.5, rnd);
+        // 又瘦又高的一团墨绿(八棱的锥子像石锥,光滑的一根像炮弹,拧着的纹路像裹着布):表面要一团一团地鼓出来,深浅不一
+        const ph = R(0, 6.28);
+        const lump = (u: number, v: number): number => Math.sin(u * 6.2832 * 6 + ph) * Math.sin(v * 26 + ph) * 0.65 + Math.sin(u * 6.2832 * 11 + ph * 2) * Math.sin(v * 47 + 1.3) * 0.35;
+        s.leaf.surf(24, 28, (u, v, out) => {
+          const prof = Math.pow(Math.sin(Math.PI * Math.min(1, v * 0.97 + 0.03)), 0.55) * (1 - 0.45 * v);
+          const r = 0.6 * prof * (1 + 0.26 * lump(u, v));
+          out.set(cx2 + Math.cos(u * 6.2832) * r, TH + 0.6 + v * hh, sd * cz2 + Math.sin(u * 6.2832) * r);
+        }, { closeU: true, tint: (u: number, v: number) => { const t = 0.8 + 0.7 * lump(u, v); return [0.014 * t, 0.026 * t, 0.016 * t] as Tint; } });
+      }
     }
+    // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
+    s.stone.box(1.5, 1.8, 1.5, V(23.4, TH + 0.9, -10.6), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
+    s.stone.box(1.8, 0.24, 1.8, V(23.4, TH + 1.92, -10.6), O0, [0.66, 0.67, 0.72], 0.5, rnd, 0.04);
+    s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([23.4, TH + 2.04, -10.6]), tint: [0.76, 0.77, 0.82], den: 0.5 });
+    s.stone.ball(0.2, 0.24, 0.2, [23.4, TH + 4.4, -10.6], 8, { tint: [0.78, 0.79, 0.84], den: 0.5 });
+    s.stone.box(0.14, 0.9, 0.14, V(23.05, TH + 3.6, -10.45), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
   }
-  // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
-  s.stone.box(1.5, 1.8, 1.5, V(23.4, 0.9, -10.6), V(0, 0, 0), [0.66, 0.67, 0.72], 0.25, rnd, 0.05);
-  s.stone.box(1.8, 0.24, 1.8, V(23.4, 1.92, -10.6), V(0, 0, 0), [0.6, 0.61, 0.66], 0.25, rnd, 0.04);
-  s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([23.4, 2.04, -10.6]), tint: [0.7, 0.71, 0.76], den: 0.25 });
-  s.stone.ball(0.2, 0.24, 0.2, [23.4, 4.4, -10.6], 8, { tint: [0.72, 0.73, 0.78], den: 0.25 });
-  s.stone.box(0.14, 0.9, 0.14, V(23.05, 3.6, -10.45), V(0, 0, 30), [0.7, 0.71, 0.76], 0.25, rnd, 0.03);
 
   // ── 水井:一圈石井栏、两根立柱撑着一个小顶棚、一根辘轳、一只桶 ──
   {

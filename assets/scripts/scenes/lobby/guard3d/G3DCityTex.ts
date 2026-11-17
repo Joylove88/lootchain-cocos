@@ -298,6 +298,56 @@ export function slatePbr(S: number): Pbr {
   }, 2.2);
 }
 
+/**
+ * 乱石墙(可平铺):大小不一的毛石一块块垒起来,石缝里是深色的灰浆;石头偏扁、表面鼓出来,深灰里带一点褐。
+ * 第四轮(用户:「继续磨建筑」):原型里铁匠铺和房子的底层都是这种深色的乱石墙,不是整齐的浅色方石。
+ */
+export function rubblePbr(S: number): Pbr {
+  const NX = 6;
+  const NY = 9;
+  return makePbr(S, (u, v, o) => {
+    const cu = u * NX;
+    const cv = v * NY;
+    const i0 = Math.floor(cu);
+    const j0 = Math.floor(cv);
+    let f1 = 9;
+    let f2 = 9;
+    let ia = 0;
+    let ja = 0;
+    for (let dj = -1; dj <= 1; dj += 1) {
+      for (let di = -1; di <= 1; di += 1) {
+        const a = (((i0 + di) % NX) + NX) % NX;
+        const b = (((j0 + dj) % NY) + NY) % NY;
+        const px = i0 + di + 0.15 + 0.7 * texHash(a, b, 811);
+        const py = j0 + dj + 0.2 + 0.6 * texHash(a, b, 823);
+        const d = Math.hypot(cu - px, (cv - py) * 1.2);
+        if (d < f1) {
+          f2 = f1;
+          f1 = d;
+          ia = a;
+          ja = b;
+        } else if (d < f2) {
+          f2 = d;
+        }
+      }
+    }
+    const id = texHash(ia, ja, 829);
+    const id2 = texHash(ia, ja, 839);
+    const edge = f2 - f1;
+    const body = sstep(0.04, 0.15, edge);
+    const n = pfbm(u, v, 20, 20, 3, 841);
+    const fine = pfbm(u, v, 64, 64, 2, 853);
+    o.h = body * (0.5 + 0.24 * (id - 0.5) + 0.2 * (1 - Math.min(1, f1 * 1.3)) + 0.1 * (n - 0.5) + 0.05 * (fine - 0.5)) + (1 - body) * 0.1;
+    const tone = (0.68 + 0.56 * id) * (0.82 + 0.36 * n) * (0.9 + 0.2 * fine);
+    const warm = sstep(0.55, 0.95, id2);
+    o.r = mixn(24, mixn(86, 100, warm) * tone, body);
+    o.g = mixn(23, mixn(86, 88, warm) * tone, body);
+    o.b = mixn(22, mixn(90, 76, warm) * tone, body);
+    o.rough = 0.86 + 0.1 * n;
+    o.ao = 0.45 + 0.55 * sstep(0.02, 0.2, edge);
+  }, 2.4);
+}
+
 /** 灰泥墙(可平铺):抹得不太平的旧灰泥,米灰色,带水渍和脱皮的暗斑。 */
 export function plasterPbr(S: number): Pbr {
   return makePbr(S, (u, v, o) => {
