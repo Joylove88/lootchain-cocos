@@ -184,15 +184,17 @@ class Pre25Layer {
   private pose(self: any, leader: any): void {
     const atlas = this.atlas!;
     const now = Date.now();
-    // 朝向:按这一帧挪动的方向(2D 地图 x 右 = 3D 的 +Z,y 上 = 3D 的 +X,纵向要除 sin 俯角换回地面)
+    // 朝向:按这一帧挪动的方向换回 3D 地面上的方向,再取最近的 45 度
     const dx = Number.isNaN(this.lastX) ? 0 : leader.x - this.lastX;
     const dy = Number.isNaN(this.lastY) ? 0 : leader.y - this.lastY;
     this.lastX = leader.x;
     this.lastY = leader.y;
     if (dx * dx + dy * dy > 0.25) {
-      const gX = dy / Math.sin((atlas.pitch * Math.PI) / 180);
-      const gZ = dx;
-      // 模型 yaw 0 面朝 +X(画面上方)、90 面朝 -Z(画面左边)
+      // 画面上的挪动 → 地面方向:横向沿 R.right,纵向沿 R.up 走 dy / sin(俯角)(地面在画面上纵向被压扁)
+      const t = dy / R.sinP;
+      const gX = dx * R.right[0] + t * R.up[0];
+      const gZ = dx * R.right[1] + t * R.up[1];
+      // 模型 yaw θ 面朝 (cos θ, 0, -sin θ):0 = +X(东)、90 = -Z
       const deg = (Math.atan2(-gZ, gX) * 180) / Math.PI;
       this.yaw = ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
     }

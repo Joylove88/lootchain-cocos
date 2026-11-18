@@ -40,6 +40,9 @@ PPM = M['ppm']
 p = math.radians(M['pitch'])
 sx0, sy0, sx1, sy1 = M['plane']
 C0 = M['c0']
+YAW = M.get('yaw', 0.0)
+HH = (math.cos(math.radians(YAW)), 0.0, math.sin(math.radians(YAW)))
+RR = (-HH[2], 0.0, HH[0])
 NEAR, FAR = M['near'], M['far']
 
 
@@ -123,8 +126,10 @@ for r in range(gr):
         ix, iy = (c + 0.5) * CELL, (r + 0.5) * CELL
         sx = sx0 + ix / PPM
         sy = sy1 - iy / PPM
-        Z = C0[2] + sx
-        X = C0[0] + sy / math.sin(p)
+        # 画面平面 → 地面:横向沿 R、纵向沿水平朝向 H 走 sy / sin(俯角)
+        t = sy / math.sin(p)
+        X = C0[0] + sx * RR[0] + t * HH[0]
+        Z = C0[2] + sx * RR[2] + t * HH[2]
         ok = AX0 + R < X < min(AX1, XMAX) - R and AZ0 + R < Z < AZ1 - R
         if ok:
             # 地面被近处的东西(屋顶、树干)盖住的格子不让走:人走进去会整个被挡住,玩家看不见自己
@@ -153,14 +158,14 @@ for L in M['scene'].get('lights', []):
         continue
     P = L['p']
     d = [P[0] - C0[0], P[1] - C0[1], P[2] - C0[2]]
-    sx = d[2]
-    sy = d[0] * math.sin(p) + d[1] * math.cos(p)
+    sx = d[0] * RR[0] + d[2] * RR[2]
+    sy = (d[0] * HH[0] + d[2] * HH[2]) * math.sin(p) + d[1] * math.cos(p)
     ix, iy = (sx - sx0) * PPM, (sy1 - sy) * PPM
     if 0 <= ix < IW and 0 <= iy < IH:
         lights.append([round(ix), round(iy), L['kind'], [round(v) for v in L['c']]])
 
 data = {
-    'px': [IW, IH], 'chunk': CHUNK, 'grid': [ccols, crows], 'unit': UNIT, 'ppm': PPM, 'pitch': M['pitch'],
+    'px': [IW, IH], 'chunk': CHUNK, 'grid': [ccols, crows], 'unit': UNIT, 'ppm': PPM, 'pitch': M['pitch'], 'yaw': YAW,
     'near': NEAR, 'far': FAR, 'dist': M['dist'], 'c0': C0, 'plane': M['plane'],
     'walk': {'cell': CELL, 'cols': gc, 'rows': rows_hex}, 'lights': lights,
 }

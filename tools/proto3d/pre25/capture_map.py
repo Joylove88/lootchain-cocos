@@ -33,17 +33,18 @@ os.makedirs(TILES, exist_ok=True)
 
 W, H, MARGIN = 3840, 2160, 128
 PPM = float(OPT.get('ppm', 96))
-PITCH = 42.0
+PITCH = float(OPT.get('pitch', 42))
+YAW = float(OPT.get('yaw', 0))          # 镜头水平朝向:0 = 正对东边;-45 = 往东北斜着看(11-18 用户选的视角 D)
 DIST = 120.0                 # 镜头离参考点多远(正交下只影响近 / 远裁剪,不影响画面)
 NEAR, FAR = 1.0, 240.0
-C0 = (2.0, 0.0, 0.0)         # 参考点(地面):画面平面坐标的原点
-# 地图范围(世界坐标,米):地面那块 64 × 48 往里收一点(再往外是没铺地面的空处);TOP = 远处高的东西(教堂尖顶)要拍进来
-X_NEAR, X_FAR, Z_LEFT, Z_RIGHT, TOP = float(OPT.get('x0', -28)), float(OPT.get('x1', 31)), float(OPT.get('z0', -23)), float(OPT.get('z1', 23)), float(OPT.get('top', 12))
+C0 = tuple(float(v) for v in OPT.get('c0', '2,0,0').split(','))         # 参考点(地面):画面平面坐标的原点
 
 p = math.radians(PITCH)
-F = (math.cos(p), -math.sin(p), 0.0)
-R = (0.0, 0.0, 1.0)
-U = (math.sin(p), math.cos(p), 0.0)
+a = math.radians(YAW)
+HX, HZ = math.cos(a), math.sin(a)          # 水平朝向
+F = (math.cos(p) * HX, -math.sin(p), math.cos(p) * HZ)
+R = (-HZ, 0.0, HX)
+U = (math.sin(p) * HX, math.cos(p), math.sin(p) * HZ)
 
 
 def dot(a, b):
@@ -55,27 +56,36 @@ def plane(P):
     return dot(d, R), dot(d, U)
 
 
-# 画面平面上的范围:左右 = 地图两侧;下 = 近处地面边;上 = 远处地面边再往上 TOP 米高的东西
-sx0, sx1 = plane((0, 0, Z_LEFT))[0], plane((0, 0, Z_RIGHT))[0]
-sy0 = plane((X_NEAR, 0, 0))[1]
-sy1 = plane((X_FAR, TOP, 0))[1]
+if 'rect' in OPT:
+    # 直接给画面平面上的范围(米,相对 C0):左, 右, 下, 上
+    sx0, sx1, sy0, sy1 = [float(v) for v in OPT['rect'].split(',')]
+    X_NEAR = X_FAR = Z_LEFT = Z_RIGHT = TOP = None
+else:
+    # 地图范围(世界坐标,米):地面那块 64 × 48 往里收一点(再往外是没铺地面的空处);TOP = 远处高的东西(教堂尖顶)要拍进来(只适用于正对东边)
+    X_NEAR, X_FAR, Z_LEFT, Z_RIGHT, TOP = float(OPT.get('x0', -28)), float(OPT.get('x1', 31)), float(OPT.get('z0', -23)), float(OPT.get('z1', 23)), float(OPT.get('top', 12))
+    # 画面平面上的范围:左右 = 地图两侧;下 = 近处地面边;上 = 远处地面边再往上 TOP 米高的东西
+    sx0, sx1 = plane((0, 0, Z_LEFT))[0], plane((0, 0, Z_RIGHT))[0]
+    sy0 = plane((X_NEAR, 0, 0))[1]
+    sy1 = plane((X_FAR, TOP, 0))[1]
 img_w, img_h = int(math.ceil((sx1 - sx0) * PPM)), int(math.ceil((sy1 - sy0) * PPM))
 tw, th = W - 2 * MARGIN, H - 2 * MARGIN
 cols, rows = int(math.ceil(img_w / tw)), int(math.ceil(img_h / th))
 ortho_h = H / 2 / PPM          # 正交相机的半高(米)
-print(f'map {img_w}x{img_h}px  ppm {PPM}  tiles {cols}x{rows}  plane x[{sx0:.2f},{sx1:.2f}] y[{sy0:.2f},{sy1:.2f}]')
+print(f'map {img_w}x{img_h}px  ppm {PPM}  yaw {YAW} pitch {PITCH}  tiles {cols}x{rows}  plane x[{sx0:.2f},{sx1:.2f}] y[{sy0:.2f},{sy1:.2f}]')
+
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cdp_fast import Fast  # noqa: E402
+FAST = Fast().__enter__()
 
 
 def ev(js):
-    r = subprocess.run(DD + ['eval', js], capture_output=True, text=True, encoding='utf-8', errors='replace')
-    return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-300:]
+    v = FAST.js(js)
+    return v if isinstance(v, str) else json.dumps(v)
 
 
 def shot(path, wait):
-    time.sleep(wait)
-    subprocess.run(DD + ['shot', path], capture_output=True)
-    if not os.path.exists(path):
-        raise SystemExit(f'截图失败 {path}')
+    FAST.shot(path, wait)
 
 
 def tile_center(row, col):
@@ -94,7 +104,7 @@ def aim(cx, cy):
     return ev(js)
 
 
-meta = {'ppm': PPM, 'pitch': PITCH, 'dist': DIST, 'near': NEAR, 'far': FAR, 'c0': C0, 'f': F, 'r': R, 'u': U,
+meta = {'ppm': PPM, 'pitch': PITCH, 'yaw': YAW, 'dist': DIST, 'near': NEAR, 'far': FAR, 'c0': C0, 'f': F, 'r': R, 'u': U,
         'plane': [sx0, sy0, sx1, sy1], 'img': [img_w, img_h], 'tile': [tw, th], 'grid': [cols, rows], 'margin': MARGIN,
         'shot': [W, H], 'bounds': {'x0': X_NEAR, 'x1': X_FAR, 'z0': Z_LEFT, 'z1': Z_RIGHT, 'top': TOP}}
 
@@ -102,6 +112,11 @@ print('helper', ev(open(os.path.join(os.path.dirname(__file__), 'helper.js'), en
 print('hide', ev('return __pre.hideChars()'))
 # 冻结逻辑(落叶、火苗这类动的东西每张不一样;遮挡蒙版靠两张对比,必须一模一样),关暗角(块边会发暗)
 print('freeze', ev('D.dungeon.frozen = true; D.post({vignette: 0}); return 1'))
+time.sleep(1.5)
+cv = json.loads(ev('return [cc.game.canvas.width, cc.game.canvas.height]'))
+print('canvas', cv)
+if cv != [W, H]:
+    raise SystemExit(f'画布不是 {W}x{H}(工具栏没藏?),先 dungeon_dev shot 一张让它重排再来')
 meta['scene'] = json.loads(ev('return __pre.scene()'))
 json.dump(meta, open(os.path.join(OUT, 'map.json'), 'w', encoding='utf-8'), indent=1)
 

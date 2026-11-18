@@ -26,9 +26,15 @@ def walk(ix, iy):
     return (int(W['rows'][r][c >> 2], 16) >> (3 - (c & 3))) & 1
 
 
+YAW = math.radians(D.get('yaw', 0))
+HH = (math.cos(YAW), math.sin(YAW))
+RR = (-HH[1], HH[0])
+
+
 def px(X, Z):
-    sx = Z - D['c0'][2]
-    sy = (X - D['c0'][0]) * math.sin(P)
+    dx, dz = X - D['c0'][0], Z - D['c0'][2]
+    sx = dx * RR[0] + dz * RR[1]
+    sy = (dx * HH[0] + dz * HH[1]) * math.sin(P)
     return (sx - D['plane'][0]) * D['ppm'], (D['plane'][3] - sy) * D['ppm']
 
 

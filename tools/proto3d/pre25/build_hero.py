@@ -115,7 +115,7 @@ for k, pg in enumerate(pages):
     else:
         Image.fromarray(used).save(path, optimize=True)
     total += os.path.getsize(path)
-out = {'ppm': meta['ppm'] * SCALE, 'pitch': meta['pitch'], 'fps': meta['fps'], 'pages': len(pages),
+out = {'ppm': meta['ppm'] * SCALE, 'pitch': meta['pitch'], 'camYaw': meta.get('camYaw', 0), 'fps': meta['fps'], 'pages': len(pages),
        'clips': {k: {'dur': c['dur'], 'n': len(range(0, c['n'], EVERY.get(k, 1))), 'loop': c['loop']} for k, c in meta['clips'].items()},
        'yaws': meta['yaws'], 'mirror': {str(k): v for k, v in MIRROR_OF.items()} if MIRROR else {}, 'frames': frames}
 json.dump(out, open(os.path.join(OUT, f'{NAME}.json'), 'w', encoding='utf-8'), separators=(',', ':'))

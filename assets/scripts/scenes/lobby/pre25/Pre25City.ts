@@ -5,7 +5,7 @@ import { PRE25_CITY_DATA } from './Pre25CityData';
 /**
  * 预渲染 2.5D 主城(整体 3D 化方案第 0 期,2026-11-18;默认关,地址带 ?pre25=1 或 localStorage.lcPre25 = '1' 才换上)。
  *
- * 画面是 3D 主城广场小样用正交投影、固定俯角(42°)离线拍的整图(tools/proto3d/pre25:capture_map.py 拍、build_map.py 拼图切块),
+ * 画面是 3D 主城广场小样用正交投影、固定俯角离线拍的整图(11-18 用户选视角 D:斜 45°、俯 45°)(tools/proto3d/pre25:capture_map.py 拍、build_map.py 拼图切块),
  * 运行时就是普通 2D:地面颜色块当贴地件铺,人物被建筑 / 树挡住靠逐像素比深度(effects/pre25-actor + Pre25Actors.ts)。
  * 跑图逻辑(可走格、NPC、出口、传送阵、任务追踪、坐标上报)全部沿用 LobbyTownRenderer,这里只给一份 WorldMapDef。
  *
@@ -15,6 +15,11 @@ const D = PRE25_CITY_DATA;
 const [IW, IH] = D.px;
 const U = D.unit;
 const P = (D.pitch * Math.PI) / 180;
+/** 镜头水平朝向(度):0 = 正对东边;-45 = 往东北斜着看(11-18 用户选的视角 D)。 */
+const YAW = ((((D as any).yaw as number | undefined) ?? 0) * Math.PI) / 180;
+/** 水平朝向 H(画面上方对应的地面方向)和画面右方 R,都是 3D 场景里 (X, Z) 平面上的单位向量。 */
+const HX = Math.cos(YAW);
+const HZ = Math.sin(YAW);
 const DIR = 'pre25/city';
 
 /** 开关:只在网页端看地址参数 / 本地存储(原生没有地址,恒关)。 */
@@ -31,8 +36,10 @@ export function pre25Enabled(): boolean {
 
 /** 3D 场景地面上的点 (X, Z)(米)→ 整图像素(左上原点)。 */
 export function pre25GroundToPx(X: number, Z: number): [number, number] {
-  const sx = Z - D.c0[2];
-  const sy = (X - D.c0[0]) * Math.sin(P);
+  const dx = X - D.c0[0];
+  const dz = Z - D.c0[2];
+  const sx = -dx * HZ + dz * HX;
+  const sy = (dx * HX + dz * HZ) * Math.sin(P);
   return [(sx - D.plane[0]) * D.ppm, (D.plane[3] - sy) * D.ppm];
 }
 
@@ -53,6 +60,10 @@ export const PRE25_CITY_RUNTIME = {
   unit: U,
   ppm: D.ppm,
   tanP: Math.tan(P),
+  sinP: Math.sin(P),
+  /** 画面上方对应的地面方向 (X, Z)、画面右方对应的地面方向 (X, Z)。 */
+  up: [HX, HZ] as [number, number],
+  right: [-HZ, HX] as [number, number],
   near: D.near,
   far: D.far,
   dist: D.dist,
@@ -81,7 +92,7 @@ const CITY4 = (name: string): string => `ui/world/city4/${name}/spriteFrame`;
 const NPCS: Array<[WorldNpcCode, string, string, number, number, 1 | -1]> = [
   ['SCHOLAR', '帝国学者 · 艾德里安', 'city4_npc_scholar', 8.6, -3.6, 1],
   ['GUILDMASTER', '公会会长 · 维克', 'city4_npc_guildmaster', -12.0, -1.0, 1],
-  ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', -12.0, 7.0, -1],
+  ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', -10.0, 5.5, -1],
   ['MERCHANT', '杂货商 · 托比', 'city4_npc_merchant', -1.0, 7.0, -1],
   ['INNKEEPER', '酒馆老板 · 巴克', 'city4_npc_innkeeper', 5.0, -5.0, 1],
   ['BARD', '吟游诗人 · 林恩', 'city4_npc_bard', -6.5, 3.2, 1],
@@ -120,8 +131,8 @@ export const CITY_PRE25: WorldMapDef = {
   levelText: '',
   actorTint: [214, 222, 246],
   ambient: false,
-  // 1080 高的电脑屏上一个地图像素约 0.9 个屏幕像素(1.3 时放大到 1.28 倍,发糊)
-  cameraZoom: 1.8,
+  // 视角 D(地图每米 120 像素、一个地图像素 1.42 世界单位):1080 高的电脑屏上一个地图像素约 1 个屏幕像素,和用户挑的样图一样近
+  cameraZoom: 1.7,
   width: MAP_W,
   height: MAP_H,
   walk: { left: -MAP_W / 2 + 12, right: MAP_W / 2 - 12, bottom: -MAP_H / 2 + 12, top: MAP_H / 2 - 12 },
@@ -143,8 +154,8 @@ export const CITY_PRE25: WorldMapDef = {
   ],
   camps: [],
   exits: [
-    { key: 'to_woods', label: '前往 · 村外林地', ...pre25Ground(-19.2, 1.0), radius: 140, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
-    { key: 'to_gray', label: '前往 · 灰岩荒原', ...pre25Ground(-4.0, 13.6), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
+    { key: 'to_woods', label: '前往 · 村外林地', ...pre25Ground(-17.0, 9.0), radius: 140, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
+    { key: 'to_gray', label: '前往 · 灰岩荒原', ...pre25Ground(9.5, 12.5), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
   ],
   scene: SCENE,
   minimapArt: `${DIR}/overview/spriteFrame`,
@@ -152,6 +163,6 @@ export const CITY_PRE25: WorldMapDef = {
 
 /** 别的地图通往主城的落点(出口圈里面一点)。 */
 export const CITY_PRE25_ENTRY = {
-  fromWoods: pre25Ground(-17.2, 1.0),
-  fromGray: pre25Ground(-4.0, 12.0),
+  fromWoods: pre25Ground(-15.0, 8.5),
+  fromGray: pre25Ground(6.5, 10.5),
 };

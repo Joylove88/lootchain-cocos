@@ -26,7 +26,8 @@ OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1
 OUT = ARGS[0]
 os.makedirs(OUT, exist_ok=True)
 
-PITCH = 42.0
+PITCH = float(OPT.get('pitch', 42))
+CAM_YAW = float(OPT.get('yaw', 0))          # 镜头水平朝向,和 capture_map.py 的 --yaw 一致(主角自己的 8 个朝向仍是世界里的 0 / 45 / … 度)
 PPM = float(OPT.get('ppm', 120))
 FPS = float(OPT.get('fps', 20))
 SLOW_FPS = float(OPT.get('slowfps', 12))          # 待机 / 倒地这种慢的,帧可以少一些
@@ -68,12 +69,14 @@ print('post', ev("D.post({fog:false, ao:false, bloom:false, vignette:0}); D.set(
 print('iso', ev("return __pre.iso('hero')"))
 p = math.radians(PITCH)
 look = [X, LOOK_Y, Z]
-pos = [X - math.cos(p) * DIST, LOOK_Y + math.sin(p) * DIST, Z]
+ca = math.radians(CAM_YAW)
+fwd = (math.cos(p) * math.cos(ca), -math.sin(p), math.cos(p) * math.sin(ca))
+pos = [look[i] - fwd[i] * DIST for i in range(3)]
 ortho_h = size[1] / 2 / PPM
 print('cam', ev(f"var d=D.dungeon; D.shot({json.dumps(pos)}, {json.dumps(look)}, 30); d.cam.projection=0; d.cam.orthoHeight={ortho_h:.6f}; d.cam.near=1; d.cam.far=80; return 1"))
 # 主角脚底在画面上的位置(像素,左上原点):正交下 = 画面中心往下 LOOK_Y·cos(p)·PPM
 foot_px = [size[0] / 2, size[1] / 2 + LOOK_Y * math.cos(p) * PPM]
-meta = {'pitch': PITCH, 'ppm': PPM, 'fps': FPS, 'canvas': size, 'foot': foot_px, 'yaws': YAWS, 'clips': {}}
+meta = {'pitch': PITCH, 'camYaw': CAM_YAW, 'ppm': PPM, 'fps': FPS, 'canvas': size, 'foot': foot_px, 'yaws': YAWS, 'clips': {}}
 
 
 def clip_len(clip):
