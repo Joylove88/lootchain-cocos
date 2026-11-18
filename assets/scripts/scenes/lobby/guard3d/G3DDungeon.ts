@@ -119,6 +119,8 @@ export interface DungeonCfg {
   pixBudget: number;
   /** 跑起来以后帧率持续偏低就自动降一级(渲染分辨率 → 倒影 → 灯数);截图 / 录屏(逐帧推)时不动。 */
   autoQ: boolean;
+  /** 建筑模型投不投月光阴影(核显档关:阴影那一遍要把建筑整栋再画一次,约 370 万面;角色照样投)。 */
+  bldShadow: boolean;
   /** 平均帧率低于多少算「偏低」(地址 &autoqfps=,自验时调高它来逼出降级流程)。 */
   autoQFps: number;
   ao: boolean;
@@ -188,7 +190,7 @@ export interface DungeonCfg {
 export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
-  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
+  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, bldShadow: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
   bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
@@ -220,7 +222,7 @@ export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
   mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
   // 电脑上的核显(Intel Iris / Arc 1xxV、AMD Radeon Graphics):画质照电脑档,只是不超采样(像素预算 200 万)、逐像素的灯少几盏
-  igpu: { realLights: 3, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false, reflect: false },          // 第十五轮:核显上卡的是几何 —— 倒影默认关(整个场景要多画一遍)、灯 3 盏
+  igpu: { realLights: 3, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false, reflect: false, bldShadow: false },          // 第十五轮:核显上卡的是几何 —— 倒影默认关(整个场景要多画一遍)、灯 3 盏
   phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
@@ -1760,7 +1762,7 @@ class Dungeon {
         const p = new Vec3();
         let tris = 0;
         for (const mr of model.getComponentsInChildren(MeshRenderer)) {
-          mr.shadowCastingMode = sp.far ? MeshRenderer.ShadowCastingMode.OFF : MeshRenderer.ShadowCastingMode.ON;          // 远处 / 背景的房子不投影子
+          mr.shadowCastingMode = sp.far || !DUNGEON.bldShadow ? MeshRenderer.ShadowCastingMode.OFF : MeshRenderer.ShadowCastingMode.ON;          // 远处 / 背景的房子不投影子;核显档建筑都不投
           mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
           const fx = BLD_FIX[sp.key];
           this.glowFromAlbedo(mr, DUNGEON.bldGlow * (fx?.glow ?? 1), fx?.tone);
