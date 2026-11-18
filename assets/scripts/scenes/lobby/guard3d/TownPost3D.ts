@@ -545,7 +545,10 @@ export class FieldPost {
     const ppl: any = director.root!.pipeline;
     const device = director.root!.device;
     const B = gfx.FormatFeatureBit;
-    const need = B.RENDER_TARGET | B.SAMPLED_TEXTURE | B.LINEAR_FILTER;
+    // WebGL2 里半浮点贴图的线性过滤是标准自带的,引擎却按 WebGL1 的扩展名(OES_texture_half_float_linear)去查、查不到就不给这一位:
+    // 正式包走的是 WebGL2,照旧要求这一位的话高动态永远开不起来(天空死黑、背光处发闷;预览走 WebGL1 看不出来)
+    const webgl2 = device.gfxAPI === gfx.API.WEBGL2;
+    const need = B.RENDER_TARGET | B.SAMPLED_TEXTURE | (webgl2 ? 0 : B.LINEAR_FILTER);
     const canHdr = (device.getFormatFeatures(Format.RGBA16F) & need) === need;
     const wantHdr = cfg.hdr && canHdr;
     if (this.floatWas === null) {
