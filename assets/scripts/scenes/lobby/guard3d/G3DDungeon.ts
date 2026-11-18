@@ -220,7 +220,7 @@ export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
   mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
   // 电脑上的核显(Intel Iris / Arc 1xxV、AMD Radeon Graphics):画质照电脑档,只是不超采样(像素预算 200 万)、逐像素的灯少几盏
-  igpu: { realLights: 6, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false },
+  igpu: { realLights: 3, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false, reflect: false },          // 第十五轮:核显上卡的是几何 —— 倒影默认关(整个场景要多画一遍)、灯 3 盏
   phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
@@ -2923,7 +2923,8 @@ class Dungeon {
   private qSince = 0;
 
   /**
-   * 帧率持续偏低(平均 < 42 帧满 3 秒)就降一级,每降一级等 4 秒再看:渲染分辨率 × 0.82(离屏最低约 90 万像素)→ 关遮蔽 → 关倒影 → 逐像素的灯减到 3 盏 → 泛光 3 级。
+   * 帧率持续偏低(平均 < 42 帧满 3 秒)就降一级,每降一级等 3 秒再看:关倒影 → 灯 2 盏 → 小物件不投影 → 关遮蔽 → 泛光 3 级 → 最后才降分辨率(离屏最低约 90 万像素);
+   * 帧率富余(> 56 满 6 秒)且分辨率被降过,就往回升一级。
    * 刚打开的前 8 秒(模型还在下载、着色器在编译)和截图 / 录屏逐帧推的时候不算。
    */
   private autoQuality(): void {
@@ -2940,35 +2941,71 @@ class Dungeon {
       this.qCool -= 0.5;
       return;
     }
+    const cur = (this.post.info().cfg as { scale: number }).scale;
+    // 帧率富余(平均 > 56 满 6 秒)而且分辨率是被降下来的:往回升一级(不超过像素预算),免得一直糊着
+    this.qFast = this.fps > 56 ? this.qFast + 0.5 : 0;
+    if (this.qFast >= 6 && this.qScale < 9) {
+      this.qFast = 0;
+      const cv = game.canvas;
+      const cap = cv ? Math.sqrt(DUNGEON.pixBudget / Math.max(1, cv.width * cv.height)) : 1;
+      const up = Math.min(cap, (this.post.info().cfg as { scale: number }).scale * 1.15);
+      if (up > cur + 0.01) {
+        this.qScale = up;
+        this.post.set({ scale: +up.toFixed(3) });
+        this.qSteps.push(`分辨率回升×${up.toFixed(2)}`);
+        this.qCool = 3;
+      }
+      return;
+    }
     this.qSlow = this.fps < DUNGEON.autoQFps ? this.qSlow + 0.5 : 0;
     if (this.qSlow < 3) {
       return;
     }
     this.qSlow = 0;
     this.qCool = 3;
-    const cur = (this.post.info().cfg as { scale: number }).scale;
     const pc = this.post.info().cfg as { ao: boolean; bloomLevels: number };
     const floor = this.minScale();
-    if (cur > floor + 0.01) {
-      this.qScale = Math.max(floor, cur * (this.fps < 25 ? 0.68 : 0.82));          // 卡得厉害(< 25 帧)每级多降一点,核显笔记本更快降到流畅
-      this.post.set({ scale: +this.qScale.toFixed(3) });
-      this.qSteps.push(`分辨率×${this.qScale.toFixed(2)}`);
+    // 第十五轮(11-18 用户笔记本:分辨率降到底还是 21 帧,画面却糊了):核显上卡的是几何(灯 / 阴影把场景多画好几遍),
+    // 所以先砍几何(倒影 → 灯 → 小物件不投影)、再关遮蔽 / 泛光,分辨率放到最后
+    if (DUNGEON.reflect) {
+      this.set({ reflect: false });
+      this.qSteps.push('关倒影');
+    } else if (DUNGEON.realLights > 2) {
+      this.set({ realLights: 2 });
+      this.qSteps.push('灯 2 盏');
+    } else if (!this.qCastCut) {
+      this.qCastCut = true;
+      this.cutSmallCasters();
+      this.qSteps.push('小物件不投影');
     } else if (pc.ao) {
       this.post.set({ ao: false });
       this.qSteps.push('关遮蔽');
-    } else if (DUNGEON.reflect) {
-      this.set({ reflect: false });
-      this.qSteps.push('关倒影');
-    } else if (DUNGEON.realLights > 3) {
-      this.set({ realLights: 3 });
-      this.qSteps.push('灯 3 盏');
     } else if (pc.bloomLevels > 3) {
       this.post.set({ bloomLevels: 3 });
       this.qSteps.push('泛光 3 级');
+    } else if (cur > floor + 0.01) {
+      this.qScale = Math.max(floor, cur * 0.85);
+      this.post.set({ scale: +this.qScale.toFixed(3) });
+      this.qSteps.push(`分辨率×${this.qScale.toFixed(2)}`);
     } else {
       return;
     }
     console.log('[g3dd] 帧率偏低(', this.fps.toFixed(0), '帧),自动降一级:', this.qSteps[this.qSteps.length - 1]);
+  }
+
+  private qFast = 0;
+  private qCastCut = false;
+
+  /** 小物件(路灯、摊位、水井、立像、代码拼的零碎、角色以外)不再投月光阴影:阴影那一遍要把投影的东西整个再画一次。 */
+  private cutSmallCasters(): void {
+    const keep = (name: string): boolean => /^DgBld_(smithy|cathedral|house)/.test(name);
+    this.world?.walk((nd) => {
+      if (nd.name.startsWith('DgBld_') && !keep(nd.name)) {
+        nd.getComponentsInChildren(MeshRenderer).forEach((mr) => {
+          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.OFF;
+        });
+      }
+    });
   }
 
   private blocked(x: number, z: number, r: number): boolean {
