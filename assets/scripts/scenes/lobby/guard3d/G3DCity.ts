@@ -14,17 +14,20 @@ import type { CityPlan } from './G3DCityTex';
 
 export const CITY = { X0: -20, X1: 20, Z0: -14, Z1: 14 };
 /** 教堂前的台地:广场东沿往东 x 起、高 h;正中一段台阶(z0 ~ z1)从 x 走 run 米升到台地上。 */
-export const CITY_TERRACE = { x: CITY.X1 + 0.6, h: 0.9, run: 2.2, z0: -6.5, z1: 2.5 };
-/** 主城里某一点的地面高度:广场 0,台阶一路升上去,台地上 0.9(角色站的高度跟着它走)。 */
+/** 第十一轮:台地 2.4 米高,台阶从 sx0(伸进广场 1.6 米)升到 sx1,宽 z0 ~ z1(正对教堂大门,门在 x ≈ 26.3、z ≈ -0.2)。 */
+// 第十一轮(二):整块往广场挪近 8 米 —— 原型里台阶就在水井 / 集市后面不远,我们原来比水井还远 16 米、开场镜头 40 多米,台阶在画面里只有一条线
+export const CITY_TERRACE = { x: CITY.X1 - 7.4, h: 2.4, sx0: CITY.X1 - 9.0, sx1: CITY.X1 - 9.0 + 16 * 0.32, z0: -4.2, z1: 3.8, zn: -10, zs: 10 };
+/** 主城里某一点的地面高度:广场 0,台阶一路升上去,台地上 2.4(角色站的高度跟着它走)。 */
 export function cityFloorY(x: number, z: number): number {
   const T = CITY_TERRACE;
-  if (x <= T.x) {
-    return 0;
+  const onStairs = z >= T.z0 && z <= T.z1;
+  if (onStairs) {
+    if (x <= T.sx0) {
+      return 0;
+    }
+    return x >= T.sx1 ? T.h : (T.h * (x - T.sx0)) / (T.sx1 - T.sx0);
   }
-  if (x >= T.x + T.run || z < T.z0 || z > T.z1) {
-    return T.h;
-  }
-  return (T.h * (x - T.x)) / T.run;
+  return x > T.x && z >= T.zn && z <= T.zs ? T.h : 0;
 }
 /** 地面那张大贴图管的范围(比可走的范围大一圈:房子的墙脚、教堂的台阶也在它上面)。 */
 export const CITY_GROUND = { x0: -32, z0: -24, w: 64, d: 48 };
@@ -548,13 +551,13 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   slot('house_c', 'house_c_w2', CITY.X0 - 12.5, -11.5, 90, 7.5, null, FAR);
   slot('house_d', 'house_d_w2', CITY.X0 - 12.5, 12.5, 90, 10, null, FAR);
   // 教堂两侧的台地上各一排房子(原型里栏杆后面是一排亮着窗的屋子;以前是空的)。只有模型在用时才有。
-  const FLY = { far: true, y: 0.9 };
-  slot('house_b', 'house_b_fn', 30.5, -16.2, -90, 9.6, null, FLY);
-  slot('house_c', 'house_c_fn', 31.5, -22.6, -90, 5.6, null, FLY);
-  slot('house', 'house_fn', 39, -13.2, -90, 9, null, FLY);
-  slot('house_d', 'house_d_fs', 27.6, 15.6, -90, 8.6, null, FLY);
-  slot('house', 'house_fs', 28.6, 22.4, -90, 7, null, FLY);
-  slot('house_b', 'house_b_fs', 37, 21.5, -90, 12, null, FLY);
+  const FLY = { far: true, y: 0 };          // 第十一轮:台地收窄到 ±10,这几栋落在台地两侧的地上
+  slot('house_b', 'house_b_fn', 22.5, -16.2, -90, 9.6, null, FLY);
+  slot('house_c', 'house_c_fn', 23.5, -22.6, -90, 5.6, null, FLY);
+  slot('house', 'house_fn', 31, -14.2, -90, 9, null, FLY);
+  slot('house_d', 'house_d_fs', 21.6, 16.2, -90, 8.6, null, FLY);
+  slot('house', 'house_fs', 20.6, 22.4, -90, 7, null, FLY);
+  slot('house_b', 'house_b_fs', 29, 15.5, -90, 12, null, FLY);
   // 房子的正面一线挡路(街口留着)
   solid(-1, CITY.Z0 - 0.6, 19.5, 0.6, 6);
   solid(-6, CITY.Z1 + 0.9, 13, 0.6, 6);
@@ -565,16 +568,15 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   // 第三轮(用户:「建筑还是需要打磨一下,还原型不像」):原型里它是斜四分之三的角度,看得到右侧一长排尖窗和扶壁。
   // 所以整座转了 20°(正面朝西偏北),南侧面露给广场;侧廊加长到和中殿一样长;砌石的块改小(块太大,整座楼显得像小模型)、石色提亮。
   // 教堂的模型:w = 正面的宽(连尖顶高约 26 米),中心 = 正面中点沿中轴往后退 12.5 米;站在台地上
-  s.bldSpots.push({ key: 'cathedral', id: 'cathedral', x: 38.05, z: 4.1, yaw: -110, w: 17.6, d: 25, y: 0.9 });
+  s.bldSpots.push({ key: 'cathedral', id: 'cathedral', x: 30.05, z: 4.1, yaw: -110, w: 17.6, d: 25, y: CITY_TERRACE.h });
   if (skip.indexOf('cathedral') >= 0) {
     // 换成模型:这里只留挡路的方块。第十轮:台阶能走上去了,挡路块从教堂正门(x ≈ 26.3)往后算,台阶顶到门口这一截留给人走
-    solid(34.4, -2, 8, 12, 30);
-    solid(23.4, 8.6, 1.4, 2.6, 30);
+    solid(26.4, -2, 8, 12, 30);
   } else {
     const S = 0.64;
     const CY = -110;
-    const f = frame(26.1, 0, CY, S, S);
-    const BY = 1.6;
+    const f = frame(18.1, 0, CY, S, S);
+    const BY = 1.6 + (CITY_TERRACE.h - 0.9) / S;
     const ST: Tint = [0.93, 0.93, 0.97];
     const SD: Tint = [0.74, 0.75, 0.8];
     const SL: Tint = [1, 1, 1];
@@ -822,31 +824,53 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       }
     }
     // 挡路:主角出不了广场东沿,这几块只管镜头别钻进楼里
-    solid(32, -2, 8, 12, 30);
-    solid(23.4, 8.6, 1.4, 2.6, 30);
+    solid(24, -2, 8, 12, 30);
   }
 
   // ── 教堂前的台地(第四轮,照原型):广场东沿一道石挡墙,墙顶一排石柱和铁栏;正中一段宽台阶上到台地,台阶两头各一根带灯的石柱。
   //    教堂、柏树、立像都站在台地上(以前是平地上一排栏杆,台阶跟着教堂斜过去)──
   {
-    const TX = CITY.X1 + 0.6;
-    const TH = 0.9;
-    const SZ0 = -6.5;
-    const SZ1 = 2.5;
-    const TS: Tint = [0.62, 0.63, 0.67];
-    const TL: Tint = [0.76, 0.77, 0.82];
+    // 第十一轮(用户:「先做这三项」—— 大台阶):原型里台阶是画面中心,一整段又宽又高的石阶两侧带石栏、直通教堂大门。
+    // 台地从 0.9 米抬到 2.4 米;16 级台阶(每级 15 厘米高、32 厘米深)从广场东沿往外伸 1.6 米,正对大门,宽 8 米
+    const T = CITY_TERRACE;
+    const TX = T.x;
+    const TH = T.h;
+    const SZ0 = T.z0;
+    const SZ1 = T.z1;
+    const CW = 0.6;          // 侧墙厚
+    const N = Math.round(TH / 0.15);
+    const TREAD = (T.sx1 - T.sx0) / N;
+    // 台地墙 2.4 米高、正对着广场:浅了像一面新砌的砖墙(原型是深色旧石墙)
+    const TS: Tint = [0.38, 0.39, 0.42];
+    const TL: Tint = [0.5, 0.51, 0.55];
     const O0 = V(0, 0, 0);
     const slab = (x0: number, x1: number, z0: number, z1: number): void => {
-      s.stone.box(x1 - x0, TH, z1 - z0, V((x0 + x1) / 2, TH / 2, (z0 + z1) / 2), O0, TS, 0.5, rnd, 0.03);
+      s.rubble.box(x1 - x0, TH, z1 - z0, V((x0 + x1) / 2, TH / 2, (z0 + z1) / 2), O0, [0.5, 0.48, 0.47], 0.4, rnd, 0.03);
     };
-    slab(TX, 48, -24, SZ0);
-    slab(TX, 48, SZ1, 24);
-    slab(TX + 2.2, 48, SZ0, SZ1);
-    // 台阶:六级,整段比广场宽出来的那一截嵌在台地里
-    for (let i = 0; i < 6; i += 1) {
-      const x0 = TX + 0.36 * i;
-      // 第十轮:台阶能走上去、会被近看了 —— 原来的浅灰一级比一级亮,像新砌的地砖;压到和广场旧石板差不多的深灰
-      s.stone.box(TX + 2.2 - x0, 0.15, SZ1 - SZ0, V((x0 + TX + 2.2) / 2, 0.15 * i + 0.075, (SZ0 + SZ1) / 2), O0, i % 2 ? [0.42, 0.43, 0.46] : [0.38, 0.39, 0.42], 0.5, rnd, 0.02);
+    slab(TX, 40, T.zn, SZ0 - CW);
+    slab(TX, 40, SZ1 + CW, T.zs);
+    slab(T.sx1, 40, SZ0 - CW, SZ1 + CW);
+    for (const zz of [T.zn, T.zs]) {
+      solid(TX + 6, zz, 6.2, 0.35, 3);
+    }
+    // 台阶:一级一级叠上去(每级一直延伸到台阶顶,下面是实的);深浅交替一点
+    for (let i = 0; i < N; i += 1) {
+      const x0 = T.sx0 + TREAD * i;
+      const tint: Tint = i % 2 ? [0.42, 0.43, 0.46] : [0.38, 0.39, 0.42];
+      s.stone.box(T.sx1 - x0, 0.15, SZ1 - SZ0, V((x0 + T.sx1) / 2, 0.15 * i + 0.075, (SZ0 + SZ1) / 2), O0, tint, 0.5, rnd, 0.02);
+      // 踏面前沿一道略浅的压边(原型里每级台阶的边是亮的)
+      s.stone.box(0.06, 0.03, SZ1 - SZ0, V(x0 + 0.03, 0.15 * (i + 1) - 0.015, (SZ0 + SZ1) / 2), O0, [0.5, 0.51, 0.55], 0.5, rnd, 0.005);
+    }
+    // 两侧的侧墙:顺着台阶一级级升高,顶上一道浅色压顶(台地范围里至少和台地一样高)
+    for (const zc of [SZ0 - CW / 2, SZ1 + CW / 2]) {
+      for (let i = 0; i < N; i += 2) {
+        const x0 = T.sx0 + TREAD * i;
+        const x1 = Math.min(T.sx1, x0 + TREAD * 2);
+        const top = Math.max(0.15 * (i + 2) + 0.75, x0 >= TX ? TH : 0);
+        s.rubble.box(x1 - x0, top, CW, V((x0 + x1) / 2, top / 2, zc), O0, [0.5, 0.48, 0.47], 0.4, rnd, 0.03);
+        s.stone.box(x1 - x0 + 0.04, 0.1, CW + 0.12, V((x0 + x1) / 2, top + 0.05, zc), O0, TL, 0.5, rnd, 0.02);
+      }
+      solid((T.sx0 + T.sx1) / 2, zc, (T.sx1 - T.sx0) / 2, CW / 2 + 0.05, 3);
     }
     /** 一根石柱(lampOn = 顶上一盏灯)。 */
     const post = (x: number, z: number, h: number, w: number, lampOn: boolean): void => {
@@ -862,10 +886,13 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
         s.doorLamps.push({ x: x - 0.25, y: h + 0.44, z });
       }
     };
-    for (const [z0, z1, zs] of [[-22, SZ0 - 0.55, SZ0 - 0.55], [SZ1 + 0.55, 22, SZ1 + 0.55]] as Array<[number, number, number]>) {
-      // 台阶这一头:一根粗石柱带灯,顺着台阶的侧墙
-      post(TX + 0.25, zs, TH + 1.75, 0.9, true);
-      s.stone.box(2.2, TH + 0.45, 0.5, V(TX + 1.3, (TH + 0.45) / 2, zs), O0, TS, 0.5, rnd, 0.03);
+    // 台阶底下一对方石墩、台阶顶上(大门两侧)一对带灯的石柱
+    for (const zc of [SZ0 - CW / 2, SZ1 + CW / 2]) {
+      post(T.sx0 + 0.35, zc, 1.6, 0.8, true);          // 带灯:台阶背着月光,整段落在影子里看不清(原型里台阶是亮的)
+      solid(T.sx0 + 0.35, zc, 0.45, 0.45, 2);
+      post(T.sx1 - 0.35, zc, TH + 1.7, 0.85, true);
+    }
+    for (const [z0, z1, zs] of [[T.zn, SZ0 - CW, SZ0 - CW], [SZ1 + CW, T.zs, SZ1 + CW]] as Array<[number, number, number]>) {
       // 墙顶:一道矮石栏,上面是铁栏,隔一段一根石柱
       const len = z1 - z0;
       const zm = (z0 + z1) / 2;
@@ -889,7 +916,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     }
     // 柏树:北边那块空出来的台地上多几棵,南边贴着侧廊的墙角
     for (const sd of [-1, 1]) {
-      for (const [cx2, cz2, hh] of (sd < 0 ? [[22.3, 8.4, 5.6], [24.6, 9.6, 6.4], [26.4, 12.6, 5.2], [23.2, 14.6, 6.0]] : [[21.9, 8.4, 5.4], [21.8, 11.8, 4.8], [23.6, 13.8, 6.2]]) as Array<[number, number, number]>) {
+      for (const [cx2, cz2, hh] of (sd < 0 ? [[14.2, 7.0, 5.6], [16.4, 8.6, 6.4], [19.2, 9.0, 5.2]] : [[14.0, 6.6, 5.4], [15.9, 8.8, 6.2], [18.6, 9.1, 4.8]]) as Array<[number, number, number]>) {
         s.bark.cylinder(0.1, 0.13, 0.9, 6, V(cx2, TH + 0.45, sd * cz2), O0, [0.4, 0.36, 0.32], 0.5, rnd);
         // 又瘦又高的一团墨绿(八棱的锥子像石锥,光滑的一根像炮弹,拧着的纹路像裹着布):表面要一团一团地鼓出来,深浅不一
         const ph = R(0, 6.28);
@@ -902,14 +929,14 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       }
     }
     if (has('statue')) {
-      s.bldSpots.push({ key: 'statue', id: 'statue', x: 23.4, z: -10.6, yaw: -90, w: 2, d: 2, h: 5.0, y: TH });
+      s.bldSpots.push({ key: 'statue', id: 'statue', x: 15.2, z: -8.2, yaw: -90, w: 2, d: 2, h: 5.0, y: TH });
     } else {
       // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
-      s.stone.box(1.5, 1.8, 1.5, V(23.4, TH + 0.9, -10.6), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
-      s.stone.box(1.8, 0.24, 1.8, V(23.4, TH + 1.92, -10.6), O0, [0.66, 0.67, 0.72], 0.5, rnd, 0.04);
-      s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([23.4, TH + 2.04, -10.6]), tint: [0.76, 0.77, 0.82], den: 0.5 });
-      s.stone.ball(0.2, 0.24, 0.2, [23.4, TH + 4.4, -10.6], 8, { tint: [0.78, 0.79, 0.84], den: 0.5 });
-      s.stone.box(0.14, 0.9, 0.14, V(23.05, TH + 3.6, -10.45), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
+      s.stone.box(1.5, 1.8, 1.5, V(15.2, TH + 0.9, -8.2), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
+      s.stone.box(1.8, 0.24, 1.8, V(15.2, TH + 1.92, -8.2), O0, [0.66, 0.67, 0.72], 0.5, rnd, 0.04);
+      s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([15.2, TH + 2.04, -8.2]), tint: [0.76, 0.77, 0.82], den: 0.5 });
+      s.stone.ball(0.2, 0.24, 0.2, [15.2, TH + 4.4, -8.2], 8, { tint: [0.78, 0.79, 0.84], den: 0.5 });
+      s.stone.box(0.14, 0.9, 0.14, V(14.85, TH + 3.6, -8.05), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
     }
   }
 
@@ -1027,8 +1054,8 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   lamp(-13.3, -8.4);
   lamp(-13.2, 6.0);
   lamp(8.3, -11.6);
-  lamp(16.2, -9.4);
-  lamp(16.6, 9.4);
+  lamp(10.4, -9.2);
+  lamp(10.8, 9.0);
   lamp(-0.4, 10.6);
 
   // ── 枫树:叶子快掉光了,只在梢头剩几片红叶 ──

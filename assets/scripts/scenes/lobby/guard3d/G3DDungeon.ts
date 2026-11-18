@@ -155,6 +155,8 @@ export interface DungeonCfg {
   paveSpec: number;
   /** 石板地面用细节版(贴图按原始精度平铺,近看不糊);地址 &pavefine=0 关掉,回到整张地面一张图的做法。 */
   paveFine: boolean;
+  /** 主城天空(连云)的亮度倍数;地址 &csky=。第十一轮:原型的天空大约亮一倍。 */
+  citySky: number;
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
   /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
@@ -181,7 +183,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, paveM: 3.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 4.0, paveM: 3.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -1401,12 +1403,13 @@ class Dungeon {
     this.cityFireY = C.forge.y - 0.22;
     // 开场站在西边街口,镜头略偏北:左前方是铁匠铺的炉火,教堂在正前方偏右,右边露出集市的红篷(原型的构图)
     this.lx = -16.5;
-    this.lz = 0.6;
+    this.lz = 2.2;          // 第十一轮:往南挪一点,台阶正好夹在主角和队友中间(原型的构图)
     // 镜头比另外两个场景放平、放广:城里要看得到教堂的塔尖和天
-    this.view.yaw = 282;
-    this.view.pitch = -1;
-    this.view.dist = 4.8;
-    this.view.fov = 58;
+    // 第十一轮:台阶和教堂挪近之后,镜头往正东摆一点、抬高一点、拉远一点,教堂整座和台阶都在画面里
+    this.view.yaw = 276;
+    this.view.pitch = 3;
+    this.view.dist = 5.6;
+    this.view.fov = 60;
     const std = (p: Pbr, repeat: boolean, aniso: number, vertexColor = true): Material => {
       const m = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: vertexColor });
       m.setProperty('mainTexture', tex(p.albedo, repeat, aniso));
@@ -1687,9 +1690,9 @@ class Dungeon {
         // 第十轮:台阶能走上去了,台地顶面会被近看 —— 原来是代码画的规整浅色方砖,像地砖;铺上和广场同一套石板(高 0.905,
         // 不进平面倒影:倒影平面在 0 高度,台地上照出来会错位;积水处照天空)
         const T = CITY_TERRACE;
-        const onStairs = (cx: number, cz: number): boolean => cx < T.x + T.run && cz > T.z0 - 0.05 && cz < T.z1 + 0.05;
-        for (const [z0, z1] of [[-16, -4], [-4, 4], [4, 16]]) {
-          const tm = MeshBatch.groundGrid(T.x + 0.5, z0, T.x + 10.5, z1, 0.5, G, DUNGEON.paveM, tint, onStairs, T.h + 0.005);
+        const onStairs = (cx: number, cz: number): boolean => cx < T.sx1 && cz > T.z0 - 0.65 && cz < T.z1 + 0.65;
+        for (const [z0, z1] of [[T.zn, -4], [-4, 4], [4, T.zs]]) {
+          const tm = MeshBatch.groundGrid(T.x + 0.4, z0, T.x + 10.5, z1, 0.5, G, DUNGEON.paveM, tint, onStairs, T.h + 0.005);
           if (tm) {
             addMesh(world, 'DgTerraceTop', tm, fm, false, true);
           }
@@ -2268,7 +2271,7 @@ class Dungeon {
       amb.skyIllum = DUNGEON.skyK;
       try {
         // 夜空:很暗的天顶、略亮的地平线、月亮那一侧有一团光、一层被月光照亮边缘的云。同一张图也当环境反射(积水里反出来的就是它)
-        const sk = this.city ? 1.9 : 1;          // 主城的天整体亮一些(月色更亮,看得见云)
+        const sk = this.city ? DUNGEON.citySky : 1;          // 主城的天整体亮一些(月色更亮,看得见云)
         const c = (r: number, g: number, b: number): [number, number, number] => [r * sk, g * sk, b * sk];
         sky.envmap = buildSkyCube({ zenith: c(0.012, 0.02, 0.045), horizon: c(0.05, 0.075, 0.125), horizonAway: c(0.03, 0.045, 0.08), ground: c(0.012, 0.014, 0.018),
           sunDir: this.city ? CITY_MOON_SKY : [-WILD_MOON.x, -WILD_MOON.y, -WILD_MOON.z], sunColor: this.city ? c(0.09, 0.105, 0.17) : c(0.5, 0.62, 0.9), sunSize: this.city ? 0.09 : 0.045,
@@ -2323,7 +2326,7 @@ class Dungeon {
       fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
     if (this.city) {
       // 主城:广场大、要看得到教堂的塔尖,雾更淡;远处的屋顶剪影靠它推远
-      Object.assign(cfg, { fogColor: [0.045, 0.065, 0.115], fogAway: [0.045, 0.065, 0.115], fogStart: 14, fogDensity: 0.009, fogMax: 0.85, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.95, saturation: 0.94, shadowTint: [0.98, 1.0, 1.03] });
+      Object.assign(cfg, { fogColor: [0.045, 0.065, 0.115], fogAway: [0.045, 0.065, 0.115], fogStart: 14, fogDensity: 0.009, fogMax: 0.85, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 1.05, contrast: 1.05, saturation: 0.94, shadowTint: [0.98, 1.0, 1.03] });          // 第十一轮:原型整体反差小、暗处看得清 → 反差 1.17 → 1.05、曝光 0.95 → 1.05
     } else if (this.wild) {
       // 野外:看得远,雾淡一些、但远处要吃得掉(林子的剪影靠它接到天上)
       Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.9 });
@@ -4148,6 +4151,9 @@ function boot(): void {
     Object.assign(DUNGEON, CITY_CFG, { scene: 'city', bld: param('bld') ?? '' });
     if (param('bglow') !== null && !Number.isNaN(Number(param('bglow')))) {
       DUNGEON.bldGlow = Number(param('bglow'));
+    }
+    if (param('csky') !== null && !Number.isNaN(Number(param('csky')))) {
+      DUNGEON.citySky = Number(param('csky'));
     }
     if (param('pavefine') !== null) {
       DUNGEON.paveFine = param('pavefine') !== '0';
