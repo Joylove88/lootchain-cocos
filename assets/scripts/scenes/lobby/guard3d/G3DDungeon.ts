@@ -12,7 +12,7 @@ import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
 import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN } from './G3DCity';
-import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaPbr, StoneTile, slatePbr } from './G3DCityTex';
+import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaLeaves, plazaPbr, plazaTint, StoneTile, stoneTileMaps, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
@@ -153,6 +153,8 @@ export interface DungeonCfg {
   paveM: number;
   paveK: number;
   paveSpec: number;
+  /** 石板地面用细节版(贴图按原始精度平铺,近看不糊);地址 &pavefine=0 关掉,回到整张地面一张图的做法。 */
+  paveFine: boolean;
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
   /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
@@ -179,7 +181,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveM: 4.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, paveM: 3.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -191,8 +193,8 @@ export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazi
 
 /** 主城场景在默认值上改的几项(不放怪;月光比野外略暗一点,靠路灯和窗子的暖光点缀)。 */
 /** 建筑模型的手调修正:转多少度(模型的正面朝哪是平台定的)、在「缩放到占地宽」的基础上再乘多少、挪多少米。 */
-const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number; a?: number }> = {
-  smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
+const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number; a?: number; sx?: number }> = {
+  smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0, a: 0.8 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
   cathedral: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.48 },          // 模型的长轴是中殿,正面在一头:转 -90°;石头是浅灰的,月光下发白(0.72 还是白),颜色压到 0.48
   house: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },          // 带门的那面在侧边:转 -90°
   // 第二批(挪到广场空地上转四个方向截图定的):平台给的正面多数朝 +x(要转 -90°),转角房朝 -z(转 180°),摊位 / 水井 / 路灯不用转
@@ -201,7 +203,7 @@ const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; 
   house_d: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },
   stall: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
   well: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
-  lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
+  lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, sx: 0.7 },          // 平台给的路灯偏粗壮(原型是细长的铁灯柱):横向收到 0.7,高度不变
   statue: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.6 },
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
@@ -411,7 +413,7 @@ class Dungeon {
   private glowCache = new Map<unknown, ReturnType<typeof tex>>();
   /** 天上的月亮(一块板):每帧跟着镜头挪,和天空图里那团月晕始终对齐。 */
   private moonDisc: Node | null = null;
-  private cityBld: Record<string, { pivot: Node; spot: { key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }; size: { x: number; y: number; z: number }; tris: number }> = {};
+  private cityBld: Record<string, { pivot: Node; spot: { key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean; far?: boolean }; size: { x: number; y: number; z: number }; tris: number }> = {};
   /** 野外场景:这个位置是不是积水。 */
   private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
@@ -1617,9 +1619,72 @@ class Dungeon {
         sum += l;
       }
       lum.sort((a, b) => a - b);
-      const tile: StoneTile = { size: S, data, m: DUNGEON.paveM, j0: lum[Math.floor(lum.length * 0.03)], j1: lum[Math.floor(lum.length * 0.09)], mean: sum / lum.length, k: DUNGEON.paveK };
+      const tile: StoneTile = { size: S, data, m: DUNGEON.paveM, j0: lum[Math.floor(lum.length * 0.03)], j1: lum[Math.floor(lum.length * 0.09)], mean: sum / lum.length, k: DUNGEON.paveK, detail: DUNGEON.paveFine };
       const gw = DUNGEON.floor;
       const g = plazaPbr(gw, Math.round((gw * CITY_GROUND.d) / CITY_GROUND.w), CITY_PLAN, tile);
+      if (DUNGEON.paveFine && this.world) {
+        // 第九轮:整张地面那张图一个像素 1.5 厘米,贴着地面看石面是糊的。
+        // 改成:石板贴图按原始精度平铺(第二套贴图坐标 = 世界坐标 ÷ 每块几米),大片的深浅 / 水膜压暗 / 罗盘纹交给顶点色,
+        // 粗糙度和积水还用整张的那张图;落叶改成贴地的小面片。
+        const maps = stoneTileMaps(src, 1024, DUNGEON.paveM, tile.j0, tile.j1, tile.mean);
+        const fm = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: true, HAS_SECOND_UV: true, ALBEDO_UV: 'v_uv1', NORMAL_UV: 'v_uv1' } as any);
+        fm.setProperty('mainTexture', tex(maps.albedo, true, 16));
+        fm.setProperty('normalMap', tex(maps.normal, true, 16));
+        fm.setProperty('pbrMap', tex(g.orm, false, 4));
+        fm.setProperty('occlusion', 1);
+        fm.setProperty('roughness', DUNGEON.gloss);
+        fm.setProperty('metallic', 1);
+        fm.setProperty('normalStrength', DUNGEON.floorBump);
+        fm.setProperty('specularIntensity', DUNGEON.paveSpec);
+        // 顶点色不能大于 1(罗盘纹浅的那一半要乘到 1.6 倍):先乘 0.5 存进去,再在材质上乘回来(顶点色按 2.2 次方换算)
+        const VK = 0.5;
+        const back = 1 / Math.pow(VK, 2.2);
+        fm.setProperty('albedoScale', new Vec3(back, back, back));
+        const tintFn = plazaTint(CITY_PLAN, DUNGEON.paveK);
+        const tint = (x: number, z: number): [number, number, number] => {
+          const c = tintFn(x, z);
+          return [c[0] * VK, c[1] * VK, c[2] * VK];
+        };
+        for (const n of this.groundNodes) {
+          n.destroy();
+        }
+        this.groundNodes = [];
+        const world = this.world;
+        const add = (mesh: Mesh | null): void => {
+          if (mesh) {
+            const gn = addMesh(world, 'DgFloor', mesh, fm, false, true);
+            gn.layer = GROUND_LAYER;
+            this.groundNodes.push(gn);
+          }
+        };
+        // 整片:半米一格,还是切成 8 × 6 块;罗盘纹那一块挖掉,另铺一张 4.5 厘米一格的(纹样的边才是利的)
+        const G = CITY_PLAN;
+        const C = G.compass;
+        const hr = Math.ceil(C.r * 2 + 0.6) / 2;
+        const inHole = (cx: number, cz: number): boolean => Math.abs(cx - C.x) < hr && Math.abs(cz - C.z) < hr;
+        for (let iz = 0; iz < 6; iz += 1) {
+          for (let ix = 0; ix < 8; ix += 1) {
+            add(MeshBatch.groundGrid(G.x0 + (G.w * ix) / 8, G.z0 + (G.d * iz) / 6, G.x0 + (G.w * (ix + 1)) / 8, G.z0 + (G.d * (iz + 1)) / 6, 0.5, G, DUNGEON.paveM, tint, inHole));
+          }
+        }
+        for (let iz = 0; iz < 2; iz += 1) {
+          for (let ix = 0; ix < 2; ix += 1) {
+            add(MeshBatch.groundGrid(C.x - hr + hr * ix, C.z - hr + hr * iz, C.x - hr + hr * (ix + 1), C.z - hr + hr * (iz + 1), 0.045, G, DUNGEON.paveM, tint));
+          }
+        }
+        this.floorMat = fm;
+        this.applyReflection();
+        const leafMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
+        leafMat.setProperty('roughness', 1);
+        leafMat.setProperty('metallic', 0);
+        leafMat.setProperty('specularIntensity', 0.04);
+        for (const lm of MeshBatch.groundLeaves(plazaLeaves(CITY_PLAN), 16, mulberry32(679))) {
+          addMesh(world, 'DgGroundLeaf', lm, leafMat, false, true);
+        }
+        this.wildWet = (x: number, z: number): boolean => wetAt(g.wet, CITY_PLAN, x, z);
+        console.log('[g3dd] 石板地面(细节版)', JSON.stringify({ j0: +tile.j0.toFixed(3), j1: +tile.j1.toFixed(3), mean: +tile.mean.toFixed(3), nodes: this.groundNodes.length }));
+        return;
+      }
       this.floorMat.setProperty('mainTexture', tex(g.albedo, false, 16));
       this.floorMat.setProperty('normalMap', tex(g.normal, false, 16));
       this.floorMat.setProperty('pbrMap', tex(g.orm, false, 4));
@@ -1633,7 +1698,7 @@ class Dungeon {
    * 把「图转 3D」的建筑模型摆进场景:模型的大小、朝向都是平台随意给的,所以量一下包围盒,缩放到占地那么宽、底面落地、中心对到占地中心。
    * 每个模型另有一份手调的修正(BLD_FIX:转多少度、再放大多少、挪多少),调的时候用 __dg.bld('smithy', { yaw: 90 })。
    */
-  private loadCityBuildings(world: Node, spots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }>): void {
+  private loadCityBuildings(world: Node, spots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean; far?: boolean }>): void {
     // 模型文件里的预制体路径带着它自己的节点名(g3d_bld/<键>/<键>/<节点名>),所以先问资源表
     const infos = ((resources as any).getDirWithPath('g3d_bld', Prefab) as Array<{ path: string }>) ?? [];
     for (const sp of spots) {
@@ -1652,7 +1717,7 @@ class Dungeon {
         const p = new Vec3();
         let tris = 0;
         for (const mr of model.getComponentsInChildren(MeshRenderer)) {
-          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
+          mr.shadowCastingMode = sp.far ? MeshRenderer.ShadowCastingMode.OFF : MeshRenderer.ShadowCastingMode.ON;          // 远处 / 背景的房子不投影子
           mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
           this.glowFromAlbedo(mr, DUNGEON.bldGlow);
           const al = BLD_FIX[sp.key]?.a ?? 1;
@@ -1735,7 +1800,7 @@ class Dungeon {
   }
 
   /** 调一栋建筑模型的摆法(转多少度、再放大多少、挪多少);不传的项用 BLD_FIX 里登记的。返回现在的值。 */
-  tuneBld(key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number }): unknown {
+  tuneBld(key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number; sx?: number }): unknown {
     const b = this.cityBld[key];
     if (!b) {
       return null;
@@ -1746,7 +1811,8 @@ class Dungeon {
     // 占位给的是正面那条线的中点:顺着正面的反方向退半个进深
     const back = b.spot.front ? ((turned ? b.size.x : b.size.z) * k) / 2 : 0;
     const ya = (b.spot.yaw * Math.PI) / 180;
-    b.pivot.setScale(k, k, k);
+    const sx = fix.sx ?? 1;
+    b.pivot.setScale(k * sx, k, k * sx);
     b.pivot.setRotationFromEuler(0, b.spot.yaw + fix.yaw, 0);
     b.pivot.setPosition(b.spot.x - Math.sin(ya) * back + fix.dx, (b.spot.y ?? 0) + fix.dy, b.spot.z - Math.cos(ya) * back + fix.dz);
     return { fix, size: b.size, scale: k, tris: b.tris };
@@ -3966,6 +4032,9 @@ function boot(): void {
     if (param('bglow') !== null && !Number.isNaN(Number(param('bglow')))) {
       DUNGEON.bldGlow = Number(param('bglow'));
     }
+    if (param('pavefine') !== null) {
+      DUNGEON.paveFine = param('pavefine') !== '0';
+    }
     for (const [q, key] of [['pavem', 'paveM'], ['pavek', 'paveK'], ['pavespec', 'paveSpec']] as Array<[string, 'paveM' | 'paveK' | 'paveSpec']>) {
       if (param(q) !== null && !Number.isNaN(Number(param(q)))) {
         DUNGEON[key] = Number(param(q));
@@ -4013,7 +4082,7 @@ if (!EDITOR && sys.isBrowser) {
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
     audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
-    bld: (key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number } = {}) => dungeon.tuneBld(key, o),
+    bld: (key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number; sx?: number } = {}) => dungeon.tuneBld(key, o),
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1' || param('g3dwild') === '1' || param('g3dcity') === '1') {
     boot();

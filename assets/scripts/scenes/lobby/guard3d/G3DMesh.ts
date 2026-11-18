@@ -1,4 +1,4 @@
-import { Mat4, Mesh, Quat, utils, Vec3 } from 'cc';
+import { gfx, Mat4, Mesh, Quat, utils, Vec3 } from 'cc';
 
 /**
  * 守卫战 3D 光影层(技术验证,默认关)· 网格拼装。
@@ -253,6 +253,88 @@ export class MeshBatch {
           indices: [0, 2, 1, 0, 3, 2],
         }, undefined, { calculateBounds: true }));
       }
+    }
+    return out;
+  }
+
+  /**
+   * 地面的细网格(一块):每个顶点带颜色(tint 给的倍数)和第二套贴图坐标(世界坐标 ÷ m,平铺石板贴图用)。
+   * uv = 在整张地面(area)里的位置(0 ~ 1,积水 / 粗糙度那张大图用);skip 返回 true 的格子不出面(留给更细的网格)。
+   */
+  static groundGrid(x0: number, z0: number, x1: number, z1: number, step: number, area: { x0: number; z0: number; w: number; d: number }, m: number,
+    tint: (x: number, z: number) => [number, number, number], skip?: (cx: number, cz: number) => boolean, y = 0): Mesh | null {
+    const nx = Math.max(1, Math.round((x1 - x0) / step));
+    const nz = Math.max(1, Math.round((z1 - z0) / step));
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const uv1: number[] = [];
+    const tangents: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    for (let iz = 0; iz <= nz; iz += 1) {
+      const z = z0 + ((z1 - z0) * iz) / nz;
+      for (let ix = 0; ix <= nx; ix += 1) {
+        const x = x0 + ((x1 - x0) * ix) / nx;
+        positions.push(x, y, z);
+        normals.push(0, 1, 0);
+        uvs.push((x - area.x0) / area.w, (z - area.z0) / area.d);
+        uv1.push(x / m, z / m);
+        tangents.push(1, 0, 0, -1);
+        const c = tint(x, z);
+        colors.push(c[0], c[1], c[2], 1);
+      }
+    }
+    for (let iz = 0; iz < nz; iz += 1) {
+      for (let ix = 0; ix < nx; ix += 1) {
+        if (skip && skip(x0 + ((x1 - x0) * (ix + 0.5)) / nx, z0 + ((z1 - z0) * (iz + 0.5)) / nz)) {
+          continue;
+        }
+        const a = iz * (nx + 1) + ix;
+        indices.push(a, a + nx + 2, a + 1, a, a + nx + 1, a + nx + 2);
+      }
+    }
+    if (!indices.length) {
+      return null;
+    }
+    return utils.MeshUtils.createMesh({
+      positions, normals, uvs, tangents, colors, indices,
+      customAttributes: [{ attr: new gfx.Attribute(gfx.AttributeName.ATTR_TEX_COORD1, gfx.Format.RG32F), values: uv1 }],
+    }, undefined, { calculateBounds: true });
+  }
+
+  /**
+   * 贴在地上的落叶:每片五个尖(枫叶的样子),只用顶点色;按 bucket 米一块分成几张网格(点光只重画它照得到的那几块)。
+   */
+  static groundLeaves(list: Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }>, bucket: number, rnd: () => number): Mesh[] {
+    const groups: Record<string, { positions: number[]; normals: number[]; colors: number[]; indices: number[] }> = {};
+    const LOBES: Array<[number, number]> = [[0, 1], [0.9, 0.82], [-0.9, 0.82], [1.95, 0.5], [-1.95, 0.5]];
+    for (const lf of list) {
+      const key = `${Math.floor(lf.x / bucket)}_${Math.floor(lf.z / bucket)}`;
+      const g = groups[key] ?? (groups[key] = { positions: [], normals: [], colors: [], indices: [] });
+      const y = 0.006 + rnd() * 0.006;
+      const k = 0.9 + rnd() * 0.5;
+      for (const [da, len] of LOBES) {
+        const a = lf.rot + da;
+        const dx = Math.cos(a);
+        const dz = Math.sin(a);
+        const L = len * lf.s * 1.25;
+        const w = L * 0.2;
+        const base = g.positions.length / 3;
+        // 一个尖 = 一个风筝形:叶心、左肩、尖、右肩
+        g.positions.push(lf.x, y, lf.z, lf.x + dx * L * 0.42 - dz * w, y, lf.z + dz * L * 0.42 + dx * w, lf.x + dx * L, y, lf.z + dz * L, lf.x + dx * L * 0.42 + dz * w, y, lf.z + dz * L * 0.42 - dx * w);
+        for (let i = 0; i < 4; i += 1) {
+          g.normals.push(0, 1, 0);
+          g.colors.push(lf.col[0] * k, lf.col[1] * k, lf.col[2] * k, 1);
+        }
+        // 朝上的那面是正面(和 groundTiles 同一个绕向:叶心 → 左肩 → 尖 → 右肩)
+        g.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+    const out: Mesh[] = [];
+    for (const key of Object.keys(groups)) {
+      const g = groups[key];
+      out.push(utils.MeshUtils.createMesh({ positions: g.positions, normals: g.normals, colors: g.colors, indices: g.indices }, undefined, { calculateBounds: true }));
     }
     return out;
   }

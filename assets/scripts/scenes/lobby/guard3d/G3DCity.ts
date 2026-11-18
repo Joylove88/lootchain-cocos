@@ -59,7 +59,7 @@ export interface CityScene {
    * w = 正面的宽(按它缩放);给了 h 就按高度缩放(水井、路灯这类摆件)。
    * front = true 时 (x, z) 是正面那条线的中点(模型多深由它自己定,往后退半个进深);否则 (x, z) 是占地的中心。
    */
-  bldSpots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }>;
+  bldSpots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean; far?: boolean }>;
   /** 镇民站的位置和朝向(度)。 */
   npcs: Array<{ x: number; z: number; yaw: number }>;
   plan: CityPlan;
@@ -77,10 +77,10 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   const R = (a: number, b: number): number => a + (b - a) * rnd();
   const has = (k: string): boolean => skip.indexOf(k) >= 0;
   /** 一栋房子的位置:这种样式的模型在用就登记占位(换成模型),否则用代码拼。(x, z) = 正面那条线的中点。 */
-  const slot = (key: string, id: string, x: number, z: number, yaw: number, w: number, proc: () => void): void => {
+  const slot = (key: string, id: string, x: number, z: number, yaw: number, w: number, proc: (() => void) | null, o: { far?: boolean; y?: number } = {}): void => {
     if (has(key)) {
-      s.bldSpots.push({ key, id, x, z, yaw, w, d: 7, front: true });
-    } else {
+      s.bldSpots.push({ key, id, x, z, yaw, w, d: 7, front: true, far: o.far, y: o.y });
+    } else if (proc) {
       proc();
     }
   };
@@ -513,7 +513,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     // w = 正面的宽(模型按它缩放:门高约 1.9 米);中心 = 正面那条线往后退半个进深
     s.bldSpots.push({ key: 'house', id: 'house_n', x: 13.6, z: CITY.Z0 - 0.9 - 3.1, yaw: 0, w: 6.6, d: 6.3 });
     s.bldSpots.push({ key: 'house', id: 'house_s', x: 6.9, z: CITY.Z1 + 3.2 + 3.3, yaw: 180, w: 7.0, d: 6.7 });
-    house(14.1, CITY.Z1 + 3.2, 180, 6.8, 8, { upper: 1, lit: 2, tone: 0.84 });
+    slot('house_d', 'house_d_se', 14.6, CITY.Z1 + 3.2, 180, 7.6, () => house(14.1, CITY.Z1 + 3.2, 180, 6.8, 8, { upper: 1, lit: 2, tone: 0.84 }));
   } else {
     house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
     house(10.5, CITY.Z1 + 3.2, 180, 14, 8, { upper: 1, lit: 3, tone: 0.84 });
@@ -523,11 +523,25 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   slot('house_d', 'house_d_w', CITY.X0 - 0.5, -9.2, 90, 8.4, () => house(CITY.X0 - 0.5, -9.2, 90, 9.5, 8, { upper: 1, lit: 2 }));
   slot('house_b', 'house_b_w', CITY.X0 - 0.5, 9.6, 90, 10.4, () => house(CITY.X0 - 0.5, 9.2, 90, 9.5, 8, { upper: 2, gableFront: true, lit: 2 }));
   // 第二排(只露出屋顶和上层)、西边街口尽头的一栋
-  house(-7, CITY.Z0 - 12, 0, 15, 8, { upper: 2, lit: 2, tone: 0.8 });
-  house(9, CITY.Z0 - 12.5, 0, 13, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.8 });
-  house(-8, CITY.Z1 + 12.5, 180, 15, 8, { upper: 2, lit: 2, tone: 0.8 });
-  house(9, CITY.Z1 + 14, 180, 13, 8, { upper: 2, lit: 1, tone: 0.8 });
-  house(CITY.X0 - 11, 0, 90, 12, 8, { upper: 2, gableFront: true, lit: 3, tone: 0.82 });
+  // 第九轮:模型在用时这几栋也换成模型(放大一号,越过前排能看见上层和屋顶;far = 不投影子),屋顶的颜色才和前排一致
+  const FAR = { far: true };
+  slot('house_b', 'house_b_n2', -7, CITY.Z0 - 12, 0, 15, () => house(-7, CITY.Z0 - 12, 0, 15, 8, { upper: 2, lit: 2, tone: 0.8 }), FAR);
+  slot('house_d', 'house_d_n2', 9.5, CITY.Z0 - 12.5, 0, 11.5, () => house(9, CITY.Z0 - 12.5, 0, 13, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.8 }), FAR);
+  slot('house_c', 'house_c_s2', -12.5, CITY.Z1 + 12.5, 180, 7.5, null, FAR);
+  slot('house', 'house_s2', -4, CITY.Z1 + 12.5, 180, 10, () => house(-8, CITY.Z1 + 12.5, 180, 15, 8, { upper: 2, lit: 2, tone: 0.8 }), FAR);
+  slot('house_b', 'house_b_s2', 9, CITY.Z1 + 14, 180, 14, () => house(9, CITY.Z1 + 14, 180, 13, 8, { upper: 2, lit: 1, tone: 0.8 }), FAR);
+  // 西边街口尽头一栋宽的,两边各补一栋(不然从广场中间朝西看,房子之间露着一截空地平线)
+  slot('house_b', 'house_b_w2', CITY.X0 - 11, 0.5, 90, 12.5, () => house(CITY.X0 - 11, 0, 90, 12, 8, { upper: 2, gableFront: true, lit: 3, tone: 0.82 }), FAR);
+  slot('house_c', 'house_c_w2', CITY.X0 - 12.5, -11.5, 90, 7.5, null, FAR);
+  slot('house_d', 'house_d_w2', CITY.X0 - 12.5, 12.5, 90, 10, null, FAR);
+  // 教堂两侧的台地上各一排房子(原型里栏杆后面是一排亮着窗的屋子;以前是空的)。只有模型在用时才有。
+  const FLY = { far: true, y: 0.9 };
+  slot('house_b', 'house_b_fn', 30.5, -16.2, -90, 9.6, null, FLY);
+  slot('house_c', 'house_c_fn', 31.5, -22.6, -90, 5.6, null, FLY);
+  slot('house', 'house_fn', 39, -13.2, -90, 9, null, FLY);
+  slot('house_d', 'house_d_fs', 27.6, 15.6, -90, 8.6, null, FLY);
+  slot('house', 'house_fs', 28.6, 22.4, -90, 7, null, FLY);
+  slot('house_b', 'house_b_fs', 37, 21.5, -90, 12, null, FLY);
   // 房子的正面一线挡路(街口留着)
   solid(-1, CITY.Z0 - 0.6, 19.5, 0.6, 6);
   solid(-6, CITY.Z1 + 0.9, 13, 0.6, 6);

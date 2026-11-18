@@ -32,7 +32,7 @@ export interface CityPlan {
  * 一张可平铺的石板贴图(原型里那种深灰的大块旧石板,GPT 照原型的地面出的):缩好的像素 + 一块铺多少米。
  * j0 / j1 = 石缝的亮度门槛(比 j0 暗是缝,比 j1 亮是石面),mean = 平均亮度,k = 颜色乘多少(夜里的湿石头要压暗)。
  */
-export interface StoneTile { size: number; data: Uint8ClampedArray; m: number; j0: number; j1: number; mean: number; k: number }
+export interface StoneTile { size: number; data: Uint8ClampedArray; m: number; j0: number; j1: number; mean: number; k: number; /** 细节版:颜色和法线另由平铺的石板贴图出,这里只要粗糙度 / 积水那张图(落叶也不画在图上) */ detail?: boolean }
 
 export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile): MudOut {
   const A = makeCanvas(W, H);
@@ -328,6 +328,75 @@ export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile)
     const py = ((wz - plan.z0) / plan.d) * H;
     leaf(px, py, (0.08 + rnd() * 0.07) / mpp, rnd() * 6.28, cols[Math.floor(rnd() * cols.length)]);
   };
+  const leafGeo = !!(tile && tile.detail);          // 细节版:落叶是贴地的小面片(plazaLeaves),不画在这张图上
+  for (let i = 0; i < (leafGeo ? 0 : 1300); i += 1) {
+    drop(plan.x0 + rnd() * plan.w, plan.z0 + rnd() * plan.d);
+  }
+  for (const [tx, tz] of leafGeo ? [] : plan.trees) {
+    for (let i = 0; i < 150; i += 1) {
+      const a = rnd() * 6.28;
+      const r = Math.sqrt(rnd()) * 5.5;
+      drop(tx + Math.cos(a) * r, tz + Math.sin(a) * r);
+    }
+  }
+  return { albedo: A, normal: N, orm: O, wet };
+}
+
+/** 罗盘纹的八角星:四个长角(正方向)+ 四个短角(斜方向);返回 0 = 不在星里,1 / 2 = 在星里(一个角的两半,一深一浅)。 */
+function compassStar(r: number, dx: number, dz: number): number {
+  for (let i = 0; i < 8; i += 1) {
+    const a = (i * Math.PI) / 4;
+    const L = (i % 2 === 0 ? 0.6 : 0.36) * r;
+    const wd = (i % 2 === 0 ? 0.105 : 0.075) * r;
+    const p = dx * Math.cos(a) + dz * Math.sin(a);
+    const q = -dx * Math.sin(a) + dz * Math.cos(a);
+    if (p > 0 && p / L + Math.abs(q) / wd < 1) {
+      return q > 0 ? 1 : 2;
+    }
+  }
+  return 0;
+}
+
+/**
+ * 石板地面(细节版)每个顶点的颜色倍数:大片的深浅、水膜压暗、罗盘纹(星的两半一浅一深、两圈石带略浅)。
+ * 和 plazaPbr 里石板那一段用同一套噪声,所以压暗的地方正好是粗糙度图里发亮的水膜。
+ */
+export function plazaTint(plan: CityPlan, k: number): (wx: number, wz: number) => [number, number, number] {
+  const big = new NoiseLut(256, 4, 5, 611);
+  const mid = new NoiseLut(256, 16, 4, 623);
+  const C = plan.compass;
+  return (wx: number, wz: number): [number, number, number] => {
+    const nb = big.at(wx / 16, wz / 16);
+    const nm = mid.at(wx / 6, wz / 6);
+    const dx = wx - C.x;
+    const dz = wz - C.z;
+    const dc = Math.hypot(dx, dz);
+    let inlay = 0;
+    if (dc < C.r) {
+      const st = dc < C.r * 0.66 ? compassStar(C.r, dx, dz) : 0;
+      if (st > 0) {
+        inlay = st;
+      } else if (Math.abs(dc - C.r * 0.955) < C.r * 0.045 || Math.abs(dc - C.r * 0.68) < C.r * 0.022) {
+        inlay = 3;
+      }
+    }
+    const kc = k * (0.84 + 0.32 * nb) * (inlay === 1 ? 2.0 : inlay === 2 ? 0.5 : inlay === 3 ? 1.5 : 1);
+    const film = clamp01(sstep(0.39, 0.63, 0.62 * big.at(wx / 26 + 0.2, wz / 26 + 0.6) + 0.38 * nm) * (0.4 + plan.wet)) * (0.35 + 0.65 * sstep(C.r * 0.9, C.r * 1.5, dc));
+    return [kc * (1 - 0.3 * film), kc * (1 - 0.28 * film), kc * (1 - 0.24 * film)];
+  };
+}
+
+/** 广场地上的落叶(位置、大小、朝向、颜色):和以前画在地面贴图上的是同一批,树下密、别处零星。 */
+export function plazaLeaves(plan: CityPlan): Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }> {
+  const rnd = mulberry32(677);
+  const cols: Array<[number, number, number]> = [[92, 26, 20], [74, 22, 18], [98, 44, 22], [66, 34, 22], [84, 20, 22], [58, 30, 20]];
+  const out: Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }> = [];
+  const drop = (x: number, z: number): void => {
+    const s = 0.08 + rnd() * 0.07;
+    const rot = rnd() * 6.28;
+    const c = cols[Math.floor(rnd() * cols.length)];
+    out.push({ x, z, s, rot, col: [c[0] / 255, c[1] / 255, c[2] / 255] });
+  };
   for (let i = 0; i < 1300; i += 1) {
     drop(plan.x0 + rnd() * plan.w, plan.z0 + rnd() * plan.d);
   }
@@ -338,7 +407,76 @@ export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile)
       drop(tx + Math.cos(a) * r, tz + Math.sin(a) * r);
     }
   }
-  return { albedo: A, normal: N, orm: O, wet };
+  return out;
+}
+
+/**
+ * 石板贴图按原始精度出一套可平铺的颜色图和法线图(细节版地面用:每 m 米铺一次,比整张地面那张图细三四倍)。
+ * 高度 = 石面的明暗(先糊一下:直接用的话是一粒粒的噪点)+ 石缝往下陷;j0 / j1 = 石缝的亮度门槛,mean = 平均亮度。
+ */
+export function stoneTileMaps(src: CanvasImageSource, S: number, m: number, j0: number, j1: number, mean: number): { albedo: Cv; normal: Cv } {
+  const A = makeCanvas(S, S);
+  const ac = ctxOf(A);
+  ac.drawImage(src, 0, 0, S, S);
+  const d = ac.getImageData(0, 0, S, S).data;
+  const L = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i += 1) {
+    L[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 765;
+  }
+  // 方框模糊(首尾相接:贴图是平铺的)
+  const blur = (inp: Float32Array, r: number): Float32Array => {
+    const tmp = new Float32Array(S * S);
+    const out = new Float32Array(S * S);
+    const n = 2 * r + 1;
+    for (let y = 0; y < S; y += 1) {
+      for (let x = 0; x < S; x += 1) {
+        let s = 0;
+        for (let k = -r; k <= r; k += 1) {
+          s += inp[y * S + ((x + k + S) % S)];
+        }
+        tmp[y * S + x] = s / n;
+      }
+    }
+    for (let y = 0; y < S; y += 1) {
+      for (let x = 0; x < S; x += 1) {
+        let s = 0;
+        for (let k = -r; k <= r; k += 1) {
+          s += tmp[((y + k + S) % S) * S + x];
+        }
+        out[y * S + x] = s / n;
+      }
+    }
+    return out;
+  };
+  const soft = blur(L, 3);
+  const edge = blur(L, 1);
+  const Hh = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i += 1) {
+    const h = 0.3 * (soft[i] - mean);
+    Hh[i] = mixn(h - 0.085, h, sstep(j0, j1, edge[i]));
+  }
+  const N = makeCanvas(S, S);
+  const nc = ctxOf(N);
+  const ni = nc.createImageData(S, S);
+  const k = (0.05 / (m / S)) * 1.4;
+  for (let y = 0; y < S; y += 1) {
+    const ya = ((y - 1 + S) % S) * S;
+    const yb = ((y + 1) % S) * S;
+    for (let x = 0; x < S; x += 1) {
+      let nx = -(Hh[y * S + ((x + 1) % S)] - Hh[y * S + ((x - 1 + S) % S)]) * 0.5 * k;
+      let ny = -(Hh[yb + x] - Hh[ya + x]) * 0.5 * k;
+      const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+      nx *= inv;
+      ny *= inv;
+      const p = (y * S + x) * 4;
+      ni.data[p] = Math.round((nx * 0.5 + 0.5) * 255);
+      ni.data[p + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      ni.data[p + 2] = Math.round((inv * 0.5 + 0.5) * 255);
+      ni.data[p + 3] = 255;
+    }
+  }
+  nc.putImageData(ni, 0, 0);
+  return { albedo: A, normal: N };
 }
 
 /** 石板瓦屋顶(可平铺):一排排长方的薄石片,上一排压着下一排(每片下沿厚、上沿薄),排与排错半片;青灰,片片深浅不同。 */
