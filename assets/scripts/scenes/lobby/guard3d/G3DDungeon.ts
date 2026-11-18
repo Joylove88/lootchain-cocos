@@ -1,7 +1,7 @@
 import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, ImageAsset, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
-import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
+import { charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { barkPbr, canvasPbr, endGrainPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
@@ -443,6 +443,13 @@ class Dungeon {
   private stick = { x: 0, y: 0 };
   private ptrs = new Map<number, { kind: 'stick' | 'cam'; x: number; y: number; ox: number; oy: number; t: number; moved: number; touch: boolean }>();
   private hudEl: HTMLDivElement | null = null;
+  /** 主角模型到了(或者确定载不到)没有:别的模型都排在它后面下载 —— 线上一起下的话,主角要等几十秒到几分钟,这段时间按键全都没反应。 */
+  private heroSettled = false;
+  private afterHero: Array<() => void> = [];
+  /** 屏幕上方的载入进度(主角 / 建筑模型),全部到齐后自己消失。 */
+  private loadEl: HTMLDivElement | null = null;
+  private bldTotal = 0;
+  private bldDone = 0;
   private fpsAcc = { t: 0, n: 0, last: 0, worst: 0 };
   fps = 0;
   /** 最近几秒里最慢的一帧折算成的帧数(卡不卡看它)。 */
@@ -1584,10 +1591,15 @@ class Dungeon {
     moon.color = new Color(200, 212, 244, 255);
     moon.illuminance = DUNGEON.moon;
     this.moon = moon;
-    this.loadCityBuildings(world, C.bldSpots.filter((b) => bldKeys.indexOf(b.key) >= 0));
-    if (paved) {
-      this.loadCityGround();
-    }
+    const spots = C.bldSpots.filter((b) => bldKeys.indexOf(b.key) >= 0);
+    this.bldTotal = spots.length;
+    this.bldDone = 0;
+    this.whenHero(() => {
+      this.loadCityBuildings(world, spots);
+      if (paved) {
+        this.loadCityGround();
+      }
+    });
     this.finishBuild(world, t0);
   }
 
@@ -1704,6 +1716,8 @@ class Dungeon {
     for (const sp of spots) {
       const info = infos.find((i) => i.path.split('/')[1] === sp.key);
       resources.load(info ? info.path : `g3d_bld/${sp.key}/${sp.key}`, Prefab, (err, prefab) => {
+        this.bldDone += 1;
+        this.updateLoadEl();
         if (err || !prefab) {
           console.warn('[g3dd] 建筑模型没找到(要先临时拷进 resources/g3d_bld)', sp.key);
           return;
@@ -2027,14 +2041,59 @@ class Dungeon {
   }
 
   // ───────────────────────── 角色 ─────────────────────────
+  /** 主角到了以后再做(已经到了就马上做)。 */
+  private whenHero(fn: () => void): void {
+    if (this.heroSettled) {
+      fn();
+    } else {
+      this.afterHero.push(fn);
+    }
+  }
+
+  private settleHero(): void {
+    if (this.heroSettled) {
+      return;
+    }
+    this.heroSettled = true;
+    const list = this.afterHero;
+    this.afterHero = [];
+    list.forEach((fn) => fn());
+    this.updateLoadEl();
+  }
+
+  /** 屏幕上方一行小字:主角载入中 / 建筑模型 n / m;都到齐了就拿掉。 */
+  private updateLoadEl(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const heroWait = !this.heroSettled && hasChar('hero_m');
+    const bldWait = this.bldTotal > 0 && this.bldDone < this.bldTotal;
+    if (!heroWait && !bldWait) {
+      this.loadEl?.remove();
+      this.loadEl = null;
+      return;
+    }
+    if (!this.loadEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9998;padding:6px 16px;border-radius:14px;'
+        + 'background:rgba(12,16,24,.62);border:1px solid rgba(255,255,255,.18);color:#e8eefc;font:500 15px/20px sans-serif;pointer-events:none;letter-spacing:1px';
+      document.body.appendChild(el);
+      this.loadEl = el;
+    }
+    this.loadEl.textContent = heroWait ? '角色载入中,稍等片刻就能操作…' : `建筑模型载入中 ${this.bldDone} / ${this.bldTotal}(可以先走动)`;
+  }
+
   private loadChars(): void {
     const keys = charKeys();
-    const spawn = (key: string, x: number, z: number, height: number, yaw: number, done: (c: G3DChar) => void, procWalk = false): void => {
+    this.updateLoadEl();
+    const spawn = (key: string, x: number, z: number, height: number, yaw: number, done: (c: G3DChar) => void, procWalk = false, fail?: () => void): void => {
       if (keys.indexOf(key) < 0) {
+        fail?.();
         return;
       }
       loadChar(key, (tpl) => {
         if (!tpl || !this.world || !this.world.isValid) {
+          fail?.();
           return;
         }
         const c = G3DChar.spawn(tpl, this.world, { at: new Vec3(x, 0, z), height, yaw, baked: false, albedo: 0.9, procWalk, inPlace: true });
@@ -2050,7 +2109,17 @@ class Dungeon {
         c.inPlace = false;          // 这批片段的位移已经抽掉了,剩下的是身体的晃动,要留着
       }
       this.loco('idle', 0);
-    });
+      this.settleHero();
+    }, false, () => this.settleHero());
+    this.whenHero(() => this.loadCrew(spawn));
+  }
+
+  /** 主角以外的角色:队友、镇民(主城)或怪(地宫 / 野外)。等主角到了再下。 */
+  private loadCrew(spawn: (key: string, x: number, z: number, height: number, yaw: number, done: (c: G3DChar) => void, procWalk?: boolean, fail?: () => void) => void): void {
+    if (!this.world || !this.world.isValid) {
+      return;
+    }
+    const keys = charKeys();
     spawn('hero_f', this.lx - 0.9, this.lz + 0.9, 1.68, 0, (c) => {
       this.followers.push({ c, x: this.lx - 0.9, z: this.lz + 0.9, yaw: 0, moving: false, ox: -0.9, oz: 0.9 });
       c.play(c.clip('idle'), 0);
@@ -2304,7 +2373,9 @@ class Dungeon {
 
   private bindInput(): void {
     // 浏览器要等用户点过 / 按过键才允许出声
-    window.addEventListener('keydown', () => sfx.unlock());
+    // 键盘一律在 window 的「捕获」阶段收:引擎在画布上也听键盘,而且会 stopPropagation —— 用户点过一下画面、焦点落到画布上以后,
+    // 冒泡阶段的监听就再也收不到按键(11-18 线上「WASD 和技能键没反应」就是这个)
+    window.addEventListener('keydown', () => sfx.unlock(), true);
     window.addEventListener('pointerdown', () => sfx.unlock(), true);
     const cv = game.canvas;
     if (!cv || typeof window === 'undefined') {
@@ -2324,13 +2395,13 @@ class Dungeon {
       if (k !== undefined) {
         this.keys.add(k);
       }
-    });
+    }, true);
     window.addEventListener('keyup', (e) => {
       const k = KEY[e.code];
       if (k !== undefined) {
         this.keys.delete(k);
       }
-    });
+    }, true);
     window.addEventListener('blur', () => {
       this.keys.clear();
     });
