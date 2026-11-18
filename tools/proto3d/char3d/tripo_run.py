@@ -15,6 +15,8 @@
                          [--faces=60000] [--tex=detailed] [--geo=detailed] [--texver=v3.5-20260815] [--seed=20261112] --ok=60
   python tripo_run.py gen1 <名字> <单张图> [--faces=100000] [--tex=detailed] [--geo=standard] --ok=40
                          单图 → 3D(建筑、道具这类不绑骨的东西;图用四分之三视角、干净底色的设定图)
+  python tripo_run.py lowpoly <名字> [--faces=20000] [--quad] --ok=35
+                         已生成的模型减面重拓扑(贴图从原模型烘过去,外观不变;三角面 500~20000)
   python tripo_run.py rigcheck <名字>                              免费
   python tripo_run.py rig <名字> [--type=biped] [--spec=mixamo] --ok=25
   python tripo_run.py anim <名字> idle,walk,slash,hurt,fall --ok=50   (一次最多 5 个;两足预设只有 idle walk run dive climb jump slash shoot hurt fall turn)
@@ -310,6 +312,19 @@ def cmd_gen1(name):
     start(name, 'gen', '/generation/image-to-model', body, cost)
 
 
+def cmd_lowpoly(name):
+    """已生成的模型 → 减面重拓扑 + 把原模型的贴图烘到低模上(2026-11-18 查的 developers.tripo3d.com/en/docs/mesh-decimate:
+    POST /mesh/decimate,input 填原任务号;v3.0 三角面 500~20000;bake 默认开;价目 v3.0 三角面 35、四边面 40)。
+    起因:主城图转 3D 的建筑 5~19 万面一栋,核显笔记本卡在几何上。"""
+    quad = '--quad' in sys.argv
+    cost = 40 if quad else 35
+    precheck(name, 'lowpoly', cost)
+    body = {'input': need_task(name, 'gen'), 'model': opt('lpmodel', 'v3.0'), 'face_limit': int(opt('faces', '20000')), 'bake': True}
+    if quad:
+        body['quad'] = True
+    start(name, 'lowpoly', '/mesh/decimate', body, cost)
+
+
 def need_task(name, step):
     info = load_state(name)['steps'].get(step)
     if not info or info.get('status') != 'success':
@@ -364,6 +379,8 @@ def main():
         cmd_gen(name)
     elif cmd == 'gen1':
         cmd_gen1(name)
+    elif cmd == 'lowpoly':
+        cmd_lowpoly(name)
     elif cmd == 'rigcheck':
         cmd_rigcheck(name)
     elif cmd == 'rig':
@@ -381,7 +398,7 @@ def main():
         print(f'合计已扣 {total:.0f} 积分')
     else:
         raise SystemExit(__doc__)
-    if cmd in ('mv', 'gen', 'rig', 'anim', 'rigcheck', 'wait'):
+    if cmd in ('mv', 'gen', 'lowpoly', 'rig', 'anim', 'rigcheck', 'wait'):
         bal, frozen = balance()
         print(f'现在余额 {bal:.0f}(冻结 {frozen:.0f})')
 
