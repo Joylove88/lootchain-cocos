@@ -39,6 +39,12 @@ CLIPS = [
     ('gs_jog', 'great_sword_run', True),
     ('gs_jog2', 'great_sword_run_2', True),
     ('gs_step', 'great_sword_walk', True),
+    # 11-18 用户嫌待机 / 跑「佝偻着身子」:把包里另外几种待机、走路也转进来挑
+    ('gs_stand2', 'great_sword_idle_2', True),
+    ('gs_stand3', 'great_sword_idle_3', True),
+    ('gs_stand4', 'great_sword_idle_4', True),
+    ('gs_stand5', 'great_sword_idle_5', True),
+    ('gs_step2', 'great_sword_walk_2', True),
     ('gs_cut1', 'great_sword_slash', False),
     ('gs_cut2', 'great_sword_slash_2', False),
     ('gs_cut3', 'great_sword_slash_3', False),
