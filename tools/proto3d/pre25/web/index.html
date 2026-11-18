@@ -1,0 +1,371 @@
+<title>预渲染广场小样</title>
+<style>
+  /* 单一深色:夜里的广场,画面本身就是暗的,不跟随浅色主题 */
+  :root { --bg: #05070b; --fg: #dfe7f5; --dim: #8a96aa; --gold: #c9a35b; --btn: rgba(20, 26, 38, .62); --btnLine: rgba(210, 222, 245, .35); color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: calc(10px + env(safe-area-inset-left, 0px)); top: calc(8px + env(safe-area-inset-top, 0px)); font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--fg); background: rgba(0, 0, 0, .45); padding: 3px 8px; border-radius: 4px; pointer-events: none; white-space: pre; }
+  #help { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 13px; color: var(--dim); background: rgba(0, 0, 0, .4); padding: 4px 12px; border-radius: 14px; pointer-events: none; white-space: nowrap; }
+  #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; background: var(--bg); font-size: 15px; }
+  #load .bar { width: min(320px, 70vw); height: 4px; background: rgba(255, 255, 255, .12); border-radius: 2px; overflow: hidden; }
+  #load .bar i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .2s; }
+  #atk { position: fixed; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); width: 84px; height: 84px; border-radius: 50%; background: var(--btn); border: 1.5px solid var(--btnLine); color: var(--fg); font-size: 22px; display: none; align-items: center; justify-content: center; }
+  #stick { position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 1.5px solid var(--btnLine); background: rgba(20, 26, 38, .25); display: none; pointer-events: none; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(210, 222, 245, .45); }
+  body.touch #atk { display: flex; }
+</style>
+<canvas id="cv"></canvas>
+<div id="hud"></div>
+<div id="help">WASD / 方向键 走 · J 或 空格 劈砍</div>
+<div id="atk">劈</div>
+<div id="stick"><i></i></div>
+<div id="load"><div id="loadTxt">正在载入 0%</div><div class="bar"><i id="loadBar"></i></div></div>
+<script>
+'use strict';
+// 预渲染 2.5D 小样:底图是 3D 主城从固定俯视机位离线渲染的一张 4K 图;主角是同一套 3D 模型离线渲染的 8 方向序列帧。
+// 运行时只画三样东西:底图、主角(按遮挡图逐像素判断前后)、灯的光晕。手机 / 核显都只是 2D 的开销。
+const cv = document.getElementById('cv');
+const gl = cv.getContext('webgl', { alpha: false, antialias: false, premultipliedAlpha: true });
+const hud = document.getElementById('hud');
+const VIEW_H = 800;          // 画面竖向显示底图的多少像素(主角约占画面 12%)
+const FILES = ['data.json', 'bg.webp', 'occ.png', 'hero.webp'];
+
+function fetchWithProgress(urls, onProgress) {
+  const got = new Array(urls.length).fill(0);
+  const total = new Array(urls.length).fill(0);
+  return Promise.all(urls.map((u, i) => fetch(u).then(async (r) => {
+    if (!r.ok) throw new Error(u + ' ' + r.status);
+    total[i] = +r.headers.get('content-length') || 0;
+    const reader = r.body.getReader();
+    const parts = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      got[i] += value.length;
+      const t = total.reduce((a, b) => a + b, 0);
+      onProgress(t ? got.reduce((a, b) => a + b, 0) / t : 0);
+    }
+    return new Blob(parts, { type: r.headers.get('content-type') || '' });
+  })));
+}
+
+function loadImage(blob) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(blob); });
+}
+
+function shader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name] = gl.getUniformLocation(p, a.name); }
+  return { p, u, aPos: gl.getAttribLocation(p, 'aPos'), aUV: gl.getAttribLocation(p, 'aUV') };
+}
+function texture(img, nearest, premul) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul);
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  const f = nearest ? gl.NEAREST : gl.LINEAR;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+// 顶点用底图像素坐标,在着色器里换成屏幕
+const VS = `
+attribute vec2 aPos; attribute vec2 aUV;
+uniform vec2 uCenter; uniform float uK; uniform vec2 uCanvas;
+varying vec2 vUV; varying vec2 vBg;
+void main() {
+  vec2 s = (aPos - uCenter) * uK + uCanvas * 0.5;
+  gl_Position = vec4(s.x / uCanvas.x * 2.0 - 1.0, 1.0 - s.y / uCanvas.y * 2.0, 0.0, 1.0);
+  vUV = aUV; vBg = aPos;
+}`;
+const FS_BG = `
+precision mediump float;
+uniform sampler2D uTex; varying vec2 vUV; varying vec2 vBg;
+void main() { gl_FragColor = vec4(texture2D(uTex, vUV).rgb, 1.0); }`;
+// 主角 / 影子 / 光晕共用:mode 0 = 图集贴图(按遮挡图判断前后),1 = 脚下的椭圆影子(同样判断),2 = 灯的光晕(叠加,不判断)
+const FS_SPR = `
+precision highp float;
+uniform sampler2D uTex; uniform sampler2D uOcc;
+uniform vec2 uBgSize; uniform float uFootDepth; uniform float uFootY; uniform float uPxPerM; uniform float uSinP;
+uniform float uNear; uniform float uFar; uniform vec3 uTint; uniform float uMode; uniform vec4 uColor; uniform vec2 uArc;
+varying vec2 vUV; varying vec2 vBg;
+float hidden(float footLift) {
+  vec3 o = texture2D(uOcc, (floor(vBg) + 0.5) / uBgSize).rgb;
+  if (o.b < 0.01) return 0.0;
+  float od = uNear + (o.r + o.g / 255.0) * (uFar - uNear);
+  // 人是竖着的:这个像素离脚底高出多少米,离镜头就近多少(× 俯角的正弦)
+  float fd = uFootDepth - footLift * max(0.0, uFootY - vBg.y) / uPxPerM * uSinP;
+  return od < fd - 0.3 ? o.b : 0.0;
+}
+void main() {
+  if (uMode < 0.5) {
+    vec4 c = texture2D(uTex, vUV);
+    float h = hidden(1.0);
+    gl_FragColor = vec4(c.rgb * uTint, c.a) * (1.0 - h);
+  } else if (uMode < 1.5) {
+    float d = length(vUV * 2.0 - 1.0);
+    float a = smoothstep(1.0, 0.15, d) * uColor.a * (1.0 - hidden(0.0));
+    gl_FragColor = vec4(0.0, 0.0, 0.0, a);
+  } else if (uMode < 2.5) {
+    float d = length(vUV * 2.0 - 1.0);
+    float a = pow(max(0.0, 1.0 - d), 2.2) * uColor.a;
+    gl_FragColor = vec4(uColor.rgb * a, 0.0);
+  } else {
+    // 刀光:一段弧,uArc.x = 朝向(弧度,屏幕上),uArc.y = 挥到哪了(0 → 1)
+    vec2 p = vUV * 2.0 - 1.0;
+    p.y *= -1.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x) - uArc.x;
+    ang = mod(ang + 3.14159265, 6.2831853) - 3.14159265;
+    float head = mix(-1.3, 1.3, uArc.y);
+    float trail = smoothstep(head - 1.4, head, ang) * step(ang, head + 0.05);
+    float band = smoothstep(0.55, 0.8, r) * smoothstep(1.0, 0.86, r);
+    float a = band * trail * uColor.a;
+    gl_FragColor = vec4(uColor.rgb * a, 0.0);
+  }
+}`;
+
+let D, P_BG, P_SPR, T_BG, T_OCC, T_HERO;
+const quadBuf = gl && gl.createBuffer();
+function drawQuad(prog, x, y, w, h, u0 = 0, v0 = 0, u1 = 1, v1 = 1) {
+  const a = new Float32Array([x, y, u0, v0, x + w, y, u1, v0, x, y + h, u0, v1, x + w, y + h, u1, v1]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, a, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(prog.aPos);
+  gl.vertexAttribPointer(prog.aPos, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(prog.aUV);
+  gl.vertexAttribPointer(prog.aUV, 2, gl.FLOAT, false, 16, 8);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// 世界坐标 → 底图像素(和离线渲染同一个相机矩阵),返回 [x, y, 视深]
+function proj(x, y, z) {
+  const m = D.vp;
+  const X = m[0] * x + m[4] * y + m[8] * z + m[12];
+  const Y = m[1] * x + m[5] * y + m[9] * z + m[13];
+  const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  return [(X / w + 1) / 2 * D.bg[0], (1 - Y / w) / 2 * D.bg[1], w];
+}
+
+// ── 主角 ──
+const hero = { x: 0, z: 2, yaw: 180, state: 'stand', t: 0, queued: false, slash: 0 };
+const R = 0.35;
+const BOUNDS = { x0: -14.5, x1: 19.5, z0: -10, z1: 10 };
+function blocked(x, z) {
+  if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return true;
+  for (const s of D.solids) { if (Math.abs(x - s[0]) < s[2] + R && Math.abs(z - s[1]) < s[3] + R) return true; }
+  return false;
+}
+const keys = new Set();
+const stick = { x: 0, y: 0, id: null, ox: 0, oy: 0 };
+addEventListener('keydown', (e) => { keys.add(e.code); if (e.code === 'KeyJ' || e.code === 'Space') { attack(); e.preventDefault(); } });
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+function attack() {
+  if (hero.state === 'cut') { hero.queued = true; return; }
+  hero.state = 'cut'; hero.t = 0;
+}
+const stickEl = document.getElementById('stick');
+const atkEl = document.getElementById('atk');
+atkEl.addEventListener('touchstart', (e) => { e.preventDefault(); attack(); }, { passive: false });
+cv.addEventListener('touchstart', (e) => {
+  document.body.classList.add('touch');
+  document.getElementById('help').style.display = 'none';
+  for (const t of e.changedTouches) {
+    if (t.clientX < innerWidth * 0.55 && stick.id === null) {
+      stick.id = t.identifier; stick.ox = t.clientX; stick.oy = t.clientY; stick.x = stick.y = 0;
+      stickEl.style.display = 'block'; stickEl.style.left = t.clientX + 'px'; stickEl.style.top = t.clientY + 'px';
+    } else if (t.clientX >= innerWidth * 0.55) {
+      attack();
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+cv.addEventListener('touchmove', (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier !== stick.id) continue;
+    let dx = (t.clientX - stick.ox) / 50, dy = (t.clientY - stick.oy) / 50;
+    const l = Math.hypot(dx, dy);
+    if (l > 1) { dx /= l; dy /= l; }
+    stick.x = dx; stick.y = dy;
+    stickEl.firstElementChild.style.transform = `translate(${dx * 36}px, ${dy * 36}px)`;
+  }
+  e.preventDefault();
+}, { passive: false });
+const endTouch = (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === stick.id) { stick.id = null; stick.x = stick.y = 0; stickEl.style.display = 'none'; stickEl.firstElementChild.style.transform = ''; }
+  }
+};
+cv.addEventListener('touchend', endTouch);
+cv.addEventListener('touchcancel', endTouch);
+
+function step(dt) {
+  const H = D.hero;
+  if (hero.freeze) return;          // 自验摆位用
+  if (hero.state === 'cut') {
+    hero.t += dt;
+    const dur = H.clips.cut.dur;
+    if (hero.t >= dur) {
+      if (hero.queued) { hero.queued = false; hero.t = 0; } else { hero.state = 'stand'; hero.t = 0; }
+    }
+    hero.slash = hero.t > dur * 0.3 && hero.t < dur * 0.55 ? (hero.t - dur * 0.3) / (dur * 0.25) : 0;
+    return;
+  }
+  // 屏幕上:往上 = 世界 +x(朝教堂),往右 = 世界 +z
+  let up = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+  let right = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+  if (Math.hypot(stick.x, stick.y) > 0.2) { up = -stick.y; right = stick.x; }
+  const l = Math.hypot(up, right);
+  if (l > 0.01) {
+    const sp = 3.6 * Math.min(1, l) * dt;
+    const dx = up / l * sp, dz = right / l * sp;
+    if (!blocked(hero.x + dx, hero.z)) hero.x += dx;
+    if (!blocked(hero.x, hero.z + dz)) hero.z += dz;
+    hero.yaw = ((Math.round(Math.atan2(-dz, dx) * 180 / Math.PI / 45) * 45) % 360 + 360) % 360;
+    if (hero.state !== 'jog') { hero.state = 'jog'; hero.t = 0; }
+    hero.t += dt;
+  } else {
+    if (hero.state !== 'stand') { hero.state = 'stand'; hero.t = 0; }
+    hero.t += dt;
+  }
+}
+
+// 灯:路灯 / 火把 / 锻炉,底图里已经烘好了光,这里只叠一层会呼吸的光晕;离得近的灯给主角染一点暖色
+function lightsAt(time) {
+  return D.lights.map((L, i) => {
+    const big = L.kind === 'brazier' ? 2.2 : L.kind === 'torch' ? 1.3 : 0.6;
+    const flick = L.kind === 'brazier' || L.kind === 'torch' ? 0.82 + 0.18 * Math.sin(time * 7.3 + i * 1.7) * Math.sin(time * 3.1 + i) : 1;
+    return { L, big, flick };
+  });
+}
+
+let cx = 0, cy = 0, last = 0, fpsT = 0, fpsN = 0, fps = 0, worst = 0, worstShow = 0;
+function frame(now) {
+  const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016);
+  if (last) { fpsT += now - last; fpsN++; worst = Math.max(worst, now - last); }
+  last = now;
+  if (fpsT > 500) { fps = fpsN * 1000 / fpsT; fpsT = 0; fpsN = 0; worstShow = worst; worst = 0; }
+  step(dt);
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  gl.viewport(0, 0, w, h);
+  const k = h / VIEW_H;
+  const foot = proj(hero.x, 0, hero.z);
+  const head = proj(hero.x, 1.78, hero.z);
+  // 镜头跟着主角,不出底图边
+  const hw = w / k / 2, hh = h / k / 2;
+  const tx = Math.max(hw, Math.min(D.bg[0] - hw, foot[0]));
+  const ty = Math.max(hh, Math.min(D.bg[1] - hh, foot[1] - 60));
+  cx = cx ? cx + (tx - cx) * Math.min(1, dt * 6) : tx;
+  cy = cy ? cy + (ty - cy) * Math.min(1, dt * 6) : ty;
+
+  gl.disable(gl.BLEND);
+  gl.useProgram(P_BG.p);
+  gl.uniform2f(P_BG.u.uCenter, cx, cy); gl.uniform1f(P_BG.u.uK, k); gl.uniform2f(P_BG.u.uCanvas, w, h);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T_BG); gl.uniform1i(P_BG.u.uTex, 0);
+  drawQuad(P_BG, 0, 0, D.bg[0], D.bg[1]);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const S = P_SPR;
+  gl.useProgram(S.p);
+  gl.uniform2f(S.u.uCenter, cx, cy); gl.uniform1f(S.u.uK, k); gl.uniform2f(S.u.uCanvas, w, h);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T_HERO); gl.uniform1i(S.u.uTex, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T_OCC); gl.uniform1i(S.u.uOcc, 1);
+  gl.uniform2f(S.u.uBgSize, D.bg[0], D.bg[1]);
+  gl.uniform1f(S.u.uNear, D.near); gl.uniform1f(S.u.uFar, D.far);
+  gl.uniform1f(S.u.uSinP, Math.sin(D.pitch * Math.PI / 180));
+  const heroPx = foot[1] - head[1];
+  gl.uniform1f(S.u.uFootDepth, foot[2]); gl.uniform1f(S.u.uFootY, foot[1]); gl.uniform1f(S.u.uPxPerM, heroPx / 1.78);
+
+  // 影子
+  gl.uniform1f(S.u.uMode, 1); gl.uniform4f(S.u.uColor, 0, 0, 0, 0.55);
+  const sw = heroPx * 0.62, sh = sw * 0.42;
+  drawQuad(S, foot[0] - sw / 2, foot[1] - sh / 2, sw, sh);
+
+  // 主角:暖色按附近的灯算
+  const time = now / 1000;
+  const ls = lightsAt(time);
+  let tr = 1, tg = 1, tb = 1;
+  for (const { L, big, flick } of ls) {
+    const d = Math.hypot(L.p[0] - hero.x, L.p[2] - hero.z);
+    const reach = big * 3.2;
+    if (d < reach) { const f = Math.pow(1 - d / reach, 2) * 0.55 * flick * (big / 2.2 + 0.3); tr += f * L.c[0] / 255; tg += f * L.c[1] / 255 * 0.8; tb += f * L.c[2] / 255 * 0.55; }
+  }
+  gl.uniform3f(S.u.uTint, tr, tg, tb);
+  gl.uniform1f(S.u.uMode, 0);
+  const H = D.hero;
+  const clip = H.clips[hero.state];
+  const fi = Math.floor((hero.t / clip.dur) * clip.n) % clip.n;
+  const fr = H.frames[hero.state][String(hero.yaw)][fi];
+  const ds = heroPx / H.refPx;
+  const [fx, fy, fw, fh, ox, oy] = fr;          // 图集里的位置、大小,脚底在这一帧里的位置
+  drawQuad(S, foot[0] - ox * ds, foot[1] - oy * ds, fw * ds, fh * ds,
+    fx / H.atlas[0], fy / H.atlas[1], (fx + fw) / H.atlas[0], (fy + fh) / H.atlas[1]);
+
+  // 光晕 + 劈砍时剑前一道白光
+  gl.uniform1f(S.u.uMode, 2);
+  for (const { L, big, flick } of ls) {
+    if (!L.on) continue;
+    const c = proj(L.p[0], L.p[1], L.p[2]);
+    const r = (proj(L.p[0], L.p[1] + big, L.p[2])[1] - c[1]) * -1;
+    gl.uniform4f(S.u.uColor, L.c[0] / 255, L.c[1] / 255 * 0.85, L.c[2] / 255 * 0.6, (L.kind === 'brazier' ? 0.5 : 0.32) * flick);
+    drawQuad(S, c[0] - r, c[1] - r, r * 2, r * 2);
+  }
+  if (hero.slash) {
+    // 刀光画在主角胸口高度,朝主角面向的那一侧(按屏幕上的方向算)
+    const a = (hero.yaw * Math.PI) / 180;
+    const c = proj(hero.x, 1.0, hero.z);
+    const f = proj(hero.x + Math.cos(a), 1.0, hero.z - Math.sin(a));
+    const r = heroPx * 0.62;
+    gl.uniform1f(S.u.uMode, 3);
+    gl.uniform2f(S.u.uArc, Math.atan2(-(f[1] - c[1]), f[0] - c[0]), Math.min(1, hero.slash));
+    gl.uniform4f(S.u.uColor, 0.8, 0.9, 1.0, 0.85 * (1 - Math.max(0, hero.slash - 0.75) * 4));
+    drawQuad(S, c[0] - r, c[1] - r, r * 2, r * 2);
+  }
+
+  hud.textContent = `预渲染广场小样 · ${fps.toFixed(0)} 帧(最慢一帧 ${worstShow.toFixed(0)} 毫秒)\n画布 ${w}×${h} · 像素比 ${(devicePixelRatio || 1).toFixed(2)}`;
+  requestAnimationFrame(frame);
+}
+
+async function main() {
+  if (!gl) { document.getElementById('loadTxt').textContent = '这个浏览器不支持 WebGL'; return; }
+  const bar = document.getElementById('loadBar');
+  const txt = document.getElementById('loadTxt');
+  const blobs = await fetchWithProgress(FILES, (p) => { bar.style.width = (p * 100).toFixed(0) + '%'; txt.textContent = `正在载入 ${(p * 100).toFixed(0)}%`; });
+  D = JSON.parse(await blobs[0].text());
+  const [bg, occ, heroImg] = await Promise.all([loadImage(blobs[1]), loadImage(blobs[2]), loadImage(blobs[3])]);
+  P_BG = program(VS, FS_BG);
+  P_SPR = program(VS, FS_SPR);
+  T_BG = texture(bg, false, false);
+  T_OCC = texture(occ, true, false);
+  T_HERO = texture(heroImg, false, true);
+  const q = new URLSearchParams(location.search);
+  if (q.get('x')) { hero.x = +q.get('x'); hero.z = +q.get('z'); }
+  if (q.get('yaw')) hero.yaw = +q.get('yaw');
+  document.getElementById('load').style.display = 'none';
+  window.__pre25 = { hero, D, proj };
+  requestAnimationFrame(frame);
+}
+main().catch((e) => { document.getElementById('loadTxt').textContent = '载入失败:' + e.message; console.error(e); });
+</script>

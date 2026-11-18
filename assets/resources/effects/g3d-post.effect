@@ -399,6 +399,14 @@ CCProgram grade-fs %{
     }
     vec3 bloom = texture(lcTexB, v_uv).rgb;
     float dbg = lcP1.w;
+    if (dbg > 4.5) {
+      // 导出深度(预渲染 2.5D 用,tools/proto3d/pre25):到镜头的视深按近 / 远裁剪面归一,拆成两个 8 位放 r / g;天空 b = 1
+      float dd = texture(lcDepth, v_uv).r;
+      float dist = lcP5.z > 0.5 ? (lcP5.x * lcP5.y) / (lcP5.y - dd * (lcP5.y - lcP5.x)) : lcP5.x + dd * (lcP5.y - lcP5.x);
+      float d01 = clamp((dist - lcP5.x) / (lcP5.y - lcP5.x), 0.0, 0.99999);
+      fragColor = vec4(floor(d01 * 255.0) / 255.0, fract(d01 * 255.0), dd < 0.99999 ? 0.0 : 1.0, 1.0);
+      return;
+    }
     if (dbg > 3.5) {
       // 看深度:每 1.3 米一条由黑到白的带子
       vec4 a = texture(lcTexC, v_uv);
