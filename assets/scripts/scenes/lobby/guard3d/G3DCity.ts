@@ -13,6 +13,19 @@ import type { CityPlan } from './G3DCityTex';
  */
 
 export const CITY = { X0: -20, X1: 20, Z0: -14, Z1: 14 };
+/** 教堂前的台地:广场东沿往东 x 起、高 h;正中一段台阶(z0 ~ z1)从 x 走 run 米升到台地上。 */
+export const CITY_TERRACE = { x: CITY.X1 + 0.6, h: 0.9, run: 2.2, z0: -6.5, z1: 2.5 };
+/** 主城里某一点的地面高度:广场 0,台阶一路升上去,台地上 0.9(角色站的高度跟着它走)。 */
+export function cityFloorY(x: number, z: number): number {
+  const T = CITY_TERRACE;
+  if (x <= T.x) {
+    return 0;
+  }
+  if (x >= T.x + T.run || z < T.z0 || z > T.z1) {
+    return T.h;
+  }
+  return (T.h * (x - T.x)) / T.run;
+}
 /** 地面那张大贴图管的范围(比可走的范围大一圈:房子的墙脚、教堂的台阶也在它上面)。 */
 export const CITY_GROUND = { x0: -32, z0: -24, w: 64, d: 48 };
 /**
@@ -554,8 +567,8 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   // 教堂的模型:w = 正面的宽(连尖顶高约 26 米),中心 = 正面中点沿中轴往后退 12.5 米;站在台地上
   s.bldSpots.push({ key: 'cathedral', id: 'cathedral', x: 38.05, z: 4.1, yaw: -110, w: 17.6, d: 25, y: 0.9 });
   if (skip.indexOf('cathedral') >= 0) {
-    // 换成模型:这里只留挡路的方块
-    solid(32, -2, 8, 12, 30);
+    // 换成模型:这里只留挡路的方块。第十轮:台阶能走上去了,挡路块从教堂正门(x ≈ 26.3)往后算,台阶顶到门口这一截留给人走
+    solid(34.4, -2, 8, 12, 30);
     solid(23.4, 8.6, 1.4, 2.6, 30);
   } else {
     const S = 0.64;
@@ -832,7 +845,8 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     // 台阶:六级,整段比广场宽出来的那一截嵌在台地里
     for (let i = 0; i < 6; i += 1) {
       const x0 = TX + 0.36 * i;
-      s.stone.box(TX + 2.2 - x0, 0.15, SZ1 - SZ0, V((x0 + TX + 2.2) / 2, 0.15 * i + 0.075, (SZ0 + SZ1) / 2), O0, i % 2 ? TL : TS, 0.5, rnd, 0.02);
+      // 第十轮:台阶能走上去、会被近看了 —— 原来的浅灰一级比一级亮,像新砌的地砖;压到和广场旧石板差不多的深灰
+      s.stone.box(TX + 2.2 - x0, 0.15, SZ1 - SZ0, V((x0 + TX + 2.2) / 2, 0.15 * i + 0.075, (SZ0 + SZ1) / 2), O0, i % 2 ? [0.42, 0.43, 0.46] : [0.38, 0.39, 0.42], 0.5, rnd, 0.02);
     }
     /** 一根石柱(lampOn = 顶上一盏灯)。 */
     const post = (x: number, z: number, h: number, w: number, lampOn: boolean): void => {

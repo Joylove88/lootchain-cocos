@@ -448,12 +448,32 @@ export function stoneTileMaps(src: CanvasImageSource, S: number, m: number, j0: 
     }
     return out;
   };
-  const soft = blur(L, 3);
-  const edge = blur(L, 1);
+  const soft = blur(L, Math.round(3 * S / 1024));
+  const edge = blur(L, Math.max(1, Math.round(S / 1024)));
+  // 第十轮(用户看了第九轮:石面本身没有颗粒、偏平):石面起伏加深一点(0.3 → 0.42)、石缝更深(0.085 → 0.11);
+  // 再叠一层很细的石粒(两层平铺的小噪声,1 ~ 2 厘米一粒):颜色只差 ±6%,法线上是细密的麻面 —— 别成粗颗粒
+  const gA = new NoiseLut(256, 128, 2, 731);
+  const gB = new NoiseLut(256, 256, 1, 733);
+  const grain = new Float32Array(S * S);
+  for (let y = 0; y < S; y += 1) {
+    for (let x = 0; x < S; x += 1) {
+      grain[y * S + x] = 0.6 * gA.at(x / S, y / S) + 0.4 * gB.at(x / S, y / S) - 0.5;
+    }
+  }
   const Hh = new Float32Array(S * S);
   for (let i = 0; i < S * S; i += 1) {
-    const h = 0.3 * (soft[i] - mean);
-    Hh[i] = mixn(h - 0.085, h, sstep(j0, j1, edge[i]));
+    const h = 0.42 * (soft[i] - mean) + 0.012 * grain[i];
+    Hh[i] = mixn(h - 0.11, h, sstep(j0, j1, edge[i]));
+  }
+  {
+    const ai = ac.getImageData(0, 0, S, S);
+    for (let i = 0; i < S * S; i += 1) {
+      const k = 1 + 0.12 * grain[i];
+      ai.data[i * 4] = Math.min(255, ai.data[i * 4] * k);
+      ai.data[i * 4 + 1] = Math.min(255, ai.data[i * 4 + 1] * k);
+      ai.data[i * 4 + 2] = Math.min(255, ai.data[i * 4 + 2] * k);
+    }
+    ac.putImageData(ai, 0, 0);
   }
   const N = makeCanvas(S, S);
   const nc = ctxOf(N);
