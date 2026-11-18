@@ -40,7 +40,7 @@ export const CITY_MOON = new Vec3(0.42, -0.72, 0.55).normalize();
 /** 天上的月亮画在哪个方向(从场地往月亮看):教堂的左上方。 */
 export const CITY_MOON_SKY: [number, number, number] = [0.87, 0.34, -0.35];
 // 前两棵在主角进广场的位置两侧:树干在画面外,枝条从左上、右上探进画面(原型的构图)
-const TREES: Array<[number, number, number]> = [[-17.5, -6.5, 12], [-11.5, 9.6, 11.5], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [-4.6, 12.4, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
+const TREES: Array<[number, number, number]> = [[-17.5, -6.5, 12], [-16.8, 12.6, 8.4], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [-4.6, 12.4, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
 export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: 5, z: 0, r: 4.2 }, trees: TREES.map(([x, z]) => [x, z] as [number, number]), wet: 0.62 };
 
 export interface CityScene {
@@ -845,7 +845,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     const TL: Tint = [0.5, 0.51, 0.55];
     const O0 = V(0, 0, 0);
     const slab = (x0: number, x1: number, z0: number, z1: number): void => {
-      s.rubble.box(x1 - x0, TH, z1 - z0, V((x0 + x1) / 2, TH / 2, (z0 + z1) / 2), O0, [0.5, 0.48, 0.47], 0.4, rnd, 0.03);
+      s.rubble.box(x1 - x0, TH, z1 - z0, V((x0 + x1) / 2, TH / 2, (z0 + z1) / 2), O0, [0.36, 0.35, 0.35], 0.4, rnd, 0.03);
     };
     slab(TX, 40, T.zn, SZ0 - CW);
     slab(TX, 40, SZ1 + CW, T.zs);
@@ -867,7 +867,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
         const x0 = T.sx0 + TREAD * i;
         const x1 = Math.min(T.sx1, x0 + TREAD * 2);
         const top = Math.max(0.15 * (i + 2) + 0.75, x0 >= TX ? TH : 0);
-        s.rubble.box(x1 - x0, top, CW, V((x0 + x1) / 2, top / 2, zc), O0, [0.5, 0.48, 0.47], 0.4, rnd, 0.03);
+        s.rubble.box(x1 - x0, top, CW, V((x0 + x1) / 2, top / 2, zc), O0, [0.36, 0.35, 0.35], 0.4, rnd, 0.03);
         s.stone.box(x1 - x0 + 0.04, 0.1, CW + 0.12, V((x0 + x1) / 2, top + 0.05, zc), O0, TL, 0.5, rnd, 0.02);
       }
       solid((T.sx0 + T.sx1) / 2, zc, (T.sx1 - T.sx0) / 2, CW / 2 + 0.05, 3);

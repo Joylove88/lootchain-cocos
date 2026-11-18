@@ -250,7 +250,9 @@ export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile)
         cg *= 1 - 0.28 * film;
         cb *= 1 - 0.24 * film;
         rough = mixn(rough, 0.22 + 0.08 * nf, film * (0.5 + 0.5 * tb));
-        const lv = mixn(0.2, 0.47, film);
+        // 第十二轮:再加一层零散的小水洼(半米到一米一块,不跟大片水膜走)—— 原型里到处是映着灯的小水洼
+        const pd = sstep(0.68, 0.76, mid.at(wx / 13 + 0.33, wz / 13 + 0.71)) * (0.35 + 0.65 * sstep(C.r * 0.9, C.r * 1.4, dc));
+        const lv = mixn(0.2, 0.47, film) + 0.3 * pd;
         const wt = sstep(0.0, 0.07, lv - h);
         if (wt > 0) {
           cr = mixn(cr, cr * 0.55, wt);
@@ -389,19 +391,20 @@ export function plazaTint(plan: CityPlan, k: number): (wx: number, wz: number) =
 /** 广场地上的落叶(位置、大小、朝向、颜色):和以前画在地面贴图上的是同一批,树下密、别处零星。 */
 export function plazaLeaves(plan: CityPlan): Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }> {
   const rnd = mulberry32(677);
-  const cols: Array<[number, number, number]> = [[92, 26, 20], [74, 22, 18], [98, 44, 22], [66, 34, 22], [84, 20, 22], [58, 30, 20]];
+  // 第十二轮:原型地上的红叶又多又显眼 → 数量加倍、大一点、红一点
+  const cols: Array<[number, number, number]> = [[96, 24, 18], [80, 20, 16], [100, 38, 20], [70, 30, 18], [90, 20, 18], [62, 28, 18]];          // 暗红(太亮的话像一片片发光的贴纸)
   const out: Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }> = [];
   const drop = (x: number, z: number): void => {
-    const s = 0.08 + rnd() * 0.07;
+    const s = 0.1 + rnd() * 0.09;
     const rot = rnd() * 6.28;
     const c = cols[Math.floor(rnd() * cols.length)];
     out.push({ x, z, s, rot, col: [c[0] / 255, c[1] / 255, c[2] / 255] });
   };
-  for (let i = 0; i < 1300; i += 1) {
+  for (let i = 0; i < 2600; i += 1) {
     drop(plan.x0 + rnd() * plan.w, plan.z0 + rnd() * plan.d);
   }
   for (const [tx, tz] of plan.trees) {
-    for (let i = 0; i < 150; i += 1) {
+    for (let i = 0; i < 260; i += 1) {
       const a = rnd() * 6.28;
       const r = Math.sqrt(rnd()) * 5.5;
       drop(tx + Math.cos(a) * r, tz + Math.sin(a) * r);

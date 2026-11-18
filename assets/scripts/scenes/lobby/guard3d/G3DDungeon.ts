@@ -183,7 +183,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 4.0, paveM: 3.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -195,18 +195,18 @@ export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazi
 
 /** 主城场景在默认值上改的几项(不放怪;月光比野外略暗一点,靠路灯和窗子的暖光点缀)。 */
 /** 建筑模型的手调修正:转多少度(模型的正面朝哪是平台定的)、在「缩放到占地宽」的基础上再乘多少、挪多少米。 */
-const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number; a?: number; sx?: number; sy?: number; wf?: number; spec?: number; glow?: number; tone?: [number, number, number] }> = {
-  smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0, a: 0.8 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
-  cathedral: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.48, wf: 1.14, spec: 0.25 },          // 第十轮:比原型窄 → 正面加宽 14%;石头棱角发白 → 高光压到 0.25          // 模型的长轴是中殿,正面在一头:转 -90°;石头是浅灰的,月光下发白(0.72 还是白),颜色压到 0.48
-  house: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },          // 带门的那面在侧边:转 -90°
+const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number; a?: number; sx?: number; sy?: number; wf?: number; spec?: number; glow?: number; tone?: [number, number, number]; ab?: [number, number, number]; metal?: number }> = {
+  smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0, a: 0.8, ab: [0.6, 0.62, 0.7] },          // 第十二轮:原型的铁匠铺是深灰石墙 + 黑木 (53,49,50),我们是米黄 (122,98,78) → 压暗一半、偏冷          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
+  cathedral: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.48, wf: 1.14, spec: 0.25, ab: [0.84, 0.88, 0.98] },          // 第十轮:比原型窄 → 正面加宽 14%;石头棱角发白 → 高光压到 0.25          // 模型的长轴是中殿,正面在一头:转 -90°;石头是浅灰的,月光下发白(0.72 还是白),颜色压到 0.48
+  house: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.66, 0.68, 0.75] },          // 带门的那面在侧边:转 -90°
   // 第二批(挪到广场空地上转四个方向截图定的):平台给的正面多数朝 +x(要转 -90°),转角房朝 -z(转 180°),摊位 / 水井 / 路灯不用转
-  house_b: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },
-  house_c: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },
-  house_d: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },
-  stall: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
-  well: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
-  lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, sx: 0.6, glow: 0.75, tone: [1, 0.93, 0.82] },          // 平台给的路灯偏粗壮(原型是细长的铁灯柱):横向收到 0.6;灯罩偏橙 → 发光弱一点、颜色往暖白拉
-  statue: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.6 },
+  house_b: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.66, 0.68, 0.75] },
+  house_c: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.66, 0.68, 0.75] },
+  house_d: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.66, 0.68, 0.75] },
+  stall: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.74, 0.74, 0.78] },
+  well: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.72, 0.74, 0.8] },
+  lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, sx: 0.6, glow: 0.75, tone: [1, 0.93, 0.82], ab: [0.3, 0.3, 0.32], metal: 0.35 },          // 第十二轮:原型是细黑铁杆,我们是银亮金属 → 颜色压暗、金属感减到 0.35          // 平台给的路灯偏粗壮(原型是细长的铁灯柱):横向收到 0.6;灯罩偏橙 → 发光弱一点、颜色往暖白拉
+  statue: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.6, ab: [0.86, 0.9, 1.0] },
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
@@ -1523,7 +1523,7 @@ class Dungeon {
       const dl = Math.hypot(CITY_MOON_SKY[0], CITY_MOON_SKY[1], CITY_MOON_SKY[2]);
       mn.setPosition((CITY_MOON_SKY[0] / dl) * 200, (CITY_MOON_SKY[1] / dl) * 200, (CITY_MOON_SKY[2] / dl) * 200);
       mn.lookAt(new Vec3(mn.position.x * 2, mn.position.y * 2, mn.position.z * 2));          // 板的正面是 +z:要背对着「看」出去,正面才朝广场
-      mn.setScale(10.5, 10.5, 1);
+      mn.setScale(7.2, 7.2, 1);          // 第十二轮:原型的月亮约 1.6°,原来 3° 太大
       this.moonDisc = mn;
     }
 
@@ -1575,12 +1575,14 @@ class Dungeon {
       return this.fixtures.length - 1;
     };
     C.lamps.forEach((l, i) => {
-      this.recs.push({ L: point('torch', l.x, l.y - 0.3, l.z, new Color(255, 172, 96, 255), 11), kind: 'torch', fx: fixture(l.x, l.z), amp: 0.05, seed: 3 + i * 2.9 });
+      // 第十二轮:范围 11 → 9(原型里路灯只照亮灯下一圈,旁边的墙是暗的)
+      this.recs.push({ L: point('torch', l.x, l.y - 0.3, l.z, new Color(255, 172, 96, 255), 9), kind: 'torch', fx: fixture(l.x, l.z), amp: 0.05, seed: 3 + i * 2.9 });
     });
     C.doorLamps.forEach((l, i) => {
       this.recs.push({ L: point('candle', l.x - 0.5, l.y, l.z, new Color(255, 178, 104, 255), 7), kind: 'candle', fx: fixture(l.x, l.z), amp: 0.05, seed: 11 + i * 3.1 });
     });
-    this.recs.push({ L: point('brazier', C.forge.x, C.forge.y + 0.3, C.forge.z, new Color(255, 132, 60, 255), 11), kind: 'brazier', fx: fixture(C.forge.x, C.forge.z), amp: 0.2, seed: 1.7 });
+    // 第十二轮:锻炉的光范围 11 → 5.5 —— 原来整面铁匠铺都被它照成米黄(关掉它墙的亮度掉四成);原型里只亮炉口一圈和门前的地
+    this.recs.push({ L: point('brazier', C.forge.x, C.forge.y + 0.3, C.forge.z, new Color(255, 132, 60, 255), 5.5), kind: 'brazier', fx: fixture(C.forge.x, C.forge.z), amp: 0.2, seed: 1.7 });
     for (let i = 0; i < 2; i += 1) {
       const L = point('hit', 0, 1.2, 0, new Color(255, 214, 160, 255), 4.5);
       L.node.active = false;
@@ -1763,10 +1765,14 @@ class Dungeon {
           }
           const vr = house ? 0.92 + ((hsh % 17) / 16) * 0.16 : 1;
           const warm = house ? (((hsh >> 3) % 9) / 8 - 0.5) * 0.08 : 0;
-          const tint = new Vec3(al * vr * (1 + warm), al * vr, al * vr * (1 - warm));
+          const ab = fx?.ab ?? [1, 1, 1];
+          const tint = new Vec3(al * vr * (1 + warm) * ab[0], al * vr * ab[1], al * vr * (1 - warm) * ab[2]);
           for (let i = 0; i < mr.sharedMaterials.length; i += 1) {
-            if (al !== 1 || house) {
+            if (al !== 1 || house || fx?.ab) {
               mr.getMaterialInstance(i)?.setProperty('albedoScale', tint);
+            }
+            if (fx?.metal !== undefined) {
+              mr.getMaterialInstance(i)?.setProperty('metallic', fx.metal);
             }
             if (fx?.spec !== undefined) {
               mr.getMaterialInstance(i)?.setProperty('specularIntensity', fx.spec);
@@ -2273,9 +2279,11 @@ class Dungeon {
         // 夜空:很暗的天顶、略亮的地平线、月亮那一侧有一团光、一层被月光照亮边缘的云。同一张图也当环境反射(积水里反出来的就是它)
         const sk = this.city ? DUNGEON.citySky : 1;          // 主城的天整体亮一些(月色更亮,看得见云)
         const c = (r: number, g: number, b: number): [number, number, number] => [r * sk, g * sk, b * sk];
-        sky.envmap = buildSkyCube({ zenith: c(0.012, 0.02, 0.045), horizon: c(0.05, 0.075, 0.125), horizonAway: c(0.03, 0.045, 0.08), ground: c(0.012, 0.014, 0.018),
-          sunDir: this.city ? CITY_MOON_SKY : [-WILD_MOON.x, -WILD_MOON.y, -WILD_MOON.z], sunColor: this.city ? c(0.09, 0.105, 0.17) : c(0.5, 0.62, 0.9), sunSize: this.city ? 0.09 : 0.045,
-          cloud: this.city ? c(0.22, 0.27, 0.4) : c(0.12, 0.16, 0.25), cloudShade: this.city ? c(0.05, 0.062, 0.1) : c(0.018, 0.024, 0.045), cover: this.city ? 0.5 : 0.56, cloudScale: this.city ? 1.3 : 1.6, size: 256, seed: this.city ? 11 : 5 });
+        // 第十二轮:主城的天偏灰不偏蓝(原型),月亮周围的光团小而淡
+        const C = this.city;
+        sky.envmap = buildSkyCube({ zenith: C ? c(0.014, 0.018, 0.03) : c(0.012, 0.02, 0.045), horizon: C ? c(0.05, 0.06, 0.08) : c(0.05, 0.075, 0.125), horizonAway: C ? c(0.034, 0.04, 0.055) : c(0.03, 0.045, 0.08), ground: c(0.012, 0.014, 0.018),
+          sunDir: C ? CITY_MOON_SKY : [-WILD_MOON.x, -WILD_MOON.y, -WILD_MOON.z], sunColor: C ? c(0.04, 0.045, 0.06) : c(0.5, 0.62, 0.9), sunSize: C ? 0.04 : 0.045,
+          cloud: C ? c(0.2, 0.215, 0.26) : c(0.12, 0.16, 0.25), cloudShade: C ? c(0.045, 0.05, 0.065) : c(0.018, 0.024, 0.045), cover: this.city ? 0.5 : 0.56, cloudScale: this.city ? 1.3 : 1.6, size: 256, seed: this.city ? 11 : 5 });
         (sky as any).envLightingType = 1;
         sky.enabled = true;
       } catch (error) {
@@ -2326,7 +2334,7 @@ class Dungeon {
       fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
     if (this.city) {
       // 主城:广场大、要看得到教堂的塔尖,雾更淡;远处的屋顶剪影靠它推远
-      Object.assign(cfg, { fogColor: [0.045, 0.065, 0.115], fogAway: [0.045, 0.065, 0.115], fogStart: 14, fogDensity: 0.009, fogMax: 0.85, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 1.05, contrast: 1.05, saturation: 0.94, shadowTint: [0.98, 1.0, 1.03] });          // 第十一轮:原型整体反差小、暗处看得清 → 反差 1.17 → 1.05、曝光 0.95 → 1.05
+      Object.assign(cfg, { fogColor: [0.045, 0.065, 0.115], fogAway: [0.045, 0.065, 0.115], fogStart: 14, fogDensity: 0.009, fogMax: 0.85, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 1.0, contrast: 1.05, saturation: 0.86, shadowTint: [0.94, 0.99, 1.08], highlightTint: [0.98, 1.0, 1.03] });          // 第十二轮:原型整体偏冷 (56,57,65),我们偏暖 (76,72,74) → 暗部 / 亮部都往冷调、饱和度 0.94 → 0.86          // 第十一轮:原型整体反差小、暗处看得清 → 反差 1.17 → 1.05、曝光 0.95 → 1.05
     } else if (this.wild) {
       // 野外:看得远,雾淡一些、但远处要吃得掉(林子的剪影靠它接到天上)
       Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.9 });
