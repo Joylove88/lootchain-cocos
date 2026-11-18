@@ -150,9 +150,16 @@ def _collect_keep_uuids(source_assets):
     base = os.path.join(source_assets, 'resources')
     for dp, _dn, fn in os.walk(base):
         for f in fn:
+            rel = os.path.relpath(os.path.join(dp, f), base).replace(os.sep, '/')
+            if rel.startswith('g3d_') and f.lower().endswith('.meta'):
+                # 3D 实验小样的模型(出包时临时放进来的 glb):模型自带的贴图按模型的 uuid 命名(uuid@子资源),压成 256 色会出色带,不压
+                try:
+                    uuids.add(_json.load(open(os.path.join(dp, f), encoding='utf-8')).get('uuid'))
+                except Exception:
+                    pass
+                continue
             if not f.lower().endswith('.png.meta'):
                 continue
-            rel = os.path.relpath(os.path.join(dp, f), base).replace(os.sep, '/')
             metas = []
             if any(rel.startswith(prefix) for prefix in KEEP_PATHS):
                 metas.append(os.path.join(dp, f))

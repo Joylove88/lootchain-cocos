@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { KEEP_RELEASE_PACKAGES, pruneOldPackages } from './prune-release.mjs';
-import { BACKGROUND_ORDER, CORE_EXTRA_FILE, CORE_PREFIXES } from './web-pack-tiers.mjs';
+import { BACKGROUND_ORDER, CORE_EXTRA_FILE, CORE_PREFIXES, ON_DEMAND_PREFIXES } from './web-pack-tiers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_DIR = path.join(ROOT, 'build', 'web-mobile');
@@ -286,6 +286,17 @@ function writeAssetManifest() {
   // 分层(scripts/web-pack-tiers.mjs,2026-10-30):每个 resources 文件按 uuid 反查资源路径;core 排最前,其余按后台下载顺序
   const resPathOf = resourcesPathIndex();
   const extra = new Set(fs.existsSync(path.join(ROOT, CORE_EXTRA_FILE)) ? JSON.parse(fs.readFileSync(path.join(ROOT, CORE_EXTRA_FILE), 'utf8')) : []);
+  // 只按需取的资源(3D 实验小样的模型等)不进清单:包里有、服务器上有,但谁也不会预先下它
+  const onDemand = files.filter(([rel]) => rel.startsWith('assets/resources/') && ON_DEMAND_PREFIXES.some((prefix) => resPathOf(rel).startsWith(prefix)));
+  if (onDemand.length > 0) {
+    const skip = new Set(onDemand.map(([rel]) => rel));
+    console.log(`[release] 只按需取、不进下载清单:${onDemand.length} 个文件,${(onDemand.reduce((sum, f) => sum + f[1], 0) / 1024 / 1024).toFixed(1)} MB(${ON_DEMAND_PREFIXES.join(' / ')})`);
+    for (let i = files.length - 1; i >= 0; i -= 1) {
+      if (skip.has(files[i][0])) {
+        files.splice(i, 1);
+      }
+    }
+  }
   const tagged = files.map(([rel, size]) => {
     const res = rel.startsWith('assets/resources/') ? resPathOf(rel) : '';
     const core = !rel.startsWith('assets/resources/') || res === '' || CORE_PREFIXES.some((prefix) => res.startsWith(prefix)) || extra.has(res);
