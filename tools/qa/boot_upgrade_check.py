@@ -65,8 +65,14 @@ async def main():
             async def wait_login(tag, limit=900):
                 t0 = time.time()
                 last = None
+                # 刷新后先等旧页面真的走掉(加载页出现 / 场景还没起来),免得把刷新前的状态当成「已进登录页」
+                for _ in range(80):
+                    st0 = await ev(STATE)
+                    if not st0 or st0.get('boot') is not False:
+                        break
+                    await asyncio.sleep(0.1)
                 while time.time() - t0 < limit:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.25)
                     st = await ev(STATE)
                     key = json.dumps(st, ensure_ascii=False)
                     if key != last:
@@ -84,9 +90,12 @@ async def main():
             info = await ev("(async () => { const c = await caches.open('lootchain-assets-v1'); const k = await c.keys(); const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : {}; return { cached: k.length, usageMB: Math.round((est.usage || 0) / 1048576) }; })()")
             print('后台下载', WARM, '秒后缓存:', json.dumps(info), flush=True)
             for r in range(ROUNDS):
-                await ev("(() => { Object.keys(localStorage).filter(k => k.indexOf('lootchain.mutableChecked') === 0).forEach(k => localStorage.removeItem(k)); return 1; })()")
+                # 第 1 轮连「上次核对过的哈希」一起清(等于第一次走新的核对逻辑,全量核对);之后只清「本版本已核对」(核对过、没变的应该跳过)
+                # 同时清「本版本已预载 / 整包已在本地」的版本标记:真正发新版后这两个都对不上,会走完整的加载页流程(不清的话走二次访问快速启动,核对在后台做)
+                keys = "['lootchain.mutableChecked', 'lootchain.mutableVerified', 'lootchain.bootPreload.version', 'lootchain.fullPack.version']" if r == 0 else "['lootchain.mutableChecked', 'lootchain.bootPreload.version', 'lootchain.fullPack.version']"
+                await ev("(() => { const ks = " + keys + "; Object.keys(localStorage).filter(k => ks.some(p => k.indexOf(p) === 0)).forEach(k => localStorage.removeItem(k)); return 1; })()")
                 await call('Page.reload', {'ignoreCache': False})
-                took = await wait_login(f'模拟新版本 {r + 1}')
+                took = await wait_login(f'模拟新版本 {r + 1}' + ('(全量核对)' if r == 0 else '(只核对变了的)'))
                 print(f'模拟新版本后第一次打开到登录页:', took and round(took, 1), 's', flush=True)
             await call('Page.reload', {'ignoreCache': False})
             took = await wait_login('同版本再开')

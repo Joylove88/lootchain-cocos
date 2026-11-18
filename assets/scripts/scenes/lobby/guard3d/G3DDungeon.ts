@@ -119,6 +119,8 @@ export interface DungeonCfg {
   pixBudget: number;
   /** 跑起来以后帧率持续偏低就自动降一级(渲染分辨率 → 倒影 → 灯数);截图 / 录屏(逐帧推)时不动。 */
   autoQ: boolean;
+  /** 平均帧率低于多少算「偏低」(地址 &autoqfps=,自验时调高它来逼出降级流程)。 */
+  autoQFps: number;
   ao: boolean;
   bloomLevels: number;
   /** 墙 / 石头 / 木头贴图的尺寸倍数、最多放几只怪、烛台点不点真灯、点光照射范围的倍数。 */
@@ -186,7 +188,7 @@ export interface DungeonCfg {
 export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
-  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
+  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
   bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
@@ -218,7 +220,7 @@ export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
   mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
   // 电脑上的核显(Intel Iris / Arc 1xxV、AMD Radeon Graphics):画质照电脑档,只是不超采样(像素预算 200 万)、逐像素的灯少几盏
-  igpu: { realLights: 6, post: 2, pixBudget: 2000000, shadow: 2048, candleReal: false },
+  igpu: { realLights: 6, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false },
   phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
@@ -2900,7 +2902,7 @@ class Dungeon {
     const px = Math.max(1, cv.width * cv.height);
     const want = (this.post.info().cfg as { scale: number }).scale;
     const cap = Math.sqrt(DUNGEON.pixBudget / px);
-    const k = Math.max(0.6, Math.min(want, cap, this.qScale));
+    const k = Math.max(this.minScale(), Math.min(want, cap, this.qScale));
     if (Math.abs(k - want) > 0.01) {
       this.post.set({ scale: +k.toFixed(3) });
       console.log('[g3dd] 渲染倍数按像素预算压到', k.toFixed(2), JSON.stringify({ canvas: [cv.width, cv.height], budget: DUNGEON.pixBudget, gpu: GPU_NAME.slice(0, 80) }));
@@ -2908,13 +2910,20 @@ class Dungeon {
   }
 
   private qScale = 9;
+
+  /** 自动降分辨率的下限:离屏至少 90 万像素(大约 1270×710),再低画面就糊了。 */
+  private minScale(): number {
+    const cv = game.canvas;
+    const px = cv ? Math.max(1, cv.width * cv.height) : 2073600;
+    return Math.min(1, Math.max(0.35, Math.sqrt(900000 / px)));
+  }
   private qSlow = 0;
   private qCool = 0;
   private qSteps: string[] = [];
   private qSince = 0;
 
   /**
-   * 帧率持续偏低(平均 < 42 帧满 3 秒)就降一级,每降一级等 4 秒再看:渲染分辨率 × 0.82(最低 0.6)→ 关倒影 → 逐像素的灯减到 3 盏、阴影 1024。
+   * 帧率持续偏低(平均 < 42 帧满 3 秒)就降一级,每降一级等 4 秒再看:渲染分辨率 × 0.82(离屏最低约 90 万像素)→ 关遮蔽 → 关倒影 → 逐像素的灯减到 3 盏 → 泛光 3 级。
    * 刚打开的前 8 秒(模型还在下载、着色器在编译)和截图 / 录屏逐帧推的时候不算。
    */
   private autoQuality(): void {
@@ -2931,23 +2940,31 @@ class Dungeon {
       this.qCool -= 0.5;
       return;
     }
-    this.qSlow = this.fps < 42 ? this.qSlow + 0.5 : 0;
+    this.qSlow = this.fps < DUNGEON.autoQFps ? this.qSlow + 0.5 : 0;
     if (this.qSlow < 3) {
       return;
     }
     this.qSlow = 0;
-    this.qCool = 4;
+    this.qCool = 3;
     const cur = (this.post.info().cfg as { scale: number }).scale;
-    if (cur > 0.61) {
-      this.qScale = Math.max(0.6, cur * 0.82);
+    const pc = this.post.info().cfg as { ao: boolean; bloomLevels: number };
+    const floor = this.minScale();
+    if (cur > floor + 0.01) {
+      this.qScale = Math.max(floor, cur * (this.fps < 25 ? 0.68 : 0.82));          // 卡得厉害(< 25 帧)每级多降一点,核显笔记本更快降到流畅
       this.post.set({ scale: +this.qScale.toFixed(3) });
       this.qSteps.push(`分辨率×${this.qScale.toFixed(2)}`);
+    } else if (pc.ao) {
+      this.post.set({ ao: false });
+      this.qSteps.push('关遮蔽');
     } else if (DUNGEON.reflect) {
       this.set({ reflect: false });
       this.qSteps.push('关倒影');
     } else if (DUNGEON.realLights > 3) {
       this.set({ realLights: 3 });
       this.qSteps.push('灯 3 盏');
+    } else if (pc.bloomLevels > 3) {
+      this.post.set({ bloomLevels: 3 });
+      this.qSteps.push('泛光 3 级');
     } else {
       return;
     }
@@ -4279,6 +4296,9 @@ function boot(): void {
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
   if (param('autoq') === '0') {
     DUNGEON.autoQ = false;
+  }
+  if (param('autoqfps') !== null && !Number.isNaN(Number(param('autoqfps')))) {
+    DUNGEON.autoQFps = Number(param('autoqfps'));
   }
   if (param('pix') !== null && !Number.isNaN(Number(param('pix')))) {
     DUNGEON.pixBudget = Number(param('pix'));
