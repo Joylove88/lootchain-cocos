@@ -251,7 +251,8 @@ export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile)
         cb *= 1 - 0.24 * film;
         rough = mixn(rough, 0.22 + 0.08 * nf, film * (0.5 + 0.5 * tb));
         // 第十二轮:再加一层零散的小水洼(半米到一米一块,不跟大片水膜走)—— 原型里到处是映着灯的小水洼
-        const pd = sstep(0.68, 0.76, mid.at(wx / 13 + 0.33, wz / 13 + 0.71)) * (0.35 + 0.65 * sstep(C.r * 0.9, C.r * 1.4, dc));
+        // 第十五轮:原型近处满地都是映着灯的小水洼 → 门槛 0.68 → 0.6,水洼多一倍
+        const pd = sstep(0.6, 0.7, mid.at(wx / 13 + 0.33, wz / 13 + 0.71)) * (0.35 + 0.65 * sstep(C.r * 0.9, C.r * 1.4, dc));
         const lv = mixn(0.2, 0.47, film) + 0.3 * pd;
         const wt = sstep(0.0, 0.07, lv - h);
         if (wt > 0) {

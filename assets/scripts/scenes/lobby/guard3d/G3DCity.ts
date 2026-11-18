@@ -40,9 +40,9 @@ export const CITY_MOON = new Vec3(0.42, -0.72, 0.55).normalize();
 /** 天上的月亮画在哪个方向(从场地往月亮看):教堂的左上方。 */
 export const CITY_MOON_SKY: [number, number, number] = [0.87, 0.34, -0.35];
 // 前两棵在主角进广场的位置两侧:树干在画面外,枝条从左上、右上探进画面(原型的构图)
-const TREES: Array<[number, number, number]> = [[-17.5, -6.5, 12], [-16.8, 12.6, 8.4], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [2.4, 12.8, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
+const TREES: Array<[number, number, number]> = [[-17.0, -7.8, 12.5], [-16.8, 12.6, 8.4], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [2.4, 12.8, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
 // 第十三轮:罗盘纹 (5, 0) → (-2.5, 1.8) —— 原型里它就在两个人前面十几米,原来在 27 米外
-export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: -2.5, z: 1.8, r: 4.2 }, trees: TREES.map(([x, z]) => [x, z] as [number, number]), wet: 0.62 };
+export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: -2.5, z: 1.8, r: 4.2 }, trees: TREES.map(([x, z]) => [x, z] as [number, number]), wet: 0.72 };          // 第十五轮:0.62 → 0.72(原型的地面更湿)
 
 export interface CityScene {
   stone: Sculpt;      // 砌石:教堂、房子的底层、水井、栏杆的石柱
@@ -910,14 +910,22 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       for (let k = 0; k <= ns; k += 1) {
         const z = z0 + (len * k) / ns;
         if (Math.abs(z - zs) > 1) {
-          post(TX + 0.25, z, TH + 1.5, 0.62, false);
+          // 第十五轮:原型里台地墙上一排石柱有几根顶着灯 —— 离台阶最近的那根带灯
+          post(TX + 0.25, z, TH + 1.5, 0.62, Math.abs(Math.abs(z) - 7.2) < 1.7);
         }
       }
       solid(TX + 0.4, zm, 0.6, len / 2 + 0.6, 3);
+      // 墙头内侧一排灌木(原型里墙头冒出一团团深绿)
+      for (let zz = z0 + 0.5; zz < z1 - 0.3; zz += 0.85) {
+        const rr = R(0.42, 0.66);
+        s.leaf.ball(rr, rr * R(0.75, 0.95), rr * 0.9, [TX + 0.95 + R(-0.12, 0.12), TH + rr * 0.55, zz + R(-0.15, 0.15)], 9,
+          { tint: [0.02 * R(0.8, 1.2), 0.036 * R(0.8, 1.2), 0.02 * R(0.8, 1.2)] });
+      }
     }
     // 柏树:北边那块空出来的台地上多几棵,南边贴着侧廊的墙角
     for (const sd of [-1, 1]) {
-      for (const [cx2, cz2, hh] of (sd < 0 ? [[14.2, 7.0, 5.6], [16.4, 8.6, 6.4], [19.2, 9.0, 5.2]] : [[14.0, 6.6, 5.4], [15.9, 8.8, 6.2], [18.6, 9.1, 4.8]]) as Array<[number, number, number]>) {
+      // 第十五轮:原型里柏树几乎和教堂正立面一样高,夹着教堂 → 加高约四成半
+      for (const [cx2, cz2, hh] of (sd < 0 ? [[14.2, 7.0, 8.2], [16.4, 8.6, 9.4], [19.2, 9.0, 7.6]] : [[14.0, 6.6, 7.8], [15.9, 8.8, 9.0], [18.6, 9.1, 7.0]]) as Array<[number, number, number]>) {
         s.bark.cylinder(0.1, 0.13, 0.9, 6, V(cx2, TH + 0.45, sd * cz2), O0, [0.4, 0.36, 0.32], 0.5, rnd);
         // 又瘦又高的一团墨绿(八棱的锥子像石锥,光滑的一根像炮弹,拧着的纹路像裹着布):表面要一团一团地鼓出来,深浅不一
         const ph = R(0, 6.28);
@@ -930,7 +938,13 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       }
     }
     if (has('statue')) {
-      s.bldSpots.push({ key: 'statue', id: 'statue', x: 15.2, z: -8.2, yaw: -90, w: 2, d: 2, h: 5.0, y: TH });
+      // 第十五轮:原型里立像站在高石柱上、衬着夜空 —— 垫一根 3.2 米的石柱(柱身、上下两道线脚)
+      const PH = 3.2;
+      s.stone.box(1.5, 0.35, 1.5, V(15.2, TH + 0.175, -8.2), O0, [0.5, 0.51, 0.55], 0.5, rnd, 0.03);
+      s.stone.box(1.15, PH - 0.6, 1.15, V(15.2, TH + 0.35 + (PH - 0.6) / 2, -8.2), O0, [0.46, 0.47, 0.5], 0.5, rnd, 0.04);
+      s.stone.box(1.5, 0.25, 1.5, V(15.2, TH + PH - 0.125, -8.2), O0, [0.52, 0.53, 0.57], 0.5, rnd, 0.03);
+      solid(15.2, -8.2, 0.8, 0.8, TH + PH);
+      s.bldSpots.push({ key: 'statue', id: 'statue', x: 15.2, z: -8.2, yaw: -90, w: 2, d: 2, h: 4.4, y: TH + PH });
     } else {
       // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
       s.stone.box(1.5, 1.8, 1.5, V(15.2, TH + 0.9, -8.2), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
