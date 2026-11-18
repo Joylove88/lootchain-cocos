@@ -914,7 +914,25 @@ export class LootChainGameRoot extends Component {
       }
       // 10-30 分层下载(领导:首访 500 多 M 会吓跑用户):首访只下开局包(清单前 core 个,约 100MB,晨风村为止),
       // 其余登记给后台下载器,进大厅后低并发慢慢下;去了还没下完的地方由 ensurePackResources 整块补下 + 加载页拦住
-      const missing = await missingManifestFiles(manifest);
+      // 发版后第一次打开:核对缓存里同名改内容的文件。这一步以前不显示进度,缓存大的老玩家看到的就是一直不动的 0%
+      let lastCheckDraw = 0;
+      const missing = await missingManifestFiles(manifest, (done, total) => {
+        const now = Date.now();
+        if (total === 0 || (now - lastCheckDraw < 100 && done < total)) {
+          return;
+        }
+        lastCheckDraw = now;
+        drawBar(done / total);
+        if (titleLabel.isValid) {
+          titleLabel.string = '正在核对本地资源';
+        }
+        if (hintLabel.isValid) {
+          hintLabel.string = '游戏更新后第一次打开需要核对,之后打开直接进入';
+        }
+        if (percentLabel.isValid) {
+          percentLabel.string = `${done} / ${total}`;
+        }
+      });
       const core = coreManifestFiles(manifest, missing);
       const coreCount = manifest.core ?? manifest.files.length;
       const coreTotal = manifest.files.slice(0, coreCount).reduce((sum, entry) => sum + entry[1], 0);

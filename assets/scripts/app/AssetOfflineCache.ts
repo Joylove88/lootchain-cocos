@@ -140,6 +140,9 @@ const FULL_PACK_DONE_KEY = 'lootchain.fullPack.version';
 /** 页面自己下载、不经 SW 再写一遍缓存(sw.js 见到这个请求头直接放行到网络)。 */
 const PREFETCH_HEADER = 'x-lootchain-prefetch';
 const MUTABLE_CHECKED_KEY = 'lootchain.mutableChecked';
+/** 上次核对通过时的「路径 → 内容哈希」:新版本里哈希没变的文件不用再读出来算(11-18:老玩家每次发版后第一次打开要逐个核对 4000 多个文件,卡在 0% 很久)。 */
+const MUTABLE_VERIFIED_KEY = 'lootchain.mutableVerified';
+const MUTABLE_CHECK_CONCURRENCY = 8;
 const FULL_PACK_CONCURRENCY = 6;
 const FULL_PACK_RETRY = 3;
 const ASSET_CACHE_NAME = 'lootchain-assets-v1';
@@ -244,13 +247,16 @@ export async function fetchAssetManifest(): Promise<AssetManifest | null> {
   }
 }
 
-/** 清单里本地缓存还缺的文件(全齐返回空数组)。先把内容已过期的同名文件删掉,它们随缺失文件一起重下。 */
-export async function missingManifestFiles(manifest: AssetManifest): Promise<Array<[string, number]>> {
+/**
+ * 清单里本地缓存还缺的文件(全齐返回空数组)。先把内容已过期的同名文件删掉,它们随缺失文件一起重下。
+ * onCheck:核对进度(要核对几个、核对了几个),启动加载页用来显示「正在核对本地资源」,免得看起来卡在 0%。
+ */
+export async function missingManifestFiles(manifest: AssetManifest, onCheck?: (done: number, total: number) => void): Promise<Array<[string, number]>> {
   const cache = await caches.open(ASSET_CACHE_NAME);
   const keys = await cache.keys();
   const have = new Set<string>(keys.map((request) => new URL(request.url).pathname));
   const base = new URL('.', location.href).pathname;
-  await evictMutatedFiles(cache, manifest, base, have);
+  await evictMutatedFiles(cache, manifest, base, have, onCheck);
   return manifest.files.filter(([path]) => !have.has(base + path));
 }
 
@@ -266,7 +272,7 @@ function packFetchInit(path: string): RequestInit {
 }
 
 /** 核对 manifest.mutable 里在缓存中的文件:内容哈希对不上就删掉并从 have 里移除。任何一步失败都跳过(不影响启动)。 */
-async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: string, have: Set<string>): Promise<void> {
+async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: string, have: Set<string>, onCheck?: (done: number, total: number) => void): Promise<void> {
   const mutable = manifest.mutable;
   const subtle = typeof crypto !== 'undefined' ? crypto.subtle : undefined;
   if (!mutable || !subtle) {
@@ -281,31 +287,46 @@ async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: st
   } catch {
     // 本地存储不可用:照常核对
   }
-  for (const path of Object.keys(mutable)) {
-    if (!have.has(base + path)) {
-      continue;
-    }
-    try {
-      const hit = await cache.match(path, { ignoreVary: true });
-      if (!hit) {
-        continue;
-      }
-      const digest = new Uint8Array(await subtle.digest('SHA-1', await hit.arrayBuffer()));
-      const hex = Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      if (hex !== mutable[path]) {
-        await cache.delete(path, { ignoreVary: true });
-        have.delete(base + path);
-        evictedPaths.add(path);
-        console.warn(`[LootChain] full pack: ${path} 缓存内容已过期,重新下载`);
-      }
-    } catch (error) {
-      void error;
-    }
+  // 上次核对通过的哈希:这次清单里哈希没变的,缓存里的就是对的(上次核对过,或者是那之后照当时的清单从服务器下的),跳过
+  let verified: Record<string, string> = {};
+  try {
+    verified = JSON.parse(sys.localStorage.getItem(MUTABLE_VERIFIED_KEY) || '{}') as Record<string, string>;
+  } catch {
+    verified = {};
   }
+  const todo = Object.keys(mutable).filter((path) => have.has(base + path) && verified[path] !== mutable[path]);
+  let done = 0;
+  onCheck?.(0, todo.length);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < todo.length) {
+      const path = todo[cursor++];
+      try {
+        const hit = await cache.match(path, { ignoreVary: true });
+        if (hit) {
+          const digest = new Uint8Array(await subtle.digest('SHA-1', await hit.arrayBuffer()));
+          const hex = Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('');
+          if (hex !== mutable[path]) {
+            await cache.delete(path, { ignoreVary: true });
+            have.delete(base + path);
+            evictedPaths.add(path);
+            console.warn(`[LootChain] full pack: ${path} 缓存内容已过期,重新下载`);
+          }
+        }
+      } catch (error) {
+        void error;
+      }
+      done += 1;
+      onCheck?.(done, todo.length);
+    }
+  };
+  // 并行读(原来一个一个排队 await,缓存大的老玩家要等很久)
+  await Promise.all(Array.from({ length: Math.min(MUTABLE_CHECK_CONCURRENCY, todo.length) }, () => worker()));
   try {
     sys.localStorage.setItem(MUTABLE_CHECKED_KEY, checkedKey);
+    sys.localStorage.setItem(MUTABLE_VERIFIED_KEY, JSON.stringify(mutable));
   } catch {
-    // 忽略
+    // 忽略(存不下就下次照常全量核对)
   }
 }
 

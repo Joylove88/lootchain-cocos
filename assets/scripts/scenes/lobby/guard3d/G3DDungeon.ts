@@ -115,6 +115,10 @@ export interface DungeonCfg {
   fake: number;
   /** 后期的内部分辨率倍数(0 = 用档位自带的)、要不要遮蔽、泛光几级。 */
   postScale: number;
+  /** 后期离屏渲染最多多少像素(超出就把放大倍数往下压);核显 / 高分屏上不再超采样。0 = 不限。 */
+  pixBudget: number;
+  /** 跑起来以后帧率持续偏低就自动降一级(渲染分辨率 → 倒影 → 灯数);截图 / 录屏(逐帧推)时不动。 */
+  autoQ: boolean;
   ao: boolean;
   bloomLevels: number;
   /** 墙 / 石头 / 木头贴图的尺寸倍数、最多放几只怪、烛台点不点真灯、点光照射范围的倍数。 */
@@ -182,7 +186,7 @@ export interface DungeonCfg {
 export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
-  tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
+  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
   bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
@@ -213,10 +217,12 @@ export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, braz
 export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
   mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
+  // 电脑上的核显(Intel Iris / Arc 1xxV、AMD Radeon Graphics):画质照电脑档,只是不超采样(像素预算 200 万)、逐像素的灯少几盏
+  igpu: { realLights: 6, post: 2, pixBudget: 2000000, shadow: 2048, candleReal: false },
   phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
-const TIER_NAME: Record<string, string> = { pc: '电脑档', mid: '中档', phone: '手机档' };
+const TIER_NAME: Record<string, string> = { pc: '电脑档', mid: '中档', phone: '手机档', igpu: '核显档' };
 
 interface Mob {
   c: G3DChar; home: Vec3; x: number; z: number; yaw: number; hp: number; maxHp: number; speed: number; reach: number; radius: number;
@@ -2350,6 +2356,7 @@ class Dungeon {
       if (DUNGEON.postScale > 0) {
         this.post.set({ scale: DUNGEON.postScale });
       }
+      this.fitPixBudget();
     }
     this.applyReflection();
     this.buildBar();
@@ -2884,6 +2891,69 @@ class Dungeon {
     return this.city ? cityFloorY(x, z) : 0;
   }
 
+  /** 后期离屏的放大倍数按像素预算压:画布(高分屏上 = 窗口 × 设备像素比)× 倍数² 不超过 pixBudget。 */
+  private fitPixBudget(): void {
+    const cv = game.canvas;
+    if (!this.post || !cv || DUNGEON.pixBudget <= 0) {
+      return;
+    }
+    const px = Math.max(1, cv.width * cv.height);
+    const want = (this.post.info().cfg as { scale: number }).scale;
+    const cap = Math.sqrt(DUNGEON.pixBudget / px);
+    const k = Math.max(0.6, Math.min(want, cap, this.qScale));
+    if (Math.abs(k - want) > 0.01) {
+      this.post.set({ scale: +k.toFixed(3) });
+      console.log('[g3dd] 渲染倍数按像素预算压到', k.toFixed(2), JSON.stringify({ canvas: [cv.width, cv.height], budget: DUNGEON.pixBudget, gpu: GPU_NAME.slice(0, 80) }));
+    }
+  }
+
+  private qScale = 9;
+  private qSlow = 0;
+  private qCool = 0;
+  private qSteps: string[] = [];
+  private qSince = 0;
+
+  /**
+   * 帧率持续偏低(平均 < 42 帧满 3 秒)就降一级,每降一级等 4 秒再看:渲染分辨率 × 0.82(最低 0.6)→ 关倒影 → 逐像素的灯减到 3 盏、阴影 1024。
+   * 刚打开的前 8 秒(模型还在下载、着色器在编译)和截图 / 录屏逐帧推的时候不算。
+   */
+  private autoQuality(): void {
+    if (!DUNGEON.autoQ || this.fixedDt > 0 || this.frozen || !this.opened || !this.post) {
+      return;
+    }
+    if (!this.qSince) {
+      this.qSince = performance.now();
+    }
+    if (performance.now() - this.qSince < 8000 || (this.bldTotal > 0 && this.bldDone < this.bldTotal)) {
+      return;
+    }
+    if (this.qCool > 0) {
+      this.qCool -= 0.5;
+      return;
+    }
+    this.qSlow = this.fps < 42 ? this.qSlow + 0.5 : 0;
+    if (this.qSlow < 3) {
+      return;
+    }
+    this.qSlow = 0;
+    this.qCool = 4;
+    const cur = (this.post.info().cfg as { scale: number }).scale;
+    if (cur > 0.61) {
+      this.qScale = Math.max(0.6, cur * 0.82);
+      this.post.set({ scale: +this.qScale.toFixed(3) });
+      this.qSteps.push(`分辨率×${this.qScale.toFixed(2)}`);
+    } else if (DUNGEON.reflect) {
+      this.set({ reflect: false });
+      this.qSteps.push('关倒影');
+    } else if (DUNGEON.realLights > 3) {
+      this.set({ realLights: 3 });
+      this.qSteps.push('灯 3 盏');
+    } else {
+      return;
+    }
+    console.log('[g3dd] 帧率偏低(', this.fps.toFixed(0), '帧),自动降一级:', this.qSteps[this.qSteps.length - 1]);
+  }
+
   private blocked(x: number, z: number, r: number): boolean {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) {
       // 侧廊和门洞不让进(小样只做了这一间)
@@ -3161,6 +3231,7 @@ class Dungeon {
       this.fpsLow = 1000 / Math.max(1, Math.max(...this.lows));
       this.fpsAcc.t = 0;
       this.fpsAcc.n = 0;
+      this.autoQuality();
       this.fpsAcc.worst = 0;
       if (this.hudEl && !this.gpuName) {
         try {
@@ -4085,7 +4156,7 @@ class Dungeon {
     return { opened: this.opened, error: this.lastError, stats: this.stats, time: +this.time.toFixed(2), leader: this.leader ? [+this.lx.toFixed(2), +this.lz.toFixed(2), Math.round(this.lyaw)] : null,
       mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, act: this.act ? `${this.act.kind}:${this.act.move ? this.act.move.name : '跃空重劈'}:${(this.act.t / this.act.dur).toFixed(2)}` : '', combo: this.comboI, cd: { ...this.cd }, tier: DUNGEON.tier, fps: +this.fps.toFixed(1), fpsLow: +this.fpsLow.toFixed(1), hud: this.hudEl ? this.hudEl.textContent : '', mobile: sys.isMobile,
       real: this.fixtures.filter((f) => f.on).length, fixtures: this.fixtures.length, lightsOn: this.recs.filter((r) => r.L.node.active).length, stick: { ...this.stick }, view: { ...this.view }, free: !!this.free,
-      post: this.post?.info(), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
+      post: this.post?.info(), autoQ: this.qSteps.slice(), gpu: GPU_NAME.slice(0, 90), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
       canvas: game.canvas ? [game.canvas.width, game.canvas.height] : null };
   }
 
@@ -4150,8 +4221,37 @@ function param(name: string): string | null {
   }
 }
 
+/** 显卡型号(WebGL 调试扩展);拿不到返回空串。 */
+function gpuRenderer(): string {
+  try {
+    const cv = document.createElement('canvas');
+    const gl = (cv.getContext('webgl2') || cv.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) {
+      return '';
+    }
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    (gl.getExtension('WEBGL_lose_context') as { loseContext?: () => void } | null)?.loseContext?.();
+    return name;
+  } catch (error) {
+    void error;
+    return '';
+  }
+}
+
+/** 是不是电脑上的核显:Intel 的集成显卡(Arc 独显 A3xx~A7xx / B 系列除外)、AMD 的 Radeon Graphics / Vega 核显。 */
+function isIntegratedGpu(name: string): boolean {
+  if (/NVIDIA|GeForce|Quadro|RTX|Radeon\s*(RX|Pro)|Arc\(TM\)\s*[AB]\d/i.test(name)) {
+    return false;
+  }
+  return /Intel|Iris|UHD Graphics|Radeon\(TM\)\s*(Graphics|\d{3}M)|Radeon Vega|Vega \d/i.test(name);
+}
+
+const GPU_NAME = typeof document !== 'undefined' ? gpuRenderer() : '';
+
 function boot(): void {
-  const q = param('dq') || (sys.isMobile ? 'phone' : 'pc');
+  // 第十四轮(11-18 用户:笔记本 Arc 140V 核显每个动作都卡):电脑上没指定 &dq= 时,识别到核显就用核显档
+  const q = param('dq') || (sys.isMobile ? 'phone' : isIntegratedGpu(GPU_NAME) ? 'igpu' : 'pc');
   if (TIERS[q]) {
     Object.assign(DUNGEON, TIERS[q], { tier: q });
   }
@@ -4177,6 +4277,12 @@ function boot(): void {
     setArea({ ...CITY, X1: CITY.X1 + 6.8 });          // 第十轮:往东放宽到教堂门口(台地前沿的矮墙是挡路块,只有台阶那一段能上去)
   }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
+  if (param('autoq') === '0') {
+    DUNGEON.autoQ = false;
+  }
+  if (param('pix') !== null && !Number.isNaN(Number(param('pix')))) {
+    DUNGEON.pixBudget = Number(param('pix'));
+  }
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);
