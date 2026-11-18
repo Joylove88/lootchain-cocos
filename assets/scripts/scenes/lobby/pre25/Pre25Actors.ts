@@ -16,6 +16,13 @@ import { CITY_PRE25, PRE25_CITY_RUNTIME as R } from './Pre25City';
 const HERO = 'pre25/hero_m/hero_m';
 const COMBO_GAP_MS = 1400;          // 两次出手间隔不超过这么久,算连招的下一段
 const EPS_M = 0.35;                 // 判定余量(米):人物当竖板,手和剑往前伸的部分不被身后的东西误挡
+/**
+ * 预渲染主城里的移动速度倍数(11-19 用户:「跑步看起来很快,实际移动比较慢」)。原速 340 单位 / 秒 ≈ 2 米 / 秒(一米 = unit × ppm ≈ 170 单位),
+ * 跑步片段本身一步约 4 米 / 秒,看着像原地滑步 → 提到约 3.6 米 / 秒。后端坐标校验只记日志(每 0.5 秒一报,单段上限约 870 单位,提速后约 300)。
+ */
+const SPEED_MUL = 1.8;
+/** 跑步片段原本的前进速度(米 / 秒,转套时量的位移 ÷ 时长);播放进度按实际走过的地面距离推,脚步和位移对得上。 */
+const RUN_MPS = 4.25;
 
 interface HeroAtlas {
   ppm: number;
@@ -49,6 +56,9 @@ class Pre25Layer {
   private combo = 0;
   private downAt = 0;
   private hidden: Node[] = [];
+  /** 跑步片段的相位(0~1 循环),按实际走过的地面距离推。 */
+  private runPhase = 0;
+  private lastPoseAt = 0;
   private stats = { frames: 0, occLoads: 0, block: '' };
 
   sync(self: any): void {
@@ -184,22 +194,48 @@ class Pre25Layer {
   private pose(self: any, leader: any): void {
     const atlas = this.atlas!;
     const now = Date.now();
-    // 朝向:按这一帧挪动的方向换回 3D 地面上的方向,再取最近的 45 度
-    const dx = Number.isNaN(this.lastX) ? 0 : leader.x - this.lastX;
-    const dy = Number.isNaN(this.lastY) ? 0 : leader.y - this.lastY;
+    // 朝向:按玩家的输入方向(摇杆 / 方向键;自动寻路时按寻路方向)换回 3D 地面上的方向,再取最近的 45 度。
+    // 不按实际位移算(11-19 用户:顶着障碍物时「卡出多个方向的人物」—— 顶墙时逻辑会左右试着滑,位移方向每帧乱跳)。
+    // 防抖:输入方向离当前朝向超过 27.5°(一格 22.5° 再多 5°)才换,摇杆停在两个方向交界处时不来回切。
+    // 这一帧走过的地面距离(米):画面横向 1 单位 = 1 / (unit × ppm) 米,纵向还要除 sin(俯角)
+    const mdx = Number.isNaN(this.lastX) ? 0 : leader.x - this.lastX;
+    const mdy = Number.isNaN(this.lastY) ? 0 : leader.y - this.lastY;
+    const perM = R.unit * R.ppm;
+    const meters = Math.hypot(mdx / perM, mdy / perM / R.sinP);
+    const dtS = this.lastPoseAt ? Math.min(0.1, (now - this.lastPoseAt) / 1000) : 0;
+    this.lastPoseAt = now;
     this.lastX = leader.x;
     this.lastY = leader.y;
-    if (dx * dx + dy * dy > 0.25) {
-      // 画面上的挪动 → 地面方向:横向沿 R.right,纵向沿 R.up 走 dy / sin(俯角)(地面在画面上纵向被压扁)
-      const t = dy / R.sinP;
-      const gX = dx * R.right[0] + t * R.up[0];
-      const gZ = dx * R.right[1] + t * R.up[1];
+    let v: { x: number; y: number } = { x: 0, y: 0 };
+    try {
+      v = self.inputVector();
+      if (v.x === 0 && v.y === 0 && self.autoPath && self.autoPath.length > 0) {
+        v = self.autoPathVector(leader);
+      }
+    } catch (error) {
+      void error;
+    }
+    if (v.x * v.x + v.y * v.y > 0.04) {
+      // 画面上的方向 → 地面方向:横向沿 R.right,纵向沿 R.up 除 sin(俯角)(地面在画面上纵向被压扁)
+      const t = v.y / R.sinP;
+      const gX = v.x * R.right[0] + t * R.up[0];
+      const gZ = v.x * R.right[1] + t * R.up[1];
       // 模型 yaw θ 面朝 (cos θ, 0, -sin θ):0 = +X(东)、90 = -Z
       const deg = (Math.atan2(-gZ, gX) * 180) / Math.PI;
-      this.yaw = ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
+      const diff = Math.abs((((deg - this.yaw) % 360) + 540) % 360 - 180);
+      if (diff > 27.5) {
+        this.yaw = ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
+      }
     }
     let clip = leader.moving ? 'run' : 'stand';
     let prog = (now / 1000) / (atlas.clips[clip]?.dur || 1);
+    if (clip === 'run') {
+      // 一个跑步循环走 RUN_MPS × 片段时长 米;顶着墙走不动时按半速原地跑,不定住
+      const stride = RUN_MPS * (atlas.clips.run?.dur || 0.7);
+      const minAdv = (dtS * 0.5) / (atlas.clips.run?.dur || 0.7);
+      this.runPhase = (this.runPhase + Math.max(meters / stride, minAdv)) % 1;
+      prog = this.runPhase;
+    }
     const dead = !!self.leaderDead || !!leader.down;
     if (dead) {
       if (!this.downAt) {
@@ -319,6 +355,15 @@ function install(): void {
   };
   (wrapped as any).__pre25 = true;
   proto.step = wrapped;
+  const origMul = proto.moveMul;
+  if (typeof origMul === 'function' && !origMul.__pre25) {
+    const mul = function (this: any, ...args: any[]): number {
+      const base = origMul.apply(this, args);
+      return this.def === CITY_PRE25 ? base * SPEED_MUL : base;
+    };
+    (mul as any).__pre25 = true;
+    proto.moveMul = mul;
+  }
 }
 
 if (!EDITOR && sys.isBrowser) {

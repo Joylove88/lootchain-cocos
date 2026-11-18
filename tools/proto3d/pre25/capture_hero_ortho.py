@@ -91,6 +91,8 @@ print('cam', ev(f"var d=D.dungeon; D.shot({json.dumps(pos)}, {json.dumps(look)},
 foot_px = [size[0] / 2, size[1] / 2 + LOOK_Y * math.cos(p) * PPM]
 # 模型自带的站立待机手是自然下垂、手指朝下的:按握拳算的剑方向会平端着往前伸。拍这一套时把剑的方向改成往手指那边偏 HANG 度(垂向地面)
 HANG = float(OPT.get('hang', 70))
+# 上身往后扳(度):--lean=run:22 = 拍「run」那一套时扳 22°(11-19 用户嫌单手跑弓着身子;做法见 lean_patch.js)
+LEAN = {k: float(v) for k, v in (kv.split(':') for kv in OPT.get('lean', '').split(',') if kv)}
 HANG_CLIPS = {'idle'}
 SET_HANG = ("var c=D.dungeon.leader; var sw=c.moves.sword; if(!sw.axis0){ sw.axis0=sw.axis.slice(); } "
             "var hand=c.node.getComponentsInChildren(cc.Node).length; "
@@ -122,6 +124,9 @@ for key, clip, t0, t1, speed, loop in CLIPS:
     dur = (t1 - t0) / speed
     n = max(2, round(dur * (SLOW_FPS if key in ('stand', 'fall') else FPS)))
     meta['clips'][key] = {'clip': clip, 't0': t0, 't1': t1, 'speed': speed, 'dur': dur, 'n': n, 'loop': loop}
+    if LEAN:
+        ev(open(os.path.join(os.path.dirname(__file__), 'lean_patch.js'), encoding='utf-8').read())
+    ev(f'window.__LEAN_DEG = {LEAN.get(key, 0)}; return 1')
     if clip in HANG_CLIPS:
         ev(f"D.tp({X},{Z},0); D.clip('{clip}', {t0:.4f}); return 1")
         time.sleep(0.3)
@@ -138,6 +143,7 @@ for key, clip, t0, t1, speed, loop in CLIPS:
         print(key, yaw, n, 'ok', flush=True)
     if clip in HANG_CLIPS:
         ev(RESET_HANG)
+    ev('window.__LEAN_DEG = 0; return 1')
     json.dump(meta, open(os.path.join(OUT, 'hero_meta.json'), 'w', encoding='utf-8'), indent=1)
 ev('return __pre.clear(null)')
 ev('return __pre.restore()')
