@@ -66,6 +66,42 @@ CLIPS = [
     ('gs_down', 'two_handed_sword_death', False),
 ]
 
+# 11-18 用户嫌大剑「佝偻着身子」、要单手剑(不带盾):剑盾包(Sword And Shield Pack,49 个动作)单手持剑,用 --set=ss 转。
+# 单手的不做左手回握(左手按原动作走),剑的方向按单手握拳算(见 main)。
+CLIPS_SS = [
+    ('ss_stand', 'sword_and_shield_idle', True),
+    ('ss_stand2', 'sword_and_shield_idle_2', True),
+    ('ss_stand3', 'sword_and_shield_idle_3', True),
+    ('ss_stand4', 'sword_and_shield_idle_4', True),
+    ('ss_block_idle', 'sword_and_shield_block_idle', True),
+    ('ss_step', 'sword_and_shield_walk', True),
+    ('ss_step2', 'sword_and_shield_walk_2', True),
+    ('ss_jog', 'sword_and_shield_run', True),
+    ('ss_jog2', 'sword_and_shield_run_2', True),
+    ('ss_cut1', 'sword_and_shield_slash', False),
+    ('ss_cut2', 'sword_and_shield_slash_2', False),
+    ('ss_cut3', 'sword_and_shield_slash_3', False),
+    ('ss_cut4', 'sword_and_shield_slash_4', False),
+    ('ss_cut5', 'sword_and_shield_slash_5', False),
+    ('ss_atk1', 'sword_and_shield_attack', False),
+    ('ss_atk2', 'sword_and_shield_attack_2', False),
+    ('ss_atk3', 'sword_and_shield_attack_3', False),
+    ('ss_atk4', 'sword_and_shield_attack_4', False),
+    ('ss_kick', 'sword_and_shield_kick', False),
+    ('ss_power', 'sword_and_shield_power_up', False),
+    ('ss_cast', 'sword_and_shield_casting', False),
+    ('ss_cast2', 'sword_and_shield_casting_2', False),
+    ('ss_hit1', 'sword_and_shield_impact', False),
+    ('ss_hit2', 'sword_and_shield_impact_2', False),
+    ('ss_hit3', 'sword_and_shield_impact_3', False),
+    ('ss_block', 'sword_and_shield_block', False),
+    ('ss_jump', 'sword_and_shield_jump', False),
+    ('ss_down', 'sword_and_shield_death', False),
+    ('ss_down2', 'sword_and_shield_death_2', False),
+    ('ss_sheath', 'sheath_sword_1', False),
+    ('ss_draw', 'sheath_sword_2', False),
+]
+
 # Mixamo 的世界 → 我们模型的世界:前(+z)→ +x,上不变,Mixamo 的 +x(角色左手边)→ −z
 M = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
 
@@ -245,6 +281,8 @@ def main():
     opt = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1:] if a.startswith('--'))
     src, hero_path, out = args[0], args[1], args[2]
     only = set(opt['only'].split(',')) if 'only' in opt else None
+    one_hand = opt.get('set') == 'ss'
+    clips = CLIPS_SS if one_hand else CLIPS
     os.makedirs(out, exist_ok=True)
     hjs, _ = load(hero_path)
     hero = Skel(hjs)
@@ -254,7 +292,7 @@ def main():
     hwr0, hwp0 = hwr0[0], hwp0[0]
 
     # Mixamo 站姿(哪个片段的都一样)
-    dsk, _, _, _ = read_clip(os.path.join(src, CLIPS[0][1] + '.glb'))
+    dsk, _, _, _ = read_clip(os.path.join(src, clips[0][1] + '.glb'))
     Dx = dsk.idx
     dwr0, dwp0 = dsk.fk(np.broadcast_to(dsk.r, (1, dsk.n, 3, 3)).copy())
     dwr0, dwp0 = dwr0[0], dwp0[0]
@@ -313,16 +351,25 @@ def main():
     gR = grip_local('Right')
     gL = grip_local('Left')
 
-    # 剑在右手里的方向:双手握着的时候,从左手握点指向右手握点(左手在剑柄尾、右手靠护手)。拿待机片段量。
-    dsk2, drot, dhp, F = read_clip(os.path.join(src, 'great_sword_idle.glb'))
-    dwr, dwp = dsk2.fk(drot, dhp, Dx['Hips'])
-    pr = dwp[:, Dx['RightHand']] + np.einsum('fij,j->fi', dwr[:, Dx['RightHand']], gR)
-    pl = dwp[:, Dx['LeftHand']] + np.einsum('fij,j->fi', dwr[:, Dx['LeftHand']], gL)
-    ax = np.einsum('fji,fj->fi', dwr[:, Dx['RightHand']], unit(pr - pl))
-    axis_d = unit(ax.mean(axis=0))
-    spread = np.degrees(np.arccos(np.clip(ax @ axis_d, -1, 1)))
-    print('剑的方向(Mixamo 右手坐标)', np.round(axis_d, 3).tolist(), '各帧偏差 平均 %.1f° 最大 %.1f°' % (spread.mean(), spread.max()),
-          ' 两手间距 %.3f~%.3f 米' % (np.linalg.norm(pr - pl, axis=1).min(), np.linalg.norm(pr - pl, axis=1).max()))
+    if one_hand:
+        # 单手握拳:剑柄横穿掌心(小指 → 食指一侧),剑从食指 / 拇指那边伸出去;再往手指方向偏一点(握剑时手腕微扣)
+        hd = Dx['RightHand']
+        across = unit(dwp0[Dx['RightHandIndex1']] - dwp0[Dx['RightHandPinky1']])
+        fing = unit(dwp0[Dx['RightHandMiddle1']] - dwp0[hd])
+        tilt = float(opt.get('tilt', 15))
+        axis_d = dwr0[hd].T @ unit(across * np.cos(np.radians(tilt)) + fing * np.sin(np.radians(tilt)))
+        print('单手剑的方向(Mixamo 右手坐标)', np.round(axis_d, 3).tolist(), '往手指方向偏 %.0f°' % tilt)
+    else:
+        # 剑在右手里的方向:双手握着的时候,从左手握点指向右手握点(左手在剑柄尾、右手靠护手)。拿待机片段量。
+        dsk2, drot, dhp, F = read_clip(os.path.join(src, 'great_sword_idle.glb'))
+        dwr, dwp = dsk2.fk(drot, dhp, Dx['Hips'])
+        pr = dwp[:, Dx['RightHand']] + np.einsum('fij,j->fi', dwr[:, Dx['RightHand']], gR)
+        pl = dwp[:, Dx['LeftHand']] + np.einsum('fij,j->fi', dwr[:, Dx['LeftHand']], gL)
+        ax = np.einsum('fji,fj->fi', dwr[:, Dx['RightHand']], unit(pr - pl))
+        axis_d = unit(ax.mean(axis=0))
+        spread = np.degrees(np.arccos(np.clip(ax @ axis_d, -1, 1)))
+        print('剑的方向(Mixamo 右手坐标)', np.round(axis_d, 3).tolist(), '各帧偏差 平均 %.1f° 最大 %.1f°' % (spread.mean(), spread.max()),
+              ' 两手间距 %.3f~%.3f 米' % (np.linalg.norm(pr - pl, axis=1).min(), np.linalg.norm(pr - pl, axis=1).max()))
     if 'axis' in opt:
         axis_d = unit(np.array([float(v) for v in opt['axis'].split(',')]))
         print('  改用指定的方向', axis_d.tolist())
@@ -333,12 +380,13 @@ def main():
     convL = Rt[H['LeftHand']].T @ M @ dwr0[Dx['LeftHand']]
     gripL_h = convL @ gL * hand_k
 
-    meta = {'fps': FPS, 'source': 'mixamo.com Great Sword Pack', 'sword': {'axis': np.round(axis_h, 4).tolist(), 'grip': np.round(grip_h, 4).tolist()}, 'clips': {}}
+    meta = {'fps': FPS, 'source': 'mixamo.com Sword And Shield Pack' if one_hand else 'mixamo.com Great Sword Pack',
+            'sword': {'axis': np.round(axis_h, 4).tolist(), 'grip': np.round(grip_h, 4).tolist(), 'oneHand': one_hand}, 'clips': {}}
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     built = []
     sheet = opt.get('sheet')
-    for name, fname, loop in CLIPS:
+    for name, fname, loop in clips:
         if only and name not in only:
             continue
         path = os.path.join(src, fname + '.glb')
@@ -381,6 +429,8 @@ def main():
         dpl = dwp[:, Dx['LeftHand']] + np.einsum('fij,j->fi', dwr[:, Dx['LeftHand']], gL)
         gap = np.linalg.norm(dpr - dpl, axis=1)
         hold = smooth((1 - sstep(0.26, 0.4, gap))[:, None], 1.5)[:, 0]
+        if one_hand:
+            hold[:] = 0          # 单手剑:左手不回握
         rel = np.einsum('ij,fj->fi', M, dpl - dpr) * palm_k          # 两只手在剑柄上隔多远:按手掌的宽度比(一拳挨一拳)
         grip_r = hp_[:, hR] + np.einsum('fij,j->fi', hw[:, hR], grip_h)
         lh = H['LeftHand']

@@ -1377,7 +1377,8 @@ class Dungeon {
     const pad = wild ? 8 : 0;
     this.fx = new FxWorld(world, { min: [X0 - 4 - pad, -1, Z0 - 5 - pad], max: [X1 + 1 + pad, wild ? 12 : ROOF, Z1 + 5 + pad] });
     const fxBounds = { min: [X0 - 2 - pad, -1, Z0 - 2 - pad] as [number, number, number], max: [X1 + 2 + pad, wild ? 10 : H, Z1 + 2 + pad] as [number, number, number] };
-    const sw = buildSword(world, hasMoves('hero_m'));
+    // &sword1=1:单手长剑(配剑盾包的动作;预渲染拍主角帧用),默认按动作库给双手大剑
+    const sw = buildSword(world, hasMoves('hero_m') && param('sword1') !== '1');
     this.swordLen = sw.len;
     this.swordRoot = sw.root;
     this.sword = sw.node;
@@ -2165,7 +2166,8 @@ class Dungeon {
     };
     spawn('hero_m', this.lx, this.lz, 1.78, 0, (c) => {
       this.leader = c;
-      this.gs = !!c.moves && !!c.anim?.getState(GS_STAND);
+      // 剑盾包(单手剑,11-18 用户嫌大剑佝偻)的片段叫 ss_*:也走「动作库片段 + 剑固定在右手」这条路
+      this.gs = !!c.moves && (!!c.anim?.getState(GS_STAND) || !!c.anim?.getState('ss_stand'));
       if (this.gs) {
         c.inPlace = false;          // 这批片段的位移已经抽掉了,剩下的是身体的晃动,要留着
       }

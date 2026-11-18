@@ -43,6 +43,19 @@ CLIPS = [
     ('cut4', 'gs_spin', 0.2, 1.6, 1.7, False),
     ('fall', 'fall', 0.0, None, 1.0, False),
 ]
+# 单手剑(11-18 用户嫌大剑佝偻、要单手剑不带盾;摄影棚地址要带 &sword1=1,g3d_moves 里放剑盾包转套的 ss_* 片段):
+# 待机用模型自带的站立(身体直、剑垂在腿边),跑用剑盾包的单手跑,连招挑剑盾包里几乎原地出手的四刀(四连约 1.9 秒,和大剑定的节奏一样)
+CLIPS_SS = [
+    ('stand', 'idle', 0.0, 2.0, 1.0, True),
+    ('run', 'ss_jog', 0.0, None, 1.0, True),
+    ('cut1', 'ss_cut1', 0.3, 0.95, 1.5, False),
+    ('cut2', 'ss_cut3', 0.45, 1.2, 1.5, False),
+    ('cut3', 'ss_cut5', 0.25, 0.95, 1.5, False),
+    ('cut4', 'ss_atk4', 0.05, 0.75, 1.3, False),
+    ('fall', 'fall', 0.0, None, 1.0, False),
+]
+if OPT.get('set') == 'ss':
+    CLIPS = CLIPS_SS
 if 'clips' in OPT:
     keep = OPT['clips'].split(',')
     CLIPS = [c for c in CLIPS if c[0] in keep]
@@ -76,6 +89,17 @@ ortho_h = size[1] / 2 / PPM
 print('cam', ev(f"var d=D.dungeon; D.shot({json.dumps(pos)}, {json.dumps(look)}, 30); d.cam.projection=0; d.cam.orthoHeight={ortho_h:.6f}; d.cam.near=1; d.cam.far=80; return 1"))
 # 主角脚底在画面上的位置(像素,左上原点):正交下 = 画面中心往下 LOOK_Y·cos(p)·PPM
 foot_px = [size[0] / 2, size[1] / 2 + LOOK_Y * math.cos(p) * PPM]
+# 模型自带的站立待机手是自然下垂、手指朝下的:按握拳算的剑方向会平端着往前伸。拍这一套时把剑的方向改成往手指那边偏 HANG 度(垂向地面)
+HANG = float(OPT.get('hang', 70))
+HANG_CLIPS = {'idle'}
+SET_HANG = ("var c=D.dungeon.leader; var sw=c.moves.sword; if(!sw.axis0){ sw.axis0=sw.axis.slice(); } "
+            "var hand=c.node.getComponentsInChildren(cc.Node).length; "
+            "var H=null, M=null; c.node.walk(function(n){ if(/RightHand$/.test(n.name)) H=n; if(/RightHandMiddle1$/.test(n.name)) M=n; }); "
+            "var d=new cc.Vec3(); cc.Vec3.subtract(d, M.worldPosition, H.worldPosition); var q=new cc.Quat(); cc.Quat.invert(q, H.worldRotation); cc.Vec3.transformQuat(d, d, q); d.normalize(); "
+            "var a=new cc.Vec3(sw.axis0[0], sw.axis0[1], sw.axis0[2]).normalize(); var k=%f*Math.PI/180; "
+            "var r=new cc.Vec3(a.x*Math.cos(k)+d.x*Math.sin(k), a.y*Math.cos(k)+d.y*Math.sin(k), a.z*Math.cos(k)+d.z*Math.sin(k)).normalize(); sw.axis=[r.x,r.y,r.z]; return JSON.stringify(sw.axis)")
+RESET_HANG = "var sw=D.dungeon.leader.moves.sword; if(sw.axis0){ sw.axis=sw.axis0.slice(); } return 1"
+old_meta = os.path.join(OUT, 'hero_meta.json')
 meta = {'pitch': PITCH, 'camYaw': CAM_YAW, 'ppm': PPM, 'fps': FPS, 'canvas': size, 'foot': foot_px, 'yaws': YAWS, 'clips': {}}
 
 
@@ -87,6 +111,8 @@ def clip_len(clip):
         return -1
 
 
+if os.path.exists(old_meta):
+    meta['clips'].update(json.load(open(old_meta, encoding='utf-8')).get('clips', {}))
 for key, clip, t0, t1, speed, loop in CLIPS:
     if t1 is None:
         t1 = clip_len(clip)
@@ -96,6 +122,10 @@ for key, clip, t0, t1, speed, loop in CLIPS:
     dur = (t1 - t0) / speed
     n = max(2, round(dur * (SLOW_FPS if key in ('stand', 'fall') else FPS)))
     meta['clips'][key] = {'clip': clip, 't0': t0, 't1': t1, 'speed': speed, 'dur': dur, 'n': n, 'loop': loop}
+    if clip in HANG_CLIPS:
+        ev(f"D.tp({X},{Z},0); D.clip('{clip}', {t0:.4f}); return 1")
+        time.sleep(0.3)
+        print('hang axis', ev(SET_HANG % HANG))
     for yaw in YAWS:
         for i in range(n):
             # 循环的不取最后一帧(和第一帧一样);一次性的首尾都取
@@ -106,6 +136,8 @@ for key, clip, t0, t1, speed, loop in CLIPS:
                 ev(f'return __pre.clear({v})')
                 shot(os.path.join(OUT, f'{key}_{yaw}_{i}_{v}.png'), 0.15)
         print(key, yaw, n, 'ok', flush=True)
+    if clip in HANG_CLIPS:
+        ev(RESET_HANG)
     json.dump(meta, open(os.path.join(OUT, 'hero_meta.json'), 'w', encoding='utf-8'), indent=1)
 ev('return __pre.clear(null)')
 ev('return __pre.restore()')
