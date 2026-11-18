@@ -65,10 +65,14 @@ print('stitch depth')
 dep = stitch('depth')
 print('stitch masks')
 alpha = np.zeros((IH, IW), np.float32)
+alpha_solid = np.zeros((IH, IW), np.float32)          # 只算实心的(建筑、摆件、墙、台阶),不算树:可走格的「被盖住」只看它
 for g in ('bld', 'trees', 'stone'):
     a = stitch(f'm_{g}_0')
     b = stitch(f'm_{g}_255')
-    alpha = np.maximum(alpha, np.clip(1 - (b - a).mean(-1) / 255.0, 0, 1))
+    ag = np.clip(1 - (b - a).mean(-1) / 255.0, 0, 1)
+    alpha = np.maximum(alpha, ag)
+    if g != 'trees':
+        alpha_solid = np.maximum(alpha_solid, ag)
 # 1 像素以下的毛刺(块与块之间、远处天空)清掉
 alpha[alpha < 0.03] = 0
 
@@ -118,10 +122,8 @@ XMAX = float(OPT.get('xmax', 11.0))          # 台地(高 2.4 米)这一期不�
 R = 0.35
 solids = M['scene']['solids']
 gc, gr = math.ceil(IW / CELL), math.ceil(IH / CELL)
-rows_hex = []
-walk_cells = 0
+grid = np.zeros((gr, gc), np.uint8)
 for r in range(gr):
-    bits = []
     for c in range(gc):
         ix, iy = (c + 0.5) * CELL, (r + 0.5) * CELL
         sx = sx0 + ix / PPM
@@ -132,11 +134,12 @@ for r in range(gr):
         Z = C0[2] + sx * RR[2] + t * HH[2]
         ok = AX0 + R < X < min(AX1, XMAX) - R and AZ0 + R < Z < AZ1 - R
         if ok:
-            # 地面被近处的东西(屋顶、树干)盖住的格子不让走:人走进去会整个被挡住,玩家看不见自己
+            # 地面被近处的实心东西(屋顶、墙)盖住的格子不让走:人走进去会整个被挡住,玩家看不见自己。
+            # 树冠不算(11-19 用户录屏卡位:枝杈把树下的地切成一块块孤岛,人钻进去出不来;站在树下本来也看得见人)
             y0, y1, x0, x1 = int(r * CELL), int(min(IH, (r + 1) * CELL)), int(c * CELL), int(min(IW, (c + 1) * CELL))
             ground_d = sy / math.tan(p) + M['dist']
             od = NEAR + (dep[y0:y1, x0:x1, 0] / 255.0 + dep[y0:y1, x0:x1, 1] / 255.0 / 255.0) * (FAR - NEAR)
-            cover = (alpha[y0:y1, x0:x1] > 0.5) & (od < ground_d - 0.3)
+            cover = (alpha_solid[y0:y1, x0:x1] > 0.5) & (od < ground_d - 0.3)
             if cover.mean() > 0.35:
                 ok = False
         if ok:
@@ -144,11 +147,38 @@ for r in range(gr):
                 if abs(X - s[0]) < s[2] + R and abs(Z - s[1]) < s[3] + R:
                     ok = False
                     break
-        bits.append(1 if ok else 0)
-        walk_cells += ok
+        grid[r, c] = 1 if ok else 0
+
+# 只留连成一片的最大那块(四邻接):零碎的孤岛走进去就出不来
+lab = np.zeros(grid.shape, np.int32)
+sizes = [0]
+for r0 in range(gr):
+    for c0 in range(gc):
+        if grid[r0, c0] and not lab[r0, c0]:
+            k = len(sizes)
+            lab[r0, c0] = k
+            stack = [(r0, c0)]
+            n = 0
+            while stack:
+                r, c = stack.pop()
+                n += 1
+                for rr, cc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                    if 0 <= rr < gr and 0 <= cc < gc and grid[rr, cc] and not lab[rr, cc]:
+                        lab[rr, cc] = k
+                        stack.append((rr, cc))
+            sizes.append(n)
+if len(sizes) > 1:
+    best = int(np.argmax(sizes))
+    dropped = sum(sizes) - sizes[best]
+    grid = (lab == best).astype(np.uint8)
+    print(f'walk 连通块 {len(sizes) - 1} 个,只留最大的({sizes[best]} 格),去掉孤岛 {dropped} 格')
+rows_hex = []
+for r in range(gr):
+    bits = grid[r].tolist()
     while len(bits) % 4:
         bits.append(0)
     rows_hex.append(''.join('%x' % (bits[i] << 3 | bits[i + 1] << 2 | bits[i + 2] << 1 | bits[i + 3]) for i in range(0, len(bits), 4)))
+walk_cells = int(grid.sum())
 print(f'walk {gc}x{gr} cells, walkable {walk_cells}')
 
 # 灯(画面上的光晕位置):3D 场景里的点光 → 图片像素
