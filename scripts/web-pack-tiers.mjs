@@ -75,6 +75,7 @@ export const BACKGROUND_ORDER = [
 // 只按需取、不进下载清单的资源(前缀):3D 实验小样的模型 / 动作 / 建筑(g3d_char、g3d_moves、g3d_bld)。
 // 这些只有带 ?g3d…=1 开关的地址才会用到,出包时临时放进 resources;不进清单 = 普通玩家首访和后台都不会下它们,
 // 用到时由引擎直接向服务器取(离线缓存脚本对清单外的文件是「先缓存、没有就走网络」)。
-export const ON_DEMAND_PREFIXES = ['g3d_'];
+// pre25/:预渲染 2.5D 第 0 期的地图块和主角图集(只有 ?pre25=1 用到,2026-11-18)。
+export const ON_DEMAND_PREFIXES = ['g3d_', 'pre25/'];
 
 export const CORE_EXTRA_FILE = 'scripts/web-pack-core-extra.json';

@@ -6,6 +6,10 @@
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
+import { CITY_PRE25, CITY_PRE25_ENTRY, pre25Enabled } from './pre25/Pre25City';
+/** 预渲染 2.5D 主城(第 0 期实验,默认关;?pre25=1 换上):主城定义和别的图进主城的落点一起换。 */
+const PRE25_ON = pre25Enabled();
+const CITY_ENTRY = PRE25_ON ? CITY_PRE25_ENTRY : CITY_MOON_ENTRY;
 import { DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {
   DEAD_V4_AREAS, DEAD_V4_ASSETS, DEAD_V4_BRIDGE, DEAD_V4_CAMPS, DEAD_V4_CHESTS, DEAD_V4_EXITS, DEAD_V4_FLATS, DEAD_V4_LOW, DEAD_V4_NPCS,
@@ -769,14 +773,14 @@ const WOODS: WorldMapDef = {
   camps: WOODS_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
     camp(code, label, monster, count, level, x, y, !!elite, WOODS_CAMP_VARIANT[code])),
   // 11-04 用户「晨风村 → 林地 → 主城要一路跑过去」:林地西南出口回晨风村、东头(东林空地)出口通主城
-  exits: WOODS_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_MOON_ENTRY.fromWoods } : { ...e.toSpawn } })),
+  exits: WOODS_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_ENTRY.fromWoods } : { ...e.toSpawn } })),
   battleBg: 'battle_scene_field_forest',
 };
 
 /**
  * 主城:11-11 重做成月夜整图场景(定义在 LobbyCityMoon.ts)。旧的 v4 主城(14000×7000、逐栋立物,LobbyCityLayout / city_v4_gen)已下线。
  */
-const CITY: WorldMapDef = CITY_MOON;
+const CITY: WorldMapDef = PRE25_ON ? CITY_PRE25 : CITY_MOON;
 
 /** 灰岩荒原 v4 布局表的物件行 → 道具(同 woodsRows,素材表换成 GRAY_V4_ASSETS)。 */
 function grayRows(rows: number[][], tint?: [number, number, number]): WorldMapProp[] {
@@ -861,7 +865,7 @@ const GRAY: WorldMapDef = {
   camps: GRAY_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
     camp(code, label, monster, count, level, x, y, !!elite, GRAY_CAMP_VARIANT[code])),
   exits: [
-    ...GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_MOON_ENTRY.fromGray } : { ...e.toSpawn } })),
+    ...GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_ENTRY.fromGray } : { ...e.toSpawn } })),
     // 11-09 东口 → 枯木林(Lv.20;落在枯木林西口精灵营地外)
     { key: 'to_deadwood', label: '前往 · 枯木林', x: GRAY_V4_SIZE.width / 2 - 140, y: -270, radius: 130, toMap: 'DEADWOOD' as WorldMapCode, toSpawn: { x: -8560, y: 157 } },
   ],

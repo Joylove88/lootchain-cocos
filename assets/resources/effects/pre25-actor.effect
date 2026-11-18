@@ -1,0 +1,97 @@
+// 预渲染 2.5D(第 0 期,2026-11-18):地图上的人物精灵按「逐像素比深度」被预渲染底图里的建筑 / 树 / 墙挡住。
+// 底图是 3D 场景从固定俯角用正交投影离线拍的;遮挡块(o_*.png)存着挡人的东西离镜头的视深(r / g 两个 8 位)和不透明度(b)。
+// 人物当成一块竖直的板:脚底的视深已知(由脚的地图 y 换算),往上每高一点视深就少一点(tan 俯角);
+// 遮挡物比这一点离镜头更近(差过 eps)的地方,人物这个像素就透明 —— 露出来的正好是底图上的那个遮挡物,不用再画一层遮挡。
+// 人物可能跨块,所以一次给 2 × 2 四块遮挡图(块边长 blk.z,左上角那块的图片像素坐标 blk.xy);块的选法见 Pre25World.blockFor。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: pre25-vs:vert
+      frag: pre25-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        occ0: { value: white }
+        occ1: { value: white }
+        occ2: { value: white }
+        occ3: { value: white }
+        xf: { value: [0, 0, 1, 0] }
+        blk: { value: [0, 0, 1024, 0] }
+        foot: { value: [0, 0, 0, 0.35] }
+        nf: { value: [1, 240, 0, 0] }
+}%
+
+CCProgram pre25-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+  out vec2 wp;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    wp = a_position.xy;
+    return pos;
+  }
+}%
+
+CCProgram pre25-fs %{
+  precision highp float;
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+  in vec2 wp;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D occ0;
+  uniform sampler2D occ1;
+  uniform sampler2D occ2;
+  uniform sampler2D occ3;
+  uniform Pre25 {
+    vec4 xf;      // 世界坐标 → 整图像素:ix = (wx - xf.x) * xf.z,iy = (xf.y - wy) * xf.z(左上原点,y 往下)
+    vec4 blk;     // 2 × 2 遮挡块:左上角那块的整图像素 (x, y)、块边长 z、w > 0.5 = 贴图上下翻转
+    vec4 foot;    // x = 脚的整图像素 y,y = 脚的视深(米),z = tan(俯角) / 每米像素,w = 判定余量(米)
+    vec4 nf;      // 视深编码:near、far
+  };
+
+  vec4 frag () {
+    vec4 c = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0) * color;
+    vec2 ip = vec2((wp.x - xf.x) * xf.z, (xf.y - wp.y) * xf.z);
+    vec2 lp = (ip - blk.xy) / blk.z;
+    vec2 f = fract(lp);
+    if (blk.w > 0.5) {
+      f.y = 1.0 - f.y;
+    }
+    vec4 o = vec4(1.0, 1.0, 0.0, 0.0);
+    if (lp.x >= 0.0 && lp.y >= 0.0 && lp.x < 2.0 && lp.y < 2.0) {
+      if (lp.x < 1.0) {
+        o = lp.y < 1.0 ? texture(occ0, f) : texture(occ2, f);
+      } else {
+        o = lp.y < 1.0 ? texture(occ1, f) : texture(occ3, f);
+      }
+    }
+    float od = nf.x + (o.r + o.g / 255.0) * (nf.y - nf.x);
+    float cd = foot.y - (foot.x - ip.y) * foot.z;
+    float hide = o.b * smoothstep(0.0, foot.w, cd - od);
+    c.a *= 1.0 - hide;
+    return c;
+  }
+}%
