@@ -40,8 +40,9 @@ export const CITY_MOON = new Vec3(0.42, -0.72, 0.55).normalize();
 /** 天上的月亮画在哪个方向(从场地往月亮看):教堂的左上方。 */
 export const CITY_MOON_SKY: [number, number, number] = [0.87, 0.34, -0.35];
 // 前两棵在主角进广场的位置两侧:树干在画面外,枝条从左上、右上探进画面(原型的构图)
-const TREES: Array<[number, number, number]> = [[-17.5, -6.5, 12], [-16.8, 12.6, 8.4], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [-4.6, 12.4, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
-export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: 5, z: 0, r: 4.2 }, trees: TREES.map(([x, z]) => [x, z] as [number, number]), wet: 0.62 };
+const TREES: Array<[number, number, number]> = [[-17.5, -6.5, 12], [-16.8, 12.6, 8.4], [4.5, -12.8, 8.4], [17.2, -12.2, 8.8], [2.4, 12.8, 8.6], [18.6, 11.9, 8.6], [-19.6, -16.8, 9.5]];
+// 第十三轮:罗盘纹 (5, 0) → (-2.5, 1.8) —— 原型里它就在两个人前面十几米,原来在 27 米外
+export const CITY_PLAN: CityPlan = { ...CITY_GROUND, compass: { x: -2.5, z: 1.8, r: 4.2 }, trees: TREES.map(([x, z]) => [x, z] as [number, number]), wet: 0.62 };
 
 export interface CityScene {
   stone: Sculpt;      // 砌石:教堂、房子的底层、水井、栏杆的石柱
@@ -942,8 +943,9 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
 
   // ── 水井:一圈石井栏、两根立柱撑着一个小顶棚、一根辘轳、一只桶 ──
   {
-    const wx = smithyModel ? 3.4 : -1.6;          // 铁匠铺换成模型后往广场里伸得更多,水井让到它右前方
-    const wz = smithyModel ? -5.6 : -6.4;
+    // 第十三轮:原型里水井贴在铁匠铺右前方、罗盘纹左边(原来在 (3.4, -5.6),比原型远了 5 米多)
+    const wx = smithyModel ? -1.0 : -1.6;
+    const wz = smithyModel ? -3.8 : -6.4;
     solid(wx, wz, 1.1, 1.1, 3);
     if (has('well')) {
       s.bldSpots.push({ key: 'well', id: 'well', x: wx, z: wz, yaw: 25, w: 3, d: 3, h: 3.8 });
@@ -1007,23 +1009,24 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   };
   if (has('stall')) {
     // 换成模型:同一个摊位摆三个会一眼看出是复制的,所以只摆两个(隔开、朝向和大小不一样),中间放几只桶和木箱
-    for (const [sx, sz, sy, sh, id] of [[3.4, CITY.Z1 - 1.9, 174, 3.5, 'stall_1'], [11.8, CITY.Z1 - 1.5, 188, 3.25, 'stall_2']] as Array<[number, number, number, number, string]>) {
+    // 第十三轮:原型里两个摊位在画面右边、离镜头十几米,篷朝着广场中间偏镜头(原来在 (3.4, 12.1) / (11.8, 12.5),远了十几米)
+    for (const [sx, sz, sy, sh, id] of [[-4.3, 9.6, 200, 3.5, 'stall_1'], [-9.2, 10.6, 214, 3.25, 'stall_2']] as Array<[number, number, number, number, string]>) {
       s.bldSpots.push({ key: 'stall', id, x: sx, z: sz, yaw: sy, w: 3.6, d: 2.6, h: sh });
       solid(sx, sz, 2.2, 1.5, 2.4);
       s.npcs.push({ x: sx - 0.6, z: sz - 2.5, yaw: 0 });
     }
-    barrel(7.2, CITY.Z1 - 1.3, 1);
-    barrel(8.0, CITY.Z1 - 1.8, 0.85);
-    s.timber.box(0.8, 0.6, 0.8, V(6.2, 0.3, CITY.Z1 - 1.6), V(0, 14, 0), [0.5, 0.45, 0.38], 0.9, rnd, 0.012);
-    solid(6.2, CITY.Z1 - 1.6, 0.4, 0.4, 0.6);
+    barrel(-6.6, 11.4, 1);
+    barrel(-7.3, 11.9, 0.85);
+    s.timber.box(0.8, 0.6, 0.8, V(-6.0, 0.3, 12.2), V(0, 24, 0), [0.5, 0.45, 0.38], 0.9, rnd, 0.012);
+    solid(-6.0, 12.2, 0.4, 0.4, 0.6);
   } else {
-    stall(2.6, CITY.Z1 - 1.8, 180, 3.6);
-    stall(8.2, CITY.Z1 - 1.5, 180, 3.8);
-    stall(13.8, CITY.Z1 - 1.3, 180, 3.4);
+    stall(-10.4, 11.0, 200, 3.6);
+    stall(-5.6, 10.4, 190, 3.8);
+    stall(-1.0, 10.8, 180, 3.4);
   }
   // 镇民:两个站在摊位前(面朝摊位),一个在井边(面朝井)。角色模型面朝 +x 时 yaw = 0
   s.npcs.forEach((n) => { n.yaw = -90; });
-  s.npcs.push(smithyModel ? { x: 5.1, z: -4.5, yaw: 147 } : { x: 0.2, z: -5.3, yaw: 149 });
+  s.npcs.push(smithyModel ? { x: 0.9, z: -2.5, yaw: 147 } : { x: 0.2, z: -5.3, yaw: 149 });
 
   // ── 路灯:铸铁的灯柱,顶上一只四面玻璃的灯 ──
   const lamp = (x: number, z: number): void => {
@@ -1051,12 +1054,12 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     s.lamps.push({ x, y: 3.7, z });
     solid(x, z, 0.2, 0.2, 4);
   };
-  lamp(-13.3, -8.4);
-  lamp(-13.2, 6.0);
+  lamp(-12.4, -5.6);          // 第十三轮:原型画面左边近处(铁匠铺前;再近会挡住炉口)
+  lamp(-13.8, 9.4);          // 原型画面右边近处(集市前)
   lamp(8.3, -11.6);
   lamp(10.4, -9.2);
   lamp(10.8, 9.0);
-  lamp(-0.4, 10.6);
+  lamp(2.4, 8.4);
 
   // ── 枫树:叶子快掉光了,只在梢头剩几片红叶 ──
   const maple = (x: number, z: number, h: number, r0: number, seed: number): void => {

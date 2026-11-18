@@ -1403,13 +1403,13 @@ class Dungeon {
     this.cityFireY = C.forge.y - 0.22;
     // 开场站在西边街口,镜头略偏北:左前方是铁匠铺的炉火,教堂在正前方偏右,右边露出集市的红篷(原型的构图)
     this.lx = -16.5;
-    this.lz = 2.2;          // 第十一轮:往南挪一点,台阶正好夹在主角和队友中间(原型的构图)
+    this.lz = 0.9;          // 第十三轮:队友在右边 1.9 米,罗盘纹(z 1.8)和台阶正好夹在两人中间(原型的构图)
     // 镜头比另外两个场景放平、放广:城里要看得到教堂的塔尖和天
     // 第十一轮:台阶和教堂挪近之后,镜头往正东摆一点、抬高一点、拉远一点,教堂整座和台阶都在画面里
     this.view.yaw = 276;
-    this.view.pitch = 3;
-    this.view.dist = 5.6;
-    this.view.fov = 60;
+    this.view.pitch = 7;          // 第十三轮:镜头抬高、略往下看(原型能看清地上的罗盘纹);再往下教堂上半截出画
+    this.view.dist = 5.0;          // 原型里两个人约占画面高度的 45%,原来 5.6 只有三成;再近教堂就出画
+    this.view.fov = 64;
     const std = (p: Pbr, repeat: boolean, aniso: number, vertexColor = true): Material => {
       const m = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: vertexColor });
       m.setProperty('mainTexture', tex(p.albedo, repeat, aniso));
@@ -2170,8 +2170,11 @@ class Dungeon {
       return;
     }
     const keys = charKeys();
-    spawn('hero_f', this.lx - 0.9, this.lz + 0.9, 1.68, 0, (c) => {
-      this.followers.push({ c, x: this.lx - 0.9, z: this.lz + 0.9, yaw: 0, moving: false, ox: -0.9, oz: 0.9 });
+    // 第十三轮:主城里队友和主角并排、隔开一点(原型里两人分站在罗盘纹两侧);别的场景照旧跟在身后
+    const OB = this.city ? 0.3 : 1.0;
+    const OZ = this.city ? 1.9 : 0.9;
+    spawn('hero_f', this.lx - OB, this.lz + OZ, 1.68, 0, (c) => {
+      this.followers.push({ c, x: this.lx - OB, z: this.lz + OZ, yaw: 0, moving: false, ox: -OB, oz: OZ });
       c.play(c.clip('idle'), 0);
     });
     if (this.city) {
@@ -3537,8 +3540,8 @@ class Dungeon {
       f.c.step(dt);
       // 跟在主角侧后方:离得远了才动
       const a = (this.lyaw * Math.PI) / 180;
-      const gx = this.lx + (-Math.cos(a) * 1.0 + Math.sin(a) * f.oz);
-      const gz = this.lz + (Math.sin(a) * 1.0 + Math.cos(a) * f.oz);
+      const gx = this.lx + (Math.cos(a) * f.ox + Math.sin(a) * f.oz);
+      const gz = this.lz + (-Math.sin(a) * f.ox + Math.cos(a) * f.oz);
       const dx = gx - f.x;
       const dz = gz - f.z;
       const d = Math.hypot(dx, dz);
@@ -4112,8 +4115,8 @@ class Dungeon {
     this.leader?.place(x, this.floorY(x, z), z, this.lyaw);
     for (const f of this.followers) {
       const a = (this.lyaw * Math.PI) / 180;
-      f.x = x - Math.cos(a) * 1.0 + Math.sin(a) * f.oz;
-      f.z = z + Math.sin(a) * 1.0 + Math.cos(a) * f.oz;
+      f.x = x + Math.cos(a) * f.ox + Math.sin(a) * f.oz;
+      f.z = z - Math.sin(a) * f.ox + Math.cos(a) * f.oz;
       f.yaw = this.lyaw;
       f.c.place(f.x, this.floorY(f.x, f.z), f.z, f.yaw);
     }
