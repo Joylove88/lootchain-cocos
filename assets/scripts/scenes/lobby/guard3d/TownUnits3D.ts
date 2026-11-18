@@ -404,7 +404,7 @@ class TownUnits3D {
     this.time += frozen ? 0 : step;
     try {
       const live = new Set<any>();
-      const actors: any[] = [self.leader, ...(self.followers ?? [])].filter(Boolean);
+      const actors: any[] = [self.leader].concat(Array.from(self.followers ?? [])).filter(Boolean);
       for (const a of actors) {
         live.add(a);
         this.track(a, true);

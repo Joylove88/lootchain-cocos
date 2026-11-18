@@ -148,7 +148,7 @@ class TownEnts3D implements FieldExtra {
     const ly = self.leader?.y ?? 0;
     const seen = new Set<Node>();
     // 2D 骨骼单位:骨骼节点还开着的(= 没有被 3D 模型顶替)
-    const units: any[] = [self.leader, ...(self.followers ?? []), ...(self.monsters ?? [])];
+    const units: any[] = [self.leader].concat(Array.from(self.followers ?? []), Array.from(self.monsters ?? []));
     for (const u of units) {
       const art: Node | null = u?.spineNode ?? null;
       if (!u || !art || !art.isValid || !art.active || !u.skeleton || !u.node?.activeInHierarchy) {
