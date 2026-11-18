@@ -1,4 +1,4 @@
-import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, ImageAsset, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
 import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
@@ -12,7 +12,7 @@ import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
 import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN } from './G3DCity';
-import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaPbr, slatePbr } from './G3DCityTex';
+import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaPbr, StoneTile, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
@@ -149,6 +149,10 @@ export interface DungeonCfg {
   bld: string;
   /** 建筑模型的窗(颜色贴图里暖黄发亮的地方)自己发光的强度;0 = 不发光。地址 &bglow=。 */
   bldGlow: number;
+  /** 石板地面(&bld=…,ground):一块贴图铺多少米、颜色乘多少、高光强度(越大倒影越亮,迎着月光也越亮)。地址 &pavem= &pavek= &pavespec=。 */
+  paveM: number;
+  paveK: number;
+  paveSpec: number;
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
   /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
@@ -175,7 +179,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveM: 4.6, paveK: 0.72, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -1372,7 +1376,9 @@ class Dungeon {
    */
   private buildCity(world: Node, rnd: () => number, t0: number): void {
     const t1 = performance.now();
-    const gw = DUNGEON.floor;
+    // 地面要换成石板贴图的话(&bld=…,ground),这里先出一张小的垫着,贴图载到了再出正式的
+    const paved = DUNGEON.bld.split(',').indexOf('ground') >= 0;
+    const gw = paved ? 512 : DUNGEON.floor;
     const ground = plazaPbr(gw, Math.round((gw * CITY_GROUND.d) / CITY_GROUND.w), CITY_PLAN);
     this.stats.floorMs = Math.round(performance.now() - t1);
     this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, CITY_PLAN, x, z);
@@ -1577,7 +1583,50 @@ class Dungeon {
     moon.illuminance = DUNGEON.moon;
     this.moon = moon;
     this.loadCityBuildings(world, C.bldSpots.filter((b) => bldKeys.indexOf(b.key) >= 0));
+    if (paved) {
+      this.loadCityGround();
+    }
     this.finishBuild(world, t0);
+  }
+
+  /**
+   * 地面换成原型那种大块旧石板(用户:「地面也需要和原型一样」「做地面湿反光」):石板贴图是 GPT 照原型的地面出的可平铺图,
+   * 临时拷在 resources/g3d_bld/ground/;载到之后重出一遍整张地面(石板 + 罗盘纹 + 大片水膜和积水 + 落叶),换到地面材质上。
+   * 倒影还是平面反射那一套:水膜和积水的地方够滑,自然映出灯、窗和炉火。
+   */
+  private loadCityGround(): void {
+    resources.load('g3d_bld/ground/ground', ImageAsset, (err, img) => {
+      const src = (img as any)?.data;
+      if (err || !src || !this.floorMat) {
+        console.warn('[g3dd] 石板贴图没找到(要先临时拷进 resources/g3d_bld/ground)');
+        return;
+      }
+      const S = 512;
+      const cv = document.createElement('canvas');
+      cv.width = S;
+      cv.height = S;
+      const c = cv.getContext('2d')!;
+      c.drawImage(src, 0, 0, S, S);
+      const data = c.getImageData(0, 0, S, S).data;
+      // 石缝比石面暗:取亮度最暗的 3% / 9% 当门槛
+      const lum: number[] = [];
+      let sum = 0;
+      for (let p = 0; p < data.length; p += 16) {
+        const l = (data[p] + data[p + 1] + data[p + 2]) / 765;
+        lum.push(l);
+        sum += l;
+      }
+      lum.sort((a, b) => a - b);
+      const tile: StoneTile = { size: S, data, m: DUNGEON.paveM, j0: lum[Math.floor(lum.length * 0.03)], j1: lum[Math.floor(lum.length * 0.09)], mean: sum / lum.length, k: DUNGEON.paveK };
+      const gw = DUNGEON.floor;
+      const g = plazaPbr(gw, Math.round((gw * CITY_GROUND.d) / CITY_GROUND.w), CITY_PLAN, tile);
+      this.floorMat.setProperty('mainTexture', tex(g.albedo, false, 16));
+      this.floorMat.setProperty('normalMap', tex(g.normal, false, 16));
+      this.floorMat.setProperty('pbrMap', tex(g.orm, false, 4));
+      this.floorMat.setProperty('specularIntensity', DUNGEON.paveSpec);
+      this.wildWet = (x: number, z: number): boolean => wetAt(g.wet, CITY_PLAN, x, z);
+      console.log('[g3dd] 石板地面', JSON.stringify({ j0: +tile.j0.toFixed(3), j1: +tile.j1.toFixed(3), mean: +tile.mean.toFixed(3) }));
+    });
   }
 
   /**
@@ -3916,6 +3965,11 @@ function boot(): void {
     Object.assign(DUNGEON, CITY_CFG, { scene: 'city', bld: param('bld') ?? '' });
     if (param('bglow') !== null && !Number.isNaN(Number(param('bglow')))) {
       DUNGEON.bldGlow = Number(param('bglow'));
+    }
+    for (const [q, key] of [['pavem', 'paveM'], ['pavek', 'paveK'], ['pavespec', 'paveSpec']] as Array<[string, 'paveM' | 'paveK' | 'paveSpec']>) {
+      if (param(q) !== null && !Number.isNaN(Number(param(q)))) {
+        DUNGEON[key] = Number(param(q));
+      }
     }
     setArea(CITY);
   }

@@ -28,7 +28,13 @@ export interface CityPlan {
  * 中间的罗盘纹:两圈整石镶边,里面的石块一圈圈绕着圆心铺,正中一个八角星(四个长角、四个短角,每个角一半深一半浅)。
  * 刚下过雨:石面是潮的,低洼处和石缝里积着一层水(镜面)。最后在上面撒落叶。
  */
-export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
+/**
+ * 一张可平铺的石板贴图(原型里那种深灰的大块旧石板,GPT 照原型的地面出的):缩好的像素 + 一块铺多少米。
+ * j0 / j1 = 石缝的亮度门槛(比 j0 暗是缝,比 j1 亮是石面),mean = 平均亮度,k = 颜色乘多少(夜里的湿石头要压暗)。
+ */
+export interface StoneTile { size: number; data: Uint8ClampedArray; m: number; j0: number; j1: number; mean: number; k: number }
+
+export function plazaPbr(W: number, H: number, plan: CityPlan, tile?: StoneTile): MudOut {
   const A = makeCanvas(W, H);
   const N = makeCanvas(W, H);
   const O = makeCanvas(W, H);
@@ -190,8 +196,72 @@ export function plazaPbr(W: number, H: number, plan: CityPlan): MudOut {
         rough = mixn(rough, 0.13, water);
         ao = mixn(ao, 1, water);
         h = mixn(h, level, water);
-        if (water > 0.8 && body > 0.5) {
+        if (!tile && water > 0.8 && body > 0.5) {
           wet.data[Math.min(wet.rows - 1, Math.floor((wz - plan.z0) / wet.cell)) * wet.cols + Math.min(wet.cols - 1, Math.floor((wx - plan.x0) / wet.cell))] = 1;
+        }
+      }
+      if (tile) {
+        // 第八步(用户:「地面也需要和原型一样」):石面换成原型那种大块旧石板的贴图,上面这段代码算的小石块只留罗盘纹的位置
+        let u = (wx / tile.m) % 1;
+        if (u < 0) {
+          u += 1;
+        }
+        let v = (wz / tile.m) % 1;
+        if (v < 0) {
+          v += 1;
+        }
+        // 双线性取样(就近取样的话近处是一粒粒的像素点)
+        const fu = u * tile.size - 0.5;
+        const fv = v * tile.size - 0.5;
+        const iu = Math.floor(fu);
+        const iv = Math.floor(fv);
+        const au = fu - iu;
+        const av = fv - iv;
+        const x0t = (iu + tile.size) % tile.size;
+        const x1t = (iu + 1 + tile.size) % tile.size;
+        const y0t = ((iv + tile.size) % tile.size) * tile.size;
+        const y1t = ((iv + 1 + tile.size) % tile.size) * tile.size;
+        const smp = (ch: number): number => {
+          const a0 = tile.data[(y0t + x0t) * 4 + ch];
+          const b0 = tile.data[(y0t + x1t) * 4 + ch];
+          const c0 = tile.data[(y1t + x0t) * 4 + ch];
+          const d0 = tile.data[(y1t + x1t) * 4 + ch];
+          return a0 + (b0 - a0) * au + (c0 - a0) * av + (a0 - b0 - c0 + d0) * au * av;
+        };
+        const sr = smp(0);
+        const sg = smp(1);
+        const sb = smp(2);
+        const tl = (sr + sg + sb) / 765;
+        const tb = sstep(tile.j0, tile.j1, tl);
+        // 罗盘纹:还是这种石板,只是星的两半一浅一深、两圈石带略浅
+        const kc = tile.k * (0.84 + 0.32 * nb) * (inlay === 1 ? 2.0 : inlay === 2 ? 0.5 : inlay === 3 ? 1.5 : 1);
+        cr = sr * kc;
+        cg = sg * kc;
+        cb = sb * kc;
+        // 石面的细碎明暗只给一点起伏(给多了,积水的边缘和反光会碎成一粒粒的黑点)
+        h = 0.42 + 0.42 * (nb - 0.5) + 0.1 * (nm - 0.5) + 0.22 * (tl - tile.mean) + (inlay > 0 ? 0.012 : 0);
+        h = mixn(h - 0.12, h, tb);
+        rough = mixn(0.92, 0.7 + 0.1 * (nf - 0.5), tb);
+        ao = 0.6 + 0.4 * tb;
+        // 湿:一大片一大片的水膜(原型里发亮的湿痕),水膜里低的地方和石缝积着水(镜面,映着灯和窗)
+        // 罗盘纹那一圈少积水(不然整个被水膜盖住看不清)
+        const film = clamp01(sstep(0.39, 0.63, 0.62 * big.at(wx / 26 + 0.2, wz / 26 + 0.6) + 0.38 * nm) * (0.4 + plan.wet)) * (0.35 + 0.65 * sstep(C.r * 0.9, C.r * 1.5, dc));
+        cr *= 1 - 0.3 * film;
+        cg *= 1 - 0.28 * film;
+        cb *= 1 - 0.24 * film;
+        rough = mixn(rough, 0.22 + 0.08 * nf, film * (0.5 + 0.5 * tb));
+        const lv = mixn(0.2, 0.47, film);
+        const wt = sstep(0.0, 0.07, lv - h);
+        if (wt > 0) {
+          cr = mixn(cr, cr * 0.55, wt);
+          cg = mixn(cg, cg * 0.57, wt);
+          cb = mixn(cb, cb * 0.6, wt);
+          rough = mixn(rough, 0.05, wt);
+          ao = mixn(ao, 1, wt);
+          h = mixn(h, lv, wt);
+          if (wt > 0.8) {
+            wet.data[Math.min(wet.rows - 1, Math.floor((wz - plan.z0) / wet.cell)) * wet.cols + Math.min(wet.cols - 1, Math.floor((wx - plan.x0) / wet.cell))] = 1;
+          }
         }
       }
       const i = y * W + x;

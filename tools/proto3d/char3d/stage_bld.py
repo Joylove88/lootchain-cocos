@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """把「图转 3D」的建筑模型临时放进工程 / 看完移出。模型不进仓库(在 D:\\project\\lootchain-3d-ref\\chars\\bld_<键>),留在工程里会被打进资源包。
 
-  python tools/proto3d/char3d/stage_bld.py in  --keys=smithy[,cathedral,house]
+  python tools/proto3d/char3d/stage_bld.py in  --keys=smithy[,cathedral,house,…,ground]   (ground = 石板地面的贴图 bld_ground/ground.jpg)
   python tools/proto3d/char3d/stage_bld.py out
 
 in:拷 bld_<键>/ 下转出来的带贴图模型(gen_*pbr_model*.glb,没有就取最大的那个 glb)到 assets/resources/g3d_bld/<键>/<键>.glb,
@@ -46,6 +46,12 @@ def pick(key):
 def main():
     if CMD == 'in':
         for k in KEYS:
+            if k == 'ground':          # 石板地面的贴图是一张图,不是模型
+                d = os.path.join(DST, k)
+                os.makedirs(d, exist_ok=True)
+                shutil.copy2(os.path.join(SRC, 'bld_ground', 'ground.jpg'), os.path.join(d, 'ground.jpg'))
+                print('in ground ground.jpg')
+                continue
             src = pick(k)
             d = os.path.join(DST, k)
             os.makedirs(d, exist_ok=True)
@@ -53,7 +59,7 @@ def main():
             print('in', k, os.path.basename(src), os.path.getsize(src))
         refresh(20)
         for _ in range(30):
-            if all(os.path.exists(os.path.join(DST, k, k + '.glb.meta')) for k in KEYS):
+            if all(os.path.exists(os.path.join(DST, k, k + ('.jpg.meta' if k == 'ground' else '.glb.meta'))) for k in KEYS):
                 break
             time.sleep(3)
         subprocess.run([sys.executable, '-I', os.path.join(HERE, 'gltf_meta_fix.py'), DST], check=False)
