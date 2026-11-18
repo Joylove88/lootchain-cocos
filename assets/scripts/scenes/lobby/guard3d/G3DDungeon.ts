@@ -2999,6 +2999,121 @@ class Dungeon {
   private qFast = 0;
   private qCastCut = false;
 
+  // ── 自动测速(地址带 &bench=1;11-18 用户笔记本 Arc 140V:分辨率升回 1737×923 后只剩 12 帧 —— 我在独显上量的「卡在几何」套不到核显,
+  //    要在用户机器上逐项关掉看帧数变多少,才知道到底卡在哪)──
+  private benchState: 'off' | 'wait' | 'run' | 'done' = param('bench') === '1' ? 'wait' : 'off';
+  private benchAt = 0;
+  private benchEl: HTMLDivElement | null = null;
+
+  /** 帧率统计那里每半秒调一次:模型都到齐、再等 6 秒,开始测。 */
+  private maybeBench(): void {
+    if (this.benchState !== 'wait' || !this.opened || (this.bldTotal > 0 && this.bldDone < this.bldTotal)) {
+      return;
+    }
+    if (!this.benchAt) {
+      this.benchAt = performance.now() + 6000;
+      return;
+    }
+    if (performance.now() >= this.benchAt) {
+      this.benchState = 'run';
+      void this.runBench();
+    }
+  }
+
+  /** 量 ms 毫秒内的平均帧时长和最慢一帧(先空等 settle 毫秒,让上一项的改动生效、着色器编译完)。 */
+  private measureFrames(settle: number, ms: number): Promise<{ fps: number; avg: number; worst: number }> {
+    return new Promise((resolve) => {
+      const t0 = performance.now() + settle;
+      let last = 0;
+      let n = 0;
+      let sum = 0;
+      let worst = 0;
+      const tick = (now: number): void => {
+        if (now >= t0) {
+          if (last) {
+            const d = now - last;
+            sum += d;
+            n += 1;
+            worst = Math.max(worst, d);
+          }
+          last = now;
+        }
+        if (now - t0 < ms || n < 5) {
+          requestAnimationFrame(tick);
+        } else {
+          const avg = sum / Math.max(1, n);
+          resolve({ fps: 1000 / avg, avg, worst });
+        }
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
+  private async runBench(): Promise<void> {
+    const post = this.post;
+    if (!post || typeof document === 'undefined') {
+      this.benchState = 'done';
+      return;
+    }
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;right:12px;top:12px;z-index:10000;pointer-events:none;color:#e8f0ff;font:14px/1.6 monospace;background:rgba(0,0,0,.78);padding:10px 14px;border-radius:6px;white-space:pre';
+    document.body.appendChild(el);
+    this.benchEl = el;
+    const cv = game.canvas;
+    const cfg0 = post.info().cfg as { scale: number; ao: boolean; bloom: boolean; bloomLevels: number };
+    const scale0 = cfg0.scale;
+    const lights0 = DUNGEON.realLights;
+    const moon = this.moon;
+    const shadow0 = !!moon?.shadowEnabled;
+    const blds: Node[] = [];
+    this.world?.walk((nd) => {
+      if (nd.name.startsWith('DgBld_')) {
+        blds.push(nd);
+      }
+    });
+    const chars: Node[] = [this.leader?.node, ...this.followers.map((f) => f.c.node)].filter((n): n is Node => !!n);
+    const res = (k: number): string => (cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : '?');
+    type Step = { name: string; on: () => void; off: () => void };
+    const steps: Step[] = [
+      { name: '现状', on: () => undefined, off: () => undefined },
+      { name: '关遮蔽(AO)', on: () => post.set({ ao: false }), off: () => post.set({ ao: cfg0.ao }) },
+      { name: '关泛光', on: () => post.set({ bloom: false }), off: () => post.set({ bloom: cfg0.bloom }) },
+      { name: '关月光阴影', on: () => { if (moon) { moon.shadowEnabled = false; } }, off: () => { if (moon) { moon.shadowEnabled = shadow0; } } },
+      { name: '灯 0 盏', on: () => this.set({ realLights: 0 }), off: () => this.set({ realLights: lights0 }) },
+      { name: '藏起建筑', on: () => blds.forEach((n) => { n.active = false; }), off: () => blds.forEach((n) => { n.active = true; }) },
+      { name: '藏起角色', on: () => chars.forEach((n) => { n.active = false; }), off: () => chars.forEach((n) => { n.active = true; }) },
+      { name: `分辨率×0.7(${res(scale0 * 0.7)})`, on: () => post.set({ scale: +(scale0 * 0.7).toFixed(3) }), off: () => post.set({ scale: scale0 }) },
+      { name: `分辨率×0.5(${res(scale0 * 0.5)})`, on: () => post.set({ scale: +(scale0 * 0.5).toFixed(3) }), off: () => post.set({ scale: scale0 }) },
+      { name: '关全部后期', on: () => this.set({ post: 0 }), off: () => { this.set({ post: 2 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); } },
+      { name: '全关(后期 / 阴影 / 灯)', on: () => { this.set({ post: 0, realLights: 0 }); if (moon) { moon.shadowEnabled = false; } },
+        off: () => { this.set({ post: 2, realLights: lights0 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); if (moon) { moon.shadowEnabled = shadow0; } } },
+    ];
+    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil(steps.length * 4.5)} 秒)\n${GPU_NAME.slice(0, 70)}\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}\n`;
+    const rows: string[] = [];
+    const out: Array<{ name: string; fps: number; avg: number; worst: number }> = [];
+    for (let i = 0; i < steps.length; i += 1) {
+      const s = steps[i];
+      el.textContent = `${head}${rows.join('\n')}\n▶ 正在测 ${i + 1}/${steps.length}:${s.name}`;
+      try {
+        s.on();
+      } catch (error) {
+        void error;
+      }
+      const r = await this.measureFrames(1500, 3000);
+      try {
+        s.off();
+      } catch (error) {
+        void error;
+      }
+      out.push({ name: s.name, fps: +r.fps.toFixed(1), avg: +r.avg.toFixed(1), worst: +r.worst.toFixed(0) });
+      rows.push(`${s.name.padEnd(22, ' ')} ${r.fps.toFixed(1).padStart(5)} 帧   每帧 ${r.avg.toFixed(1).padStart(5)} 毫秒   最慢 ${r.worst.toFixed(0)}`);
+    }
+    el.textContent = `${head}${rows.join('\n')}\n✔ 测完了,请截这张表`;
+    console.log('[g3dd] 自动测速', JSON.stringify({ gpu: GPU_NAME, canvas: cv ? [cv.width, cv.height] : null, dpr: window.devicePixelRatio, scale: scale0, out }));
+    (window as unknown as { __g3dBench?: unknown }).__g3dBench = out;
+    this.benchState = 'done';
+  }
+
   /** 小物件(路灯、摊位、水井、立像、代码拼的零碎、角色以外)不再投月光阴影:阴影那一遍要把投影的东西整个再画一次。 */
   private cutSmallCasters(): void {
     const keep = (name: string): boolean => /^DgBld_(smithy|cathedral|house)/.test(name);
@@ -3288,7 +3403,10 @@ class Dungeon {
       this.fpsLow = 1000 / Math.max(1, Math.max(...this.lows));
       this.fpsAcc.t = 0;
       this.fpsAcc.n = 0;
-      this.autoQuality();
+      this.maybeBench();
+      if (this.benchState !== 'run') {
+        this.autoQuality();          // 测速时不自动降级,免得干扰每一项的读数
+      }
       this.fpsAcc.worst = 0;
       if (this.hudEl && !this.gpuName) {
         try {
@@ -4334,7 +4452,7 @@ function boot(): void {
     setArea({ ...CITY, X1: CITY.X1 + 6.8 });          // 第十轮:往东放宽到教堂门口(台地前沿的矮墙是挡路块,只有台阶那一段能上去)
   }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
-  if (param('autoq') === '0') {
+  if (param('autoq') === '0' || param('bench') === '1') {          // 自动测速时以档位默认画质为准,不让自动降级先动
     DUNGEON.autoQ = false;
   }
   if (param('autoqfps') !== null && !Number.isNaN(Number(param('autoqfps')))) {
