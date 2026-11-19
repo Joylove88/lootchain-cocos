@@ -37,6 +37,10 @@ PITCH = float(OPT.get('pitch', 42))
 YAW = float(OPT.get('yaw', 0))          # 镜头水平朝向:0 = 正对东边;-45 = 往东北斜着看(11-18 用户选的视角 D)
 DIST = 120.0                 # 镜头离参考点多远(正交下只影响近 / 远裁剪,不影响画面)
 NEAR, FAR = 1.0, 240.0
+# 11-20:镜头实际再往后退 BACK 米(近 / 远裁剪同步后移,深度图编码不变,map.json 仍记 DIST / NEAR / FAR)。
+# 引擎算高光 / 天光反射用的是「镜头位置 → 像素」的视线,镜头离地只有 120 米时一块里视线差 ±7°、相邻两块接缝处差 15°,
+# 湿地面 / 石板的反光每块不一样亮 → 拼出来一格一格的明暗方块(实测重叠区差 30 级);退到 2000 米后差 1 级。
+BACK = float(OPT.get('back', 1880))
 C0 = tuple(float(v) for v in OPT.get('c0', '2,0,0').split(','))         # 参考点(地面):画面平面坐标的原点
 
 p = math.radians(PITCH)
@@ -148,14 +152,15 @@ SHADOW_FOLLOW = float(OPT.get('shadowfollow', 0))          # --shadowfollow=36:�
 def aim(cx, cy):
     # 画面平面上 (cx, cy) 对应的世界点 = C0 + cx·R + cy·U;镜头放在它沿 -F 退 DIST 的地方
     T = tuple(C0[i] + cx * R[i] + cy * U[i] for i in range(3))
-    pos = [T[i] - F[i] * DIST for i in range(3)]
+    pos = [T[i] - F[i] * (DIST + BACK) for i in range(3)]
     js = (f"var d=D.dungeon; D.shot({json.dumps(pos)}, {json.dumps(list(T))}, 30);"
-          f"d.cam.projection=0; d.cam.orthoHeight={ortho_h:.6f}; d.cam.near={NEAR}; d.cam.far={FAR}; return [d.cam.projection, d.cam.orthoHeight]")
+          f"d.cam.projection=0; d.cam.orthoHeight={ortho_h:.6f}; d.cam.near={NEAR + BACK}; d.cam.far={FAR + BACK}; return [d.cam.projection, d.cam.orthoHeight]")
     if SHADOW_FOLLOW:
         # 月光影子跟着这一块走(11-19 主城 v4):固定范围的影子以月光节点为中心;整城罩一张图太糊,改成每块只罩自己附近
         t = -T[1] / F[1] if abs(F[1]) > 1e-6 else 0
         G = [T[i] + F[i] * t for i in range(3)]
-        ev(f"var m=D.dungeon.moon; m.node.setWorldPosition({G[0]:.3f}, {G[1]:.3f}, {G[2]:.3f}); m.shadowOrthoSize={SHADOW_FOLLOW}; m.shadowFar=400; return 1")
+        # 影子相机放在这块地面中心往月亮方向退 200 米(放在地面上时,地面和月亮之间的树 / 房子在影子相机背后,投不出影子 → 块与块之间影子断开)
+        ev(f"var m=D.dungeon.moon; var f=m.node.forward; m.node.setWorldPosition({G[0]:.3f}-f.x*200, {G[1]:.3f}-f.y*200, {G[2]:.3f}-f.z*200); m.shadowOrthoSize={SHADOW_FOLLOW}; m.shadowNear=1; m.shadowFar=450; return 1")
     return ev(js)
 
 
@@ -166,7 +171,8 @@ meta = {'ppm': PPM, 'pitch': PITCH, 'yaw': YAW, 'dist': DIST, 'near': NEAR, 'far
 print('helper', ev(open(os.path.join(os.path.dirname(__file__), 'helper.js'), encoding='utf-8').read()))
 print('hide', ev('return __pre.hideChars()'))
 # 冻结逻辑(落叶、火苗这类动的东西每张不一样;遮挡蒙版靠两张对比,必须一模一样),关暗角(块边会发暗)
-print('freeze', ev('D.dungeon.frozen = true; D.post({vignette: 0}); return 1'))
+# 雾也关:后期的雾按「到镜头的距离」算,镜头退到 2000 米后整张都在雾里发白(11-20)
+print('freeze', ev('D.dungeon.frozen = true; D.post({vignette: 0, fog: false}); return 1'))
 time.sleep(1.5)
 cv = json.loads(ev('return [cc.game.canvas.width, cc.game.canvas.height]'))
 print('canvas', cv)
@@ -188,7 +194,7 @@ for row in range(rows):
         cx, cy = tile_center(row, col)
         tag = f'{row}_{col}'
         print(f'tile {tag}  center ({cx:.2f}, {cy:.2f})', aim(cx, cy), flush=True)
-        ev('D.set({post: 2}); D.post({debug: 0, vignette: 0}); return 1')
+        ev('D.set({post: 2}); D.post({debug: 0, vignette: 0, fog: false}); return 1')
         shot(os.path.join(TILES, f'{tag}_bg.png'), 4.0)
         ev('D.post({debug: 5}); return 1')
         shot(os.path.join(TILES, f'{tag}_depth.png'), 2.5)

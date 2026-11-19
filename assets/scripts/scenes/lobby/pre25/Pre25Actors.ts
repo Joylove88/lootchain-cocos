@@ -1,7 +1,8 @@
-import { assetManager, builtinResMgr, EffectAsset, JsonAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec2, Vec4 } from 'cc';
+import { assetManager, builtinResMgr, EffectAsset, gfx, MeshRenderer, UIMeshRenderer, utils, JsonAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec2, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { LobbyTownRenderer } from '../LobbyTownRenderer';
 import { CITY_PRE25, PRE25_CHUNKS, PRE25_CITY_RUNTIME as R, pre25Lift } from './Pre25City';
+import { PRE25_WATER as WATER } from './Pre25WaterData';
 
 /**
  * 预渲染 2.5D(第 0 期):主城换成 CITY_PRE25 时,队长的 2D 骨骼藏起来,换成 3D 模型离线拍的 8 方向序列帧,
@@ -77,6 +78,7 @@ class Pre25Layer {
       return;
     }
     this.streamChunks(self);
+    this.mountWater(self);
     if (!this.ready()) {
       return;
     }
@@ -175,6 +177,68 @@ class Pre25Layer {
         assetManager.releaseAsset(tex);
       }
     }
+  }
+
+  // ── 流动的水(11-19 用户:「河流是流动的吧?」)──
+  // 河 / 港湾 / 池塘上叠一层 effects/pre25-water(网格 + 遮罩见 tools/proto3d/pre25/water_build.py):插在地面层最后(地图块之上、人物之下)
+  private waterNode: Node | null = null;
+  private waterLoading = false;
+
+  private mountWater(self: any): void {
+    const root: Node | null = self.groundRoot;
+    if (!root || !root.isValid) {
+      return;
+    }
+    if (this.waterNode && this.waterNode.isValid && this.waterNode.parent === root) {
+      if (this.waterNode.getSiblingIndex() !== root.children.length - 1) {
+        this.waterNode.setSiblingIndex(root.children.length - 1);
+      }
+      return;
+    }
+    if (this.waterLoading) {
+      return;
+    }
+    this.waterLoading = true;
+    resources.load('effects/pre25-water', EffectAsset, (err, eff) => {
+      resources.load(WATER.mask, Texture2D, (err2, mask) => {
+        this.waterLoading = false;
+        if (err || err2 || !eff || !mask || !root.isValid) {
+          console.warn('[pre25] water', err, err2);
+          return;
+        }
+        mask.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+        mask.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
+        const n = WATER.speed.length;
+        const positions: number[] = [];
+        const uvs: number[] = [];
+        const uv1: number[] = [];
+        const colors: number[] = [];
+        for (let i = 0; i < n; i += 1) {
+          positions.push(WATER.pos[i * 2], WATER.pos[i * 2 + 1], 0);
+          uvs.push(WATER.uv0[i * 2], WATER.uv0[i * 2 + 1]);
+          uv1.push(WATER.uv1[i * 2], WATER.uv1[i * 2 + 1]);
+          colors.push(WATER.speed[i] / 255, ((WATER as unknown as { radial?: number[] }).radial ?? [])[i] ?? 0, 0, 1);
+        }
+        const mesh = utils.MeshUtils.createMesh({
+          positions, uvs, colors, indices: Array.from(WATER.idx),
+          customAttributes: [{ attr: new gfx.Attribute('a_texCoord1', gfx.Format.RG32F), values: uv1 }],
+        });
+        const mat = new Material();
+        mat.initialize({ effectAsset: eff });
+        mat.setProperty('maskTex', mask);
+        mat.setProperty('params', new Vec4(1, WATER.riverHalf, 1, 0));
+        const node = new Node('Pre25Water');
+        node.layer = root.layer;
+        node.addComponent(UITransform);
+        const mr = node.addComponent(MeshRenderer);
+        mr.mesh = mesh;
+        mr.setMaterial(mat, 0);
+        node.addComponent(UIMeshRenderer);
+        root.addChild(node);
+        node.setPosition(0, 0, 0);
+        this.waterNode = node;
+      });
+    });
   }
 
   // ── 地面块跟着镜头载入 / 释放 ──
@@ -309,6 +373,10 @@ class Pre25Layer {
     this.occUsed.clear();
     this.npcMats.clear();
     this.npcLift.clear();
+    if (this.waterNode && this.waterNode.isValid) {
+      this.waterNode.destroy();
+    }
+    this.waterNode = null;
     const w: Node | null = this.owner?.world ?? this.chunkWorld;
     if (w && w.isValid) {
       const op = w.getComponent(UIOpacity);

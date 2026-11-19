@@ -1,6 +1,7 @@
 import { Vec3 } from 'cc';
 import { CITY_GROUND, CITY_PLAN, CITY_V4, CityScene } from './G3DCity';
 import { CITY_V4_DATA as D } from './G3DCityV4Data';
+import { xform } from './G3DSculpt';
 
 /**
  * 主城 v4(预渲染 2.5D 第 1 期,2026-11-19 用户「Build v4」):3D 小样地址带 &cityv4=1 时生效(同时当整城模式)。
@@ -69,19 +70,25 @@ export function v4OffUpper(x: number, z: number): boolean {
   return !inPoly(x, z, D.upper);
 }
 
-/** 地面上色(乘到石板贴图上):街 / 广场原色,碎石地偏土褐、花园偏暗绿。 */
+/**
+ * 地面上色(乘到石板贴图上,按顶点插值 → 边缘是柔的):街 / 广场原色偏亮,碎石 / 土地偏暖褐、花园偏暗绿。
+ * 每个顶点取周围 ±0.75 米 9 个点的平均(11-19:按格子硬切的话边是 0.5 米一级的锯齿)。
+ */
+const TINT: Record<number, Tint> = { 0: [0.5, 0.64, 0.32], 1: [1.2, 1.07, 0.86], 2: [0.44, 0.62, 0.28], 3: [0.5, 0.64, 0.32] };          // 11-19 参考图:空地是草坪、街是沙土色          // 暖砂岩石板 / 暖土 / 鲜一点的草地
 export function v4GroundTint(x: number, z: number): Tint {
   if (!inPoly(x, z, D.wall)) {
     return [0.42, 0.42, 0.44];          // 城墙外:压暗(预渲染的角上会拍到一点)
   }
-  const k = v4Surface(x, z);
-  if (k === 2) {
-    return [0.34, 0.48, 0.28];          // 花园草地
+  const o: Tint = [0, 0, 0];
+  for (const dx of [-0.75, 0, 0.75]) {
+    for (const dz of [-0.75, 0, 0.75]) {
+      const t = TINT[v4Surface(x + dx, z + dz)] ?? TINT[0];
+      o[0] += t[0] / 9;
+      o[1] += t[1] / 9;
+      o[2] += t[2] / 9;
+    }
   }
-  if (k === 0) {
-    return [0.64, 0.57, 0.48];          // 碎石 / 土:比石板街明显偏暗偏褐,街才看得出来
-  }
-  return [1.08, 1.08, 1.1];
+  return o;
 }
 
 /** 要在建场景之前调:地面扩到整城、打开 v4 开关、登记树(带树根高度)。 */
@@ -91,7 +98,8 @@ export function applyCityV4Ground(): void {
   Object.assign(CITY_GROUND, g);
   Object.assign(CITY_PLAN, g);
   CITY_V4.on = true;
-  CITY_PLAN.wet = 0.3;          // 整城 26 万平米:原来 0.72 的积水在俯视全城时成了满地白斑
+  CITY_PLAN.wet = 0;          // 11-20:燕云口径的干地(0.3 时满地暗色湿斑像霉点)
+  //          // 整城 26 万平米:原来 0.72 的积水在俯视全城时成了满地白斑
   let n = 0;
   const all = [...D.avenue, ...D.trees] as Array<readonly number[]>;
   CITY_V4.trees = all.map(([x, z]) => [x, z, 7.6 + ((n++ * 37) % 10) * 0.28, v4Height(x, z)] as [number, number, number, number]);
@@ -278,7 +286,7 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
   }
 
   // ── 河:水面 + 两岸石砌河堤(桥下断开);港湾 ──
-  const water: Tint = [0.06, 0.09, 0.12];
+  const water: Tint = [0.15, 0.21, 0.25];          // 参考图:清的蓝灰,映着天          // 偏蓝绿、清一点(原来近乎黑)
   const RW = D.riverW;
   const rv = D.river as unknown as Array<[number, number]>;
   const bridges = D.bridges as unknown as Array<[number, number, number]>;
@@ -332,7 +340,7 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
     for (let i = 0; i < n; i += 1) {
       const a0 = (i / n) * Math.PI * 2;
       const a1 = ((i + 1) / n) * Math.PI * 2;
-      s.winDark.facet([V(px, y, pz), V(px + Math.cos(a1) * rx, y, pz + Math.sin(a1) * rz), V(px + Math.cos(a0) * rx, y, pz + Math.sin(a0) * rz)], [[0.5, 0.5], [1, 0], [0, 0]], water);
+      s.winDark.facet([V(px, y, pz), V(px + Math.cos(a1) * rx, y, pz + Math.sin(a1) * rz), V(px + Math.cos(a0) * rx, y, pz + Math.sin(a0) * rz)], [[0.5, 0.5], [1, 0], [0, 0]], [0.14, 0.2, 0.22]);
       const am = (a0 + a1) / 2;
       s.stone.box(1.0, 0.3, 0.5, V(px + Math.cos(am) * (rx + 0.25), y + 0.1, pz + Math.sin(am) * (rz + 0.25)), V(0, -deg(am) + 90, 0), STONE, 0.5, rnd, 0.03);
     }
@@ -416,32 +424,185 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
     }
   }
 
-  // ── 路灯:沿主要的街每 18 米一盏,左右交替 ──
+  // ── 路灯:点位由 city_plan_v4.py 排(沿街每 18 米左右交替、离树至少 2.2 米)──
   let ln = 0;
-  for (const r of D.roads) {
-    if (r.w < 6) {
-      continue;
+  for (const [x, z] of ((D as unknown as { lamps?: Array<[number, number]> }).lamps ?? [])) {
+    const y = v4Height(x, z);
+    spot('lamp', `lamp_v4_${ln++}`, x, z, (ln * 90) % 360, 0.7, 0.7, { h: 4.4, y });
+    s.lamps.push({ x, y: y + 3.9, z });
+  }
+
+  // ── 街景摆件(11-19 跑图:大片空地什么都没有;点位由 city_plan_v4.py 按街 / 房子 / 水避让着排)──
+  const props = ((D as unknown as { props?: Array<[string, number, number, number]> }).props) ?? [];
+  const TIMBER: Tint = [0.46, 0.4, 0.34];
+  const flowers = (cx: number, cy: number, cz: number, rx: number, rz: number, n: number): void => {
+    const cols: Tint[] = [[0.5, 0.08, 0.06], [0.55, 0.2, 0.05], [0.42, 0.12, 0.3], [0.62, 0.6, 0.55], [0.15, 0.24, 0.1], [0.12, 0.2, 0.09]];
+    for (let i = 0; i < n; i += 1) {
+      const a = R(0, 6.28);
+      const r = Math.sqrt(R(0, 1));
+      const x = cx + Math.cos(a) * rx * r;
+      const z = cz + Math.sin(a) * rz * r;
+      const y = cy + R(0, 0.12);
+      const sz = R(0.06, 0.12);
+      const col = i % 3 === 0 ? cols[Math.floor(R(0, 4))] : cols[4 + (i % 2)];
+      const q = [V(x - sz, y, z), V(x, y + sz * 0.5, z - sz), V(x + sz, y, z), V(x, y + sz * 0.5, z + sz)];
+      s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
+      s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
     }
-    let acc = 0;
-    let next = 6 + R(0, 4);
-    let side = 1;
-    for (let i = 0; i + 1 < r.pts.length; i += 1) {
-      const [ax, az] = r.pts[i] as [number, number];
-      const [bx, bz] = r.pts[i + 1] as [number, number];
-      const l = Math.hypot(bx - ax, bz - az) || 1e-6;
-      while (next <= acc + l) {
-        const t = (next - acc) / l;
-        const x = ax + (bx - ax) * t - ((bz - az) / l) * side * (r.w / 2 + 0.5);
-        const z = az + (bz - az) * t + ((bx - ax) / l) * side * (r.w / 2 + 0.5);
-        if (v4Surface(x, z) !== 3 && nearest(rv, x, z).d > RW / 2 + 1) {
-          const y = v4Height(x, z);
-          spot('lamp', `lamp_v4_${ln++}`, x, z, (ln * 90) % 360, 0.7, 0.7, { h: 4.4, y });
-          s.lamps.push({ x, y: y + 3.9, z });
-        }
-        next += 18;
-        side = -side;
+  };
+  // 叶子团(11-20 跑图:光滑圆球灌木像塑料):暗色内芯 + 表面撒一层小叶片,叶色深浅几种绿,朝上的亮一点
+  const leafyBall = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, n: number): void => {
+    s.leaf.ball(rx * 0.9, ry * 0.9, rz * 0.9, [cx, cy, cz], 8, { tint: [0.06, 0.11, 0.05] });
+    for (let i = 0; i < n; i += 1) {
+      const u = R(-0.35, 1);
+      const a = R(0, 6.28);
+      const ny = u;
+      const nr = Math.sqrt(Math.max(0, 1 - u * u));
+      const nx = Math.cos(a) * nr;
+      const nz = Math.sin(a) * nr;
+      const px = cx + nx * rx * R(0.92, 1.05);
+      const py = cy + ny * ry * R(0.92, 1.05);
+      const pz = cz + nz * rz * R(0.92, 1.05);
+      const sz = R(0.06, 0.1);
+      const b = R(0.6, 0.9) + 0.25 * Math.max(0, ny);
+      const g0 = rnd() < 0.5 ? [0.15, 0.27, 0.1] : rnd() < 0.7 ? [0.22, 0.35, 0.13] : [0.32, 0.42, 0.17];
+      const col: Tint = [g0[0] * b, g0[1] * b, g0[2] * b];
+      // 叶面大致贴着球面:取两条切向
+      const t1 = V(-nz, 0, nx);
+      if (t1.length() < 1e-3) {
+        t1.set(1, 0, 0);
       }
-      acc += l;
+      t1.normalize();
+      const t2 = V(ny * nx, -(nx * nx + nz * nz), ny * nz);
+      if (t2.length() < 1e-3) {
+        t2.set(0, 0, 1);
+      }
+      t2.normalize();
+      const sp = R(0, 6.28);
+      const e1 = V(t1.x * Math.cos(sp) + t2.x * Math.sin(sp), t1.y * Math.cos(sp) + t2.y * Math.sin(sp), t1.z * Math.cos(sp) + t2.z * Math.sin(sp));
+      const e2 = V(-t1.x * Math.sin(sp) + t2.x * Math.cos(sp), -t1.y * Math.sin(sp) + t2.y * Math.cos(sp), -t1.z * Math.sin(sp) + t2.z * Math.cos(sp));
+      const q = [V(px - e1.x * sz, py - e1.y * sz, pz - e1.z * sz), V(px - e2.x * sz * 0.55, py - e2.y * sz * 0.55, pz - e2.z * sz * 0.55),
+        V(px + e1.x * sz, py + e1.y * sz, pz + e1.z * sz), V(px + e2.x * sz * 0.55, py + e2.y * sz * 0.55, pz + e2.z * sz * 0.55)];
+      s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
+      s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
+    }
+  };
+  for (const [kind, x, z, yaw] of props) {
+    const y = v4Height(x, z);
+    const ya = (yaw * Math.PI) / 180;
+    const L = (lx: number, ly: number, lz: number): Vec3 => V(x + lx * Math.cos(ya) + lz * Math.sin(ya), y + ly, z - lx * Math.sin(ya) + lz * Math.cos(ya));
+    const rot = V(0, yaw, 0);
+    if (kind === 'bench') {
+      s.timber.box(1.8, 0.07, 0.42, L(0, 0.46, 0), rot, TIMBER, 0.9, rnd, 0.01);
+      s.timber.box(1.8, 0.36, 0.06, L(0, 0.72, -0.2), rot, TIMBER, 0.9, rnd, 0.01);
+      for (const sd of [-0.72, 0.72]) {
+        s.iron.box(0.08, 0.44, 0.42, L(sd, 0.22, 0), rot, [0.24, 0.24, 0.26], 1.6, rnd, 0.005);
+      }
+    } else if (kind === 'barrels' || kind === 'crates') {
+      const spots: Array<[number, number]> = [[-0.45, 0.1], [0.35, -0.2], [0.1, 0.55]];
+      spots.forEach(([lx, lz], i) => {
+        if (kind === 'barrels') {
+          const c = L(lx, 0.42, lz);
+          s.timber.cylinder(0.3, 0.27, 0.84, 10, c, V(0, 0, 0), [0.42, 0.35, 0.28], 0.9, rnd);
+          s.iron.cylinder(0.31, 0.31, 0.05, 10, V(c.x, y + 0.65, c.z), V(0, 0, 0), [0.22, 0.22, 0.24], 1.6, rnd);
+          s.iron.cylinder(0.31, 0.31, 0.05, 10, V(c.x, y + 0.2, c.z), V(0, 0, 0), [0.22, 0.22, 0.24], 1.6, rnd);
+        } else {
+          const sz = i === 2 ? 0.55 : 0.7;
+          s.timber.box(sz, sz, sz, L(lx, sz / 2, lz), V(0, yaw + i * 17, 0), [0.5, 0.43, 0.34], 0.9, rnd, 0.015);
+          if (i === 0) {
+            s.timber.box(0.5, 0.5, 0.5, L(lx, 0.7 + 0.25, lz), V(0, yaw + 30, 0), [0.48, 0.41, 0.33], 0.9, rnd, 0.015);
+          }
+        }
+      });
+    } else if (kind === 'cart') {
+      s.timber.box(1.7, 0.12, 1.05, L(0, 0.7, 0), rot, TIMBER, 0.9, rnd, 0.01);
+      for (const sd of [-0.55, 0.55]) {
+        s.timber.box(1.7, 0.32, 0.06, L(0, 0.9, sd), rot, TIMBER, 0.9, rnd, 0.01);
+        s.timber.cylinder(0.42, 0.42, 0.08, 12, L(0.2, 0.42, sd + Math.sign(sd) * 0.1), V(90, yaw, 0), [0.34, 0.29, 0.24], 0.9, rnd);
+      }
+      for (const sd of [-0.4, 0.4]) {
+        s.timber.box(1.3, 0.06, 0.06, L(1.45, 0.62, sd), V(0, yaw, -10), TIMBER, 0.9, rnd, 0.005);
+      }
+      s.goods.box(0.9, 0.35, 0.7, L(-0.1, 0.94, 0), V(0, yaw + 8, 0), [0.52, 0.44, 0.26], 0.9, rnd, 0.05);
+    } else if (kind === 'planter') {
+      s.stone.box(1.4, 0.5, 0.55, L(0, 0.25, 0), rot, [0.56, 0.56, 0.6], 0.5, rnd, 0.03);
+      s.goods.box(1.26, 0.06, 0.42, L(0, 0.49, 0), rot, [0.16, 0.12, 0.09], 0.9, rnd, 0);
+      const c = L(0, 0.52, 0);
+      flowers(c.x, c.y, c.z, 0.6, 0.6, 26);
+    } else if (kind === 'flowerbed') {
+      for (let i = 0; i < 10; i += 1) {
+        const a = (i / 10) * 6.283;
+        s.stone.box(0.62, 0.24, 0.26, V(x + Math.cos(a) * 1.05, y + 0.12, z + Math.sin(a) * 1.05), V(0, -(a * 180) / Math.PI + 90, 0), [0.6, 0.6, 0.64], 0.5, rnd, 0.03);
+      }
+      s.goods.cylinder(1.0, 1.0, 0.05, 14, V(x, y + 0.2, z), V(0, 0, 0), [0.14, 0.11, 0.08], 0.9, rnd);
+      flowers(x, y + 0.24, z, 0.9, 0.9, 60);
+    } else if (kind === 'hedge') {
+      // 灌木丛:两三团压扁的圆球(11-19 跑图:方块绿篱像积木)
+      for (let k = 0; k < 3; k += 1) {
+        const c = L(-0.5 + k * 0.5 + R(-0.1, 0.1), 0.42 + R(0, 0.1), R(-0.15, 0.15));
+        const g = R(0.8, 1.15);
+        leafyBall(c.x, c.y, c.z, 0.5 * g, 0.42 * g, 0.42 * g, 150);
+      }
+      flowers(x, y + 0.75, z, 0.6, 0.3, 5);
+    } else if (kind === 'shrub') {
+      for (let k = 0; k < 2; k += 1) {
+        const g = R(0.75, 1.1);
+        const c = L(k * 0.45 - 0.2, 0.36 * g, R(-0.15, 0.15));
+        leafyBall(c.x, c.y, c.z, 0.48 * g, 0.4 * g, 0.44 * g, 140);
+      }
+      if (rnd() < 0.4) {
+        flowers(x, y + 0.6, z, 0.4, 0.3, 6);
+      }
+    } else if (kind === 'hay') {
+      // 圆草捆横躺(11-20 跑图:竖着的黄圆柱像奶酪块),颜色压暗偏灰
+      s.goods.cylinder(0.62, 0.62, 1.1, 16, V(x, y + 0.6, z), V(90, yaw, 0), [0.27, 0.23, 0.14], 0.95, rnd);
+      s.goods.cylinder(0.5, 0.5, 0.95, 14, L(0.9, 0.5, 0.4), V(90, yaw + 70, 0), [0.25, 0.21, 0.13], 0.95, rnd);
+    } else if (kind === 'fountain') {
+      s.stone.lathe([[2.2, 0], [2.25, 0.5], [2.05, 0.62], [1.9, 0.62], [1.9, 0.18], [0, 0.18]], 28, { xf: xform([x, y, z]), tint: [0.62, 0.62, 0.66], den: 0.5, smooth: false });
+      s.winDark.cylinder(1.88, 1.88, 0.02, 28, V(x, y + 0.48, z), V(0, 0, 0), [0.06, 0.09, 0.12], 1, rnd);
+      s.stone.lathe([[0.35, 0], [0.3, 1.2], [0.85, 1.35], [0.9, 1.5], [0.2, 1.55], [0.18, 2.1], [0.32, 2.2], [0, 2.3]], 16, { xf: xform([x, y, z]), tint: [0.66, 0.66, 0.7], den: 0.5 });
+    }
+  }
+
+  // ── 草丛(11-19 参考图:满地的草):草坪 / 花园上每 0.5 米左右一簇,三片草叶,深浅几种绿,偶尔一朵小野花 ──
+  const GREENS: Tint[] = [[0.2, 0.32, 0.12], [0.26, 0.4, 0.14], [0.32, 0.46, 0.16], [0.4, 0.48, 0.2]];
+  for (let gz = BZ0; gz < BZ1; gz += 0.5) {
+    for (let gx = BX0; gx < BX1; gx += 0.5) {
+      const x = gx + R(-0.22, 0.22);
+      const z = gz + R(-0.22, 0.22);
+      const k = v4Surface(x, z);
+      if ((k !== 0 && k !== 2) || !inPoly(x, z, D.wall)) {
+        continue;
+      }
+      const [ppx, ppz, prx, prz] = D.pond as unknown as [number, number, number, number];
+      if (((x - ppx) / (prx + 0.7)) ** 2 + ((z - ppz) / (prz + 0.7)) ** 2 <= 1) {
+        continue;          // 池塘里不长草
+      }
+      // 草地边上(靠近街)稀一点,别把路边吃成一条绿边
+      if (k === 0 && (v4Surface(x + 0.8, z) === 1 || v4Surface(x - 0.8, z) === 1 || v4Surface(x, z + 0.8) === 1 || v4Surface(x, z - 0.8) === 1) && rnd() < 0.6) {
+        continue;
+      }
+      const y = v4Height(x, z);
+      const c0 = GREENS[Math.floor(R(0, GREENS.length))];
+      for (let b = 0; b < 3; b += 1) {
+        const a = R(0, 6.28);
+        const h = R(0.14, 0.32) * (k === 2 ? 1.2 : 1);
+        const w = R(0.025, 0.045);
+        const lean = R(0.03, 0.12);
+        const bx = x + Math.cos(a) * 0.05;
+        const bz = z + Math.sin(a) * 0.05;
+        const p0 = V(bx - Math.sin(a) * w, y, bz + Math.cos(a) * w);
+        const p1 = V(bx + Math.sin(a) * w, y, bz - Math.cos(a) * w);
+        const p2 = V(bx + Math.cos(a) * lean, y + h, bz + Math.sin(a) * lean);
+        const col: Tint = [c0[0] * R(0.85, 1.15), c0[1] * R(0.85, 1.15), c0[2]];
+        s.leaf.facet([p0, p1, p2], [[0, 0], [1, 0], [0.5, 1]], col);
+        s.leaf.facet([p2, p1, p0], [[0.5, 1], [1, 0], [0, 0]], col);
+      }
+      if (rnd() < 0.015) {
+        const fc: Tint = ([[0.85, 0.85, 0.8], [0.85, 0.75, 0.2], [0.55, 0.4, 0.75]] as Tint[])[Math.floor(R(0, 3))];
+        const fy = y + R(0.18, 0.3);
+        s.leaf.facet([V(x - 0.04, fy, z), V(x, fy, z - 0.04), V(x + 0.04, fy, z), V(x, fy, z + 0.04)], [[0, 0], [1, 0], [1, 1], [0, 1]], fc);
+      }
     }
   }
 }

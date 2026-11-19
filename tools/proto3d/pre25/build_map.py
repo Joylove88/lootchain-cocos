@@ -21,11 +21,23 @@ import sys
 import numpy as np
 from PIL import Image
 
+
+def save_retry(im, path, *a, **k):
+    """Creator 开着时会短暂占住正在导入的图(Windows 报 Errno 22),重试几次(11-20)。"""
+    import time as _t
+    for n in range(20):
+        try:
+            return im.save(path, *a, **k)
+        except OSError:
+            if n == 19:
+                raise
+            _t.sleep(0.5)
+
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1:] if a.startswith('--'))
 CAP, OUT, TS = ARGS[0], ARGS[1], ARGS[2]
 CHUNK = int(OPT.get('chunk', 1024))
-Q = int(OPT.get('q', 82))
+Q = int(OPT.get('q', 72))          # 11-20:82 → 72(草 / 细叶让颜色块翻倍;抽样对比 74 以下肉眼无差)
 DEPTH_LO = int(OPT.get('depthlo', 4))          # 深度低 8 位只留几位(12 位 ≈ 6 厘米一档,判定余量 35 厘米;省一半多体积)
 UNIT = float(OPT.get('unit', 1.7))
 CELL = int(OPT.get('cell', 16))
@@ -104,6 +116,38 @@ occp = np.zeros((pad_h, pad_w, 3), np.uint8)
 occp[..., 0] = 255
 occp[..., 1] = 255
 occp[:IH, :IW] = occ
+# 贴地的东西不进遮挡(11-20):草丛 / 树池矮石 / 花坛沿离地不到 0.4 米,挡不住人,却让整片草地的深度都进了遮挡图(无损压不动,26MB → 52MB)。
+# 按布局高度图算每个像素看到的地面深度(迭代两次找射线落地点),比它近不到 0.4 米高的遮挡像素清掉。人脚要落进这条带,得站在离它 < 0.4 米的地方 = 碰撞体里。
+FLAT_H = float(OPT.get('flath', 0.4))
+if 'layout' in OPT and FLAT_H > 0:
+    _lg = json.load(open(OPT['layout'] + '_grid.json'))
+    _Hg = np.load(OPT['layout'] + '_height.npy')
+
+
+def flatten_low(o, r, c):
+    if 'layout' not in OPT or FLAT_H <= 0:
+        return 0
+    jj, ii = np.mgrid[r * CHUNK:(r + 1) * CHUNK, c * CHUNK:(c + 1) * CHUNK]
+    sxv_ = sx0 + (ii + 0.5) / PPM
+    syv_ = sy1 - (jj + 0.5) / PPM
+    Hh = np.zeros(sxv_.shape, np.float32)
+    for _ in range(3):
+        al = (syv_ - Hh * math.cos(p)) / math.sin(p)
+        Xg = C0[0] + sxv_ * RR[0] + al * HH[0]
+        Zg = C0[2] + sxv_ * RR[2] + al * HH[2]
+        gi_ = np.clip(((Xg - _lg['x0']) * _lg['res']).astype(int), 0, _lg['w'] - 1)
+        gj_ = np.clip(((Zg - _lg['z0']) * _lg['res']).astype(int), 0, _lg['h'] - 1)
+        Hh = _Hg[gj_, gi_]
+    gdp = syv_ / math.tan(p) - Hh / math.sin(p) + M['dist']
+    od = NEAR + (o[..., 0] / 255.0 + o[..., 1] / 255.0 / 255.0) * (FAR - NEAR)
+    low = (o[..., 2] > 0) & (od > gdp - FLAT_H / math.sin(p))
+    o[low, 0] = 255
+    o[low, 1] = 255
+    o[low, 2] = 0
+    return int(low.sum())
+
+
+flat_n = 0
 total_c = total_o = 0
 present = []          # 存下来的块 [行, 列];整块落在没拍的区域(纯黑)的不存,游戏里也不铺
 for r in range(crows):
@@ -115,14 +159,16 @@ for r in range(crows):
         if 'walkonly' in OPT:          # 只重算可走格(调碰撞时):块已经写过,不再编码
             continue
         cp = os.path.join(OUT, f'c_{r}_{c}.webp')
-        Image.fromarray(bgp[sl]).save(cp, 'WEBP', quality=Q, method=6)
+        save_retry(Image.fromarray(bgp[sl]), cp, 'WEBP', quality=Q, method=6)
         op = os.path.join(OUT, f'o_{r}_{c}.webp')
         o = occp[sl].copy()
+        flat_n += flatten_low(o, r, c)
         o[..., 1] &= 0xFF ^ ((1 << (8 - DEPTH_LO)) - 1)
-        Image.fromarray(o).save(op, 'WEBP', lossless=True, method=6)
+        save_retry(Image.fromarray(o), op, 'WEBP', lossless=True, method=6)
         total_c += os.path.getsize(cp)
         total_o += os.path.getsize(op)
 if 'walkonly' not in OPT:
+    print(f'贴地遮挡清掉 {flat_n} 像素')
     ov = Image.fromarray(bg8)
     ov.thumbnail((2048, 2048), Image.LANCZOS)          # 地图页要铺满全屏看得清(11-19 从 1024 提上来)
     ov.save(os.path.join(OUT, 'overview.jpg'), quality=85)
@@ -223,6 +269,42 @@ if V4:
     okl = (li >= 0) & (lj >= 0) & (li < lg['w']) & (lj < lg['h'])
     g = okb & okl
     g[g] = ~COLB[bj[g], bi[g]] & ~BADL[lj[g], li[g]]
+    if 'nohide' not in OPT:
+        # 人站在这里会几乎整个被前面的房子 / 墙挡住(身上 4 个点里 ≥ 3 个被实心东西盖住;树冠不算)→ 不让走
+        # (11-19 跑图:房子背后、西南城墙里侧的窄条里,主角整个看不见)。按抬高后的脚底算(上城 / 台阶 / 桥面)
+        Hc = np.zeros(g.shape, np.float32)
+        Hc[okl] = Hgrid[lj[okl], li[okl]]
+        footIy = IYc - Hc * math.cos(p) * PPM
+        gd = (sy1 - IYc / PPM) / math.tan(p) + M['dist'] - Hc * math.sin(p)
+        hid = np.zeros(g.shape, np.int8)
+        xx_ = np.clip(IXc.astype(int), 0, IW - 1)
+        for up in (25, 60, 95, 130):
+            yy_ = np.clip((footIy - up).astype(int), 0, IH - 1)
+            a_ = alpha_solid[yy_, xx_] > 0.5
+            od_ = NEAR + (dep[yy_, xx_, 0] / 255.0 + dep[yy_, xx_, 1] / 255.0 / 255.0) * (FAR - NEAR)
+            hid += (a_ & (od_ < gd - up * math.tan(p) / PPM - 0.35)).astype(np.int8)
+        # 脚下往前(画面下方)40 像素的地面也要露着:不然脚正好踩在前面那堵墙 / 屋檐的边上,看着像站在墙头 / 屋顶上(第二轮跑图:西城墙里侧)
+        yy_ = np.clip((footIy + 40).astype(int), 0, IH - 1)
+        a_ = alpha_solid[yy_, xx_] > 0.5
+        od_ = NEAR + (dep[yy_, xx_, 0] / 255.0 + dep[yy_, xx_, 1] / 255.0 / 255.0) * (FAR - NEAR)
+        edge = a_ & (od_ < gd - 40 / PPM / math.tan(p) - 0.35) & (Hc < 0.05)          # 只在平地上判(台阶 / 桥 / 坡道是斜面,按平地算会全判成「踩边」)          # 画面往下 = 离镜头更近:那里的平地视深是 gd − 40 像素对应的米数,比它还近才算挡在前面
+        hid += (edge * 3).astype(np.int8)
+        before = int(g.sum())
+        nearGate = np.zeros(g.shape, bool)
+        for gx_, gz_ in lay.get('gates', {}).values():          # 城门里面 9 米内不按这条去掉(出口在门洞里,要能走进去)
+            nearGate |= (Xw - gx_) ** 2 + (Zw - gz_) ** 2 < 81
+        if 'dbghide' in OPT:          # 调试:被这条去掉的格子存成图(红 = 身体被挡,黄 = 脚踩边沿)
+            dbg = np.zeros(g.shape + (3,), np.uint8)
+            dbg[g] = (40, 120, 40)
+            dbg[g & (hid >= 3) & ~nearGate] = (230, 60, 60)
+            dbg[g & edge & ~nearGate] = (240, 210, 40)
+            Image.fromarray(dbg).save(OPT['dbghide'])
+        # 台阶 / 坡道 / 桥面(高度在变的地方,往外 1.5 米)两条都不判:那是必经的路,而且斜面按平地算会误判
+        slopeL = ndimage.binary_dilation(dmax > 0.04, iterations=3)
+        onSlope = np.zeros(g.shape, bool)
+        onSlope[okl] = slopeL[lj[okl], li[okl]]
+        g &= (hid < 3) | nearGate | onSlope
+        print(f'v4 hide: 会被整个挡住的格子去掉 {before - int(g.sum())} 个')
     grid = g.astype(np.uint8)
     lab_, nlab = ndimage.label(grid)
     if nlab > 1:

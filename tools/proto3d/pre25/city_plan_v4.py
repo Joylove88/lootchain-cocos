@@ -424,6 +424,164 @@ if 'json' in OPT:
                'houses': houses, 'trees': trees, 'avenue': avenue, 'npcs': NPCS}, open(OPT['json'], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 
+# ── 街景摆件(11-19 跑图:大片空地什么都没有,太素)──
+# 长椅(广场一圈 / 大道边)、木桶 / 木箱堆(房子侧面、仓库、码头)、手推车、花槽(上城挡土墙内侧、广场边)、花坛(花园、教堂广场)、
+# 绿篱(花园外沿,留口)、草垛(马场)、喷泉(学院前庭、城门广场旁)。只放在不挡主路、不压房子、不在水里的地方;摆件本身也是挡路的东西。
+PRND = random.Random(41)
+props = []
+occ_p = np.zeros((GH, GW), bool)
+
+
+def mark(x, z, r):
+    i, j = int((x - X0) * RES), int((z - Z0) * RES)
+    rr = int(math.ceil(r * RES))
+    yy_, xx_ = np.ogrid[-rr:rr + 1, -rr:rr + 1]
+    disk = (xx_ * xx_ + yy_ * yy_) <= rr * rr
+    j0, j1, i0, i1 = max(0, j - rr), min(GH, j + rr + 1), max(0, i - rr), min(GW, i + rr + 1)
+    occ_p[j0:j1, i0:i1] |= disk[j0 - (j - rr):j1 - (j - rr), i0 - (i - rr):i1 - (i - rr)]
+
+
+# 树先占位(树干 + 树池半径约 1.6 米),再排路灯(离树至少 2.2 米,不行就沿街前后挪),最后摆件避开两者(11-19 用户:「绿植贴着树了」)
+for tx_, tz_ in list(avenue) + list(trees):
+    mark(tx_, tz_, 1.7)
+lamps = []
+for name, w, c in road_curves:
+    if w < 6:
+        continue
+    acc, nxt, side = 0.0, 6.0 + PRND.uniform(0, 4), 1
+    for i in range(len(c) - 1):
+        a_, b_ = c[i], c[i + 1]
+        l = math.hypot(b_[0] - a_[0], b_[1] - a_[1]) or 1e-6
+        tx, tz = (b_[0] - a_[0]) / l, (b_[1] - a_[1]) / l
+        while nxt <= acc + l:
+            for shift in (0, 2.5, -2.5, 5, -5):
+                t = (nxt + shift - acc) / l
+                lx_, lz_ = a_[0] + (b_[0] - a_[0]) * t - tz * side * (w / 2 + 0.5), a_[1] + (b_[1] - a_[1]) * t + tx * side * (w / 2 + 0.5)
+                ii, jj = int((lx_ - X0) * RES), int((lz_ - Z0) * RES)
+                if not (0 <= ii < GW and 0 <= jj < GH) or water_m[jj, ii] or not inside_core[jj, ii]:
+                    continue
+                if all(math.hypot(lx_ - q[0], lz_ - q[1]) >= 2.2 for q in list(avenue) + list(trees)) and all(math.hypot(lx_ - q[0], lz_ - q[1]) >= 6 for q in lamps):
+                    lamps.append((round(lx_, 2), round(lz_, 2)))
+                    mark(lx_, lz_, 0.8)
+                    break
+            nxt += 18
+            side = -side
+        acc += l
+print('lamps', len(lamps))
+core_road = ndimage.binary_erosion(road_m, iterations=int(1.5 * RES))
+blocked_p = water_m | house_m | key_m | ~inside_core | core_road
+
+
+def place(kind, x, z, yaw, r=1.0):
+    i, j = int((x - X0) * RES), int((z - Z0) * RES)
+    rr = int(r * RES) + 1
+    if not (rr <= i < GW - rr and rr <= j < GH - rr):
+        return False
+    win = (slice(j - rr, j + rr + 1), slice(i - rr, i + rr + 1))
+    if blocked_p[win].any() or occ_p[win].any():
+        return False
+    occ_p[win] = True
+    props.append([kind, round(x, 2), round(z, 2), round(yaw, 1)])
+    return True
+
+
+# 广场一圈长椅 + 花坛
+for name, sh in PLAZAS:
+    if sh[0] == 'circle':
+        _, cx, cz, r = sh
+        n = 6 if r >= 10 else 4
+        for k in range(n):
+            a_ = 2 * math.pi * k / n + 0.3
+            place('bench', cx + math.cos(a_) * (r - 1.6), cz + math.sin(a_) * (r - 1.6), math.degrees(math.atan2(-math.cos(a_), -math.sin(a_))), 1.4)
+            place('flowerbed', cx + math.cos(a_ + math.pi / n) * (r - 2.2), cz + math.sin(a_ + math.pi / n) * (r - 2.2), 0, 1.3)
+# 大道 / 主街两边:每 26 米一张长椅,每 40 米一个花槽(在树和路灯之间)
+for name, w, c in road_curves:
+    if w < 8:
+        continue
+    acc, nb, npl = 0.0, 13.0, 25.0
+    for i in range(len(c) - 1):
+        a_, b_ = c[i], c[i + 1]
+        l = math.hypot(b_[0] - a_[0], b_[1] - a_[1]) or 1e-6
+        tx, tz = (b_[0] - a_[0]) / l, (b_[1] - a_[1]) / l
+        while nb <= acc + l:
+            side = 1 if int(nb / 26) % 2 else -1
+            for sh in (0, 3, -3, 6, -6):          # 和行道树错开:前后挪一挪
+                t = (nb + sh - acc) / l
+                px_, pz_ = a_[0] + (b_[0] - a_[0]) * t, a_[1] + (b_[1] - a_[1]) * t
+                if place('bench', px_ - tz * side * (w / 2 + 1.7), pz_ + tx * side * (w / 2 + 1.7), math.degrees(math.atan2(tz * side, -tx * side)) + 90, 1.1):
+                    break
+            nb += 26
+        while npl <= acc + l:
+            side = -1 if int(npl / 40) % 2 else 1
+            for sh in (0, 3, -3, 6, -6):
+                t = (npl + sh - acc) / l
+                px_, pz_ = a_[0] + (b_[0] - a_[0]) * t, a_[1] + (b_[1] - a_[1]) * t
+                if place('planter', px_ - tz * side * (w / 2 + 1.8), pz_ + tx * side * (w / 2 + 1.8), math.degrees(math.atan2(tx, tz)), 1.1):
+                    break
+            npl += 40
+        acc += l
+# 街边灌木(11-19 参考图:路边满是低矮绿植):每 5~9 米一丛,靠街沿
+for name, w, c in road_curves:
+    acc, nxt = 0.0, PRND.uniform(2, 6)
+    for i in range(len(c) - 1):
+        a_, b_ = c[i], c[i + 1]
+        l = math.hypot(b_[0] - a_[0], b_[1] - a_[1]) or 1e-6
+        tx, tz = (b_[0] - a_[0]) / l, (b_[1] - a_[1]) / l
+        while nxt <= acc + l:
+            t = (nxt - acc) / l
+            side = PRND.choice([-1, 1])
+            off = w / 2 + 1.0 + PRND.uniform(0, 0.8)
+            place('shrub', a_[0] + (b_[0] - a_[0]) * t - tz * side * off, a_[1] + (b_[1] - a_[1]) * t + tx * side * off, PRND.uniform(0, 360), 0.8)
+            nxt += PRND.uniform(5, 9)
+        acc += l
+# 房子侧面:木桶 / 木箱堆(一半的房子)
+for h in houses:
+    if PRND.random() < 0.7:
+        a_ = math.radians(h['yaw'])
+        ux, uz = math.cos(a_), -math.sin(a_)
+        side = PRND.choice([-1, 1])
+        place(PRND.choice(['barrels', 'crates', 'barrels']), h['x'] + ux * side * (h['w'] / 2 + 2.0), h['z'] + uz * side * (h['w'] / 2 + 2.0), h['yaw'], 1.0)
+# 上城挡土墙内侧的花槽(每 14 米)
+for i in range(len(UPPER)):
+    ax, az = UPPER[i]
+    bx, bz = UPPER[(i + 1) % len(UPPER)]
+    L = math.hypot(bx - ax, bz - az)
+    nx_, nz_ = -(bz - az) / L, (bx - ax) / L
+    cxu = sum(p_[0] for p_ in UPPER) / len(UPPER)
+    czu = sum(p_[1] for p_ in UPPER) / len(UPPER)
+    if nx_ * (cxu - ax) + nz_ * (czu - az) < 0:
+        nx_, nz_ = -nx_, -nz_
+    for k in range(int(L // 14)):
+        t = (k + 0.5) * 14 / L
+        place('planter', ax + (bx - ax) * t + nx_ * 1.6, az + (bz - az) * t + nz_ * 1.6, math.degrees(math.atan2(bx - ax, bz - az)), 1.0)
+# 花园:绿篱一圈(留四个口)+ 花坛
+for name, sh in GREENS:
+    if sh[0] != 'ellipse':
+        continue
+    _, gx, gz, rx, rz = sh
+    n = max(10, int((rx + rz) * 1.4))
+    for k in range(n):
+        a_ = 2 * math.pi * (k + 0.5) / n
+        if min(abs(((a_ - q) + math.pi) % (2 * math.pi) - math.pi) for q in (0, math.pi / 2, math.pi, 1.5 * math.pi)) < 0.32:
+            continue
+        place('hedge', gx + math.cos(a_) * (rx - 0.6), gz + math.sin(a_) * (rz - 0.6), math.degrees(-a_) + 90, 0.9)
+    for k in range(3 if rx > 12 else 2):
+        a_ = 2 * math.pi * k / 3 + 0.8
+        place('flowerbed', gx + math.cos(a_) * rx * 0.5, gz + math.sin(a_) * rz * 0.5, 0, 1.3)
+# 手推车、草垛、码头货堆、喷泉
+for kind, x, z, yaw in [('cart', -30, 18, 30), ('cart', -12, 34, -20), ('cart', -86, 40, 70), ('cart', 64, 96, 10), ('cart', 90, 14, 0),
+                        ('hay', -100, 46, 0), ('hay', -96, 54, 40), ('hay', -102, 52, 10),
+                        ('crates', 58, 99, 0), ('barrels', 74, 101, 20), ('crates', 86, 99, -15), ('barrels', 96, 66, 0),
+                        ('fountain', -27, -59, 0), ('fountain', -52, 72, 0)]:
+    r_ = 1.2 if kind != 'fountain' else 2.6
+    for dx_, dz_ in ((0, 0), (1.5, 0), (-1.5, 0), (0, 1.5), (0, -1.5), (2.5, 2.5), (-2.5, -2.5)):
+        if place(kind, x + dx_, z + dz_, yaw, r_):
+            break
+    else:
+        if kind == 'fountain':
+            print('fountain blocked at', x, z)
+print('props', len(props), {k: sum(1 for p_ in props if p_[0] == k) for k in set(p_[0] for p_ in props)})
+
 # ── 高度图(每 0.5 米一格):地面 0、上城 UPPER_H、台阶 / 坡道线性;3D 摆城(房子落在多高)和游戏里人物抬高都按它 ──
 HRES = 2
 HW, HH = (X1 - X0) * HRES, (Z1 - Z0) * HRES
@@ -502,7 +660,7 @@ if 'ts' in OPT:
         'pond': list(POND[1:]), 'paddock': PADDOCK[1], 'terrace': TERRACE[1],
         'keys': [list(k) for k in KEYS],
         'houses': [dict(h, model=model(h)) for h in houses],
-        'trees': trees, 'avenue': avenue, 'npcs': NPCS,
+        'trees': trees, 'avenue': avenue, 'npcs': NPCS, 'props': props, 'lamps': lamps,
         'height': {'res': HRES, 'w': HW, 'h': HH, 'rle': hstr(height)},
         # 地面类别(同一套 0.5 米格):0 碎石 / 土,1 石板街 / 广场,2 花园草地,3 水(给 3D 地面上色用)
         'surface': {'res': RES, 'w': GW, 'h': GH, 'rle': hstr((np.where(water_m, 3, np.where(green_m, 2, np.where(road_m | plaza_m, 1, 0)))).astype(np.float32) / 10)},

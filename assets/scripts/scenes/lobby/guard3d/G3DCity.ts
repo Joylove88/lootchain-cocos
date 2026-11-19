@@ -1131,17 +1131,26 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
       limb(at(t), V(Math.cos(a), 0.35 + 0.5 * t, Math.sin(a)).normalize(), h * (0.5 - 0.22 * t) * R(0.8, 1.2), r0 * (1 - 0.7 * t) * 0.74, 3);
     }
     // 红叶:梢头零星几片,每片是一个小菱形(正反两面)
+    const lush = CITY_V4.on;          // v4:树冠满(11-19 用户发燕云十六声参考图:满眼绿、零星白 / 粉花树)
+    const blossom = lush && seed % 4 === 1;          // 四棵里一棵开白 / 粉花
     for (const tp of tips) {
-      const k = rnd() < 0.24 ? 1 + Math.floor(R(0, 4)) : 0;
+      const k = lush ? (rnd() < 0.94 ? 12 + Math.floor(R(0, 9)) : 0) : rnd() < 0.24 ? 1 + Math.floor(R(0, 4)) : 0;
       for (let i = 0; i < k; i += 1) {
-        const c = V(tp.x + R(-0.25, 0.25), tp.y + R(-0.25, 0.1), tp.z + R(-0.25, 0.25));
+        const sp = lush ? 0.5 : 0.25;          // 11-20 v4:叶子小而密,撒成一团(大片叶近看像彩纸屑)
+        const c = V(tp.x + R(-sp, sp), tp.y + R(-sp, sp * 0.5), tp.z + R(-sp, sp));
         const a = R(0, 6.28);
-        const tl = R(-0.5, 0.5);
-        const sz = R(0.1, 0.17);
+        const tl = lush ? R(-1.2, 1.2) : R(-0.5, 0.5);
+        const sz = lush ? R(0.065, 0.115) : R(0.1, 0.17);
         const ux = Math.cos(a) * sz;
         const uz = Math.sin(a) * sz;
         const q = [V(c.x - ux, c.y - tl * sz, c.z - uz), V(c.x - uz * 0.6, c.y - sz * 0.5, c.z + ux * 0.6), V(c.x + ux, c.y + tl * sz, c.z + uz), V(c.x + uz * 0.6, c.y + sz * 0.5, c.z - ux * 0.6)];
-        const col: Tint = [R(0.4, 0.62), R(0.07, 0.16), R(0.04, 0.08)];
+        const pick = rnd();
+        // 11-19 参考图:绿叶为主(深浅几种绿 + 一点黄绿),开花的树是白 / 浅粉
+        const col: Tint = !lush ? [R(0.4, 0.62), R(0.07, 0.16), R(0.04, 0.08)]
+          : blossom ? (pick < 0.55 ? [R(0.82, 0.92), R(0.8, 0.88), R(0.8, 0.88)] : pick < 0.85 ? [R(0.86, 0.94), R(0.62, 0.72), R(0.7, 0.8)] : [R(0.24, 0.32), R(0.4, 0.5), R(0.14, 0.2)])
+            : pick < 0.45 ? [R(0.16, 0.21), R(0.28, 0.35), R(0.12, 0.15)]
+              : pick < 0.8 ? [R(0.23, 0.29), R(0.36, 0.43), R(0.15, 0.19)]
+                : [R(0.36, 0.42), R(0.44, 0.5), R(0.2, 0.24)];          // 绿压一点,别发荧光
         s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
         s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
       }

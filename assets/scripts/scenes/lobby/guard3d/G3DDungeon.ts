@@ -1717,7 +1717,9 @@ class Dungeon {
         const G = CITY_PLAN;
         const C = G.compass;
         const hr = Math.ceil(C.r * 2 + 0.6) / 2;
-        const inHole = (cx: number, cz: number): boolean => Math.abs(cx - C.x) < hr && Math.abs(cz - C.z) < hr;
+        const inHole0 = (cx: number, cz: number): boolean => Math.abs(cx - C.x) < hr && Math.abs(cz - C.z) < hr;
+        // v4:石板只铺在街 / 广场上,碎石地和花园另用材质(11-19 跑图:整城一种带污渍的石板,街看不出来)
+        const inHole = inHole0;
         for (let iz = 0; iz < 6; iz += 1) {
           for (let ix = 0; ix < 8; ix += 1) {
             add(MeshBatch.groundGrid(G.x0 + (G.w * ix) / 8, G.z0 + (G.d * iz) / 6, G.x0 + (G.w * (ix + 1)) / 8, G.z0 + (G.d * (iz + 1)) / 6, 0.5, G, DUNGEON.paveM, tint, inHole));
@@ -1739,7 +1741,7 @@ class Dungeon {
           }
         }
         if (CITY_V4.on) {
-          // v4 上城顶面:同一套石板铺在 3 米高处(多边形外的格子不出面),切成几块
+          // v4 上城顶面:同一套石板(按地面类别柔和上色)铺在 3 米高处,多边形外的格子不出面
           for (let bz = -110; bz < -10; bz += 25) {
             for (let bx = -110; bx < 110; bx += 32) {
               const tm = MeshBatch.groundGrid(bx, bz, bx + 32, bz + 25, 0.5, G, DUNGEON.paveM, tint, v4OffUpper, V4_UPPER_H + 0.005);
@@ -1755,7 +1757,7 @@ class Dungeon {
         leafMat.setProperty('roughness', 1);
         leafMat.setProperty('metallic', 0);
         leafMat.setProperty('specularIntensity', 0.04);
-        for (const lm of MeshBatch.groundLeaves(plazaLeaves(CITY_PLAN), 16, mulberry32(679))) {
+        for (const lm of (CITY_V4.on ? [] : MeshBatch.groundLeaves(plazaLeaves(CITY_PLAN), 16, mulberry32(679)))) {          // v4 是春夏绿,不铺满地红叶
           addMesh(world, 'DgGroundLeaf', lm, leafMat, false, true);
         }
         this.wildWet = (x: number, z: number): boolean => wetAt(g.wet, CITY_PLAN, x, z);
@@ -1815,10 +1817,16 @@ class Dungeon {
           }
           const vr = house ? 0.92 + ((hsh % 17) / 16) * 0.16 : 1;
           const warm = house ? (((hsh >> 3) % 9) / 8 - 0.5) * 0.08 : 0;
-          const ab = fx?.ab ?? [1, 1, 1];
+          let ab = fx?.ab ?? [1, 1, 1];
+          if (CITY_V4.on) {
+            // v4 偏彩色(11-19 用户:整体太暗、往彩色打磨、参考燕云十六声的色调):民房按名字挑一种墙面色调,整体压一点(屋顶别发白)
+            const PAL: Array<[number, number, number]> = [[1.04, 0.94, 0.8], [1.0, 0.86, 0.68], [1.02, 0.86, 0.82], [0.9, 0.96, 0.84], [0.95, 0.94, 0.92], [0.98, 0.9, 0.78]];
+            const pc = house ? PAL[hsh % PAL.length] : [1.0, 0.95, 0.88];
+            ab = [ab[0] * pc[0] * 0.86, ab[1] * pc[1] * 0.86, ab[2] * pc[2] * 0.86];
+          }
           const tint = new Vec3(al * vr * (1 + warm) * ab[0], al * vr * ab[1], al * vr * (1 - warm) * ab[2]);
           for (let i = 0; i < mr.sharedMaterials.length; i += 1) {
-            if (al !== 1 || house || fx?.ab) {
+            if (al !== 1 || house || fx?.ab || CITY_V4.on) {
               mr.getMaterialInstance(i)?.setProperty('albedoScale', tint);
             }
             if (fx?.metal !== undefined) {
@@ -2393,6 +2401,11 @@ class Dungeon {
       // 野外:看得远,雾淡一些、但远处要吃得掉(林子的剪影靠它接到天上)
       Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.9 });
     }
+    if (CITY_V4.on && this.city) {
+      // v4 白天的调色:不压黑、对比略低、饱和度适中;暗部偏蓝、亮部偏暖;雾很淡(俯视全城时不罩灰)
+      Object.assign(cfg, { exposure: 0.98, saturation: 1.08, contrast: 0.96, toe: 0.02, shadowTint: [0.93, 0.99, 1.08], highlightTint: [1.04, 1.0, 0.94],
+        bloomIntensity: 0.3, fogColor: [0.62, 0.7, 0.8], fogAway: [0.62, 0.7, 0.8], fogMax: 0.12, vignette: 0.18 });
+    }
     cfg.ao = DUNGEON.ao;
     cfg.bloomLevels = DUNGEON.bloomLevels;
     this.post = new FieldPost(this.cam!, cfg);
@@ -2439,6 +2452,15 @@ class Dungeon {
     director.getScene()!.globals.ambient.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : this.outdoor ? DUNGEON.skyK : DUNGEON.ambient;
     this.shaftMat?.setProperty('colorScale', new Vec3(DUNGEON.shaft, DUNGEON.shaft, DUNGEON.shaft));
     this.floorMat?.setProperty('roughness', DUNGEON.gloss);
+    if (CITY_V4.on && this.city) {
+      // 主城 v4 白天(11-19 用户发燕云十六声参考图):暖白的太阳 + 很亮的淡蓝天光(影子透亮、带点蓝)、地面反上来一点草绿
+      const amb = director.getScene()!.globals.ambient;
+      amb.skyLightingColor = new Color(156, 188, 236, 255);
+      amb.groundLightingColor = new Color(110, 118, 90, 255);
+      if (this.moon) {
+        this.moon.color = new Color(255, 242, 224, 255);
+      }
+    }
   }
 
   applyReflection(): void {
@@ -4497,8 +4519,15 @@ function boot(): void {
         DUNGEON.paveK = 0.66;
       }
       // v4 整体提亮(11-19 用户反馈旧版「部分地形模糊看不清」):月光 340k → 560k、环境光 6300 → 13000(可用 &moon= / &ambient= 覆盖)
-      DUNGEON.moon = param('moon') !== null ? Number(param('moon')) : 560000;
-      DUNGEON.ambient = param('ambient') !== null ? Number(param('ambient')) : 13000;
+      // 白天(11-19 参考燕云十六声):太阳 950k、路灯压到 5(白天只剩一点暖点)
+      DUNGEON.moon = param('moon') !== null ? Number(param('moon')) : 950000;
+      DUNGEON.ambient = param('ambient') !== null ? Number(param('ambient')) : 75000;
+      DUNGEON.lamp = param('lamp') !== null ? Number(param('lamp')) : 5;
+      // 11-20 跑图:影子里黑成一片(教堂背阴面整块看不见)→ 天光 4200 → 30000;地面改哑光干地(粗糙度 1、高光 0.08),
+      // 湿石板的天光反射在正交拍摄下按每块的视线算会一格一格明暗不一,燕云的地面本来也是干的沙土 / 草
+      DUNGEON.skyK = param('skyk') !== null ? Number(param('skyk')) : 30000;
+      DUNGEON.gloss = 1;
+      DUNGEON.paveSpec = 0.08;
     } else if (param('cityfull') === '1') {
       DUNGEON.cityFull = true;
       applyCityFullGround();

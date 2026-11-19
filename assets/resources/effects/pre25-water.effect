@@ -1,0 +1,139 @@
+// 预渲染 2.5D · 主城 v4:流动的水(11-19 用户:「河流是流动的吧?不是静态的吧」)。
+// 叠在预渲染底图上面、人物下面(Pre25Actors.mountWater):底图里的水是拍死的,这层只加会动的东西 —— 顺流漂走的波纹(亮的波峰 + 略暗的波谷)、
+// 月光碎闪、岸边一线水光。网格 uv0 = (沿河往下游的米数, 横向米数),港湾 / 池塘是 (x, z) 米;uv1 = 整图位置(查遮罩:桥 / 码头 / 船 / 河岸 / 树挡住的地方不画);
+// 顶点色 r = 流速(河 1,港湾 / 池塘接近 0)。没有贴图,纹样全是程序噪声。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: water-vs:vert
+      frag: water-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        maskTex: { value: black }
+        tint: { value: [0.62, 0.72, 0.92, 1.0], editor: { type: color } }
+        params: { value: [1.0, 5.6, 1.0, 0.0] }
+}%
+
+CCProgram water-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec2 a_texCoord1;
+  in vec4 a_color;
+
+  out vec2 v_flow;
+  out vec2 v_mask;
+  out float v_speed;
+  out float v_rad;
+
+  vec4 vert () {
+    v_flow = a_texCoord;
+    v_mask = a_texCoord1;
+    v_speed = a_color.r;
+    v_rad = a_color.g;
+    return cc_matViewProj * cc_matWorld * vec4(a_position, 1.0);
+  }
+}%
+
+CCProgram water-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec2 v_flow;
+  in vec2 v_mask;
+  in float v_speed;
+  in float v_rad;
+
+  uniform sampler2D maskTex;
+  uniform Water {
+    vec4 tint;
+    vec4 params;      // x = 整体强度,y = 河的半宽(米,岸边水光用),z = 流速倍数
+  };
+
+  // 不用 sin 的哈希(Dave Hoskins hash12):sin(大数) × 43758 在坐标几十米以上时精度崩,相邻格子的随机值连成直线 → 碎闪排成一道道「划痕」(11-20)
+  float hash (vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+  float noise (vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float fbm (vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+      v += a * noise(p);
+      p = p * 2.03 + vec2(1.7, 9.2);
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // 点状碎闪:每格随机一个点,离点近 = 亮,亮度按格子各自的相位一闪一闪(11-20:噪声阈值的碎闪顺着流向拉成一道道「划痕」)
+  float sparkle (vec2 q, float t) {
+    vec2 c = floor(q);
+    vec2 f = fract(q);
+    float h = hash(c);
+    vec2 o = vec2(hash(c + 17.3), hash(c + 41.9)) * 0.7 + 0.15;
+    float d = length(f - o);
+    float tw = max(0.0, sin(t * (1.6 + 2.2 * h) + h * 40.0));
+    tw = tw * tw * tw * tw;
+    return smoothstep(0.11, 0.0, d) * tw * step(0.55, h);
+  }
+
+  vec4 frag () {
+    float m = texture(maskTex, v_mask).r;
+    if (m < 0.01) {
+      discard;
+    }
+    float t = cc_time.x;
+    float sp = clamp(v_speed, 0.0, 1.0);
+    vec2 p = v_flow;
+    // 离岸多近(0 = 河心 / 湖心,1 = 岸边):河按横向米数,港湾 / 池塘按顶点里带的径向值
+    float across = sp > 0.5 ? clamp(abs(p.y) / max(params.y, 0.1), 0.0, 1.0) : clamp(v_rad, 0.0, 1.0);
+    float flow = sp * params.z * (1.0 - 0.55 * across * across);
+    // ── 底色(11-20 参考燕云十六声):河心青蓝偏深、岸边浅一点带青绿;别发白 ──
+    vec3 deep = vec3(0.11, 0.25, 0.31);
+    vec3 shallow = vec3(0.24, 0.38, 0.36);
+    vec3 col = mix(deep, shallow, smoothstep(0.45, 1.0, across));
+    // ── 天光倒影:大块、慢慢飘的云影,只淡淡地罩一层 ──
+    float cloud = fbm(vec2(p.x * 0.045 - t * 0.018, p.y * 0.07 + t * 0.006) + vec2(7.3, 1.1));
+    vec3 sky = vec3(0.62, 0.74, 0.84);
+    col = mix(col, sky, 0.08 + 0.16 * smoothstep(0.4, 0.8, cloud));
+    // ── 顺流的波纹:亮的波峰 / 暗一点的波谷(各向同性一点,别拉成条)──
+    vec2 q1 = vec2(p.x * 0.42 - t * 0.85 * flow, p.y * 0.55);
+    vec2 q2 = vec2(p.x * 0.9 - t * 1.45 * flow + 3.1, p.y * 1.1 + t * 0.05);
+    float nRiver = fbm(q1) * 0.62 + fbm(q2) * 0.38;
+    float nStill = fbm(p * 0.55 + vec2(t * 0.045, -t * 0.03)) * 0.6 + fbm(p * 1.4 - vec2(t * 0.07, t * 0.05)) * 0.4;
+    float n = mix(nStill, nRiver, smoothstep(0.05, 0.6, sp));
+    col *= 0.86 + 0.26 * n;
+    col = mix(col, sky, 0.12 * smoothstep(0.58, 0.85, n));
+    // ── 太阳碎闪:小圆点,跟着水流走 ──
+    vec2 sq = vec2(p.x - t * 1.1 * flow, p.y) * 1.7;
+    float glint = sparkle(sq, t) + 0.6 * sparkle(sq * 1.9 + vec2(5.2, 1.7), t * 1.3);
+    glint *= smoothstep(0.45, 0.7, n);
+    col += vec3(1.0, 0.97, 0.9) * glint * 0.85;
+    // ── 岸边一线浪花 / 水光,跟着水动 ──
+    float foam = smoothstep(0.88, 0.995, across) * (0.4 + 0.6 * noise(vec2(p.x * 1.1 - t * (0.6 * flow + 0.15), p.y * 2.0 + t * 0.2)));
+    col = mix(col, vec3(0.78, 0.84, 0.84), foam * 0.42);
+    float a = clamp(0.86 + 0.14 * glint + 0.1 * foam, 0.0, 0.98) * params.x * m * tint.a;
+    return vec4(col, a);
+  }
+}%

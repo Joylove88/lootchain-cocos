@@ -153,7 +153,7 @@ const NPCS: Array<[WorldNpcCode, string, string, number, number, 1 | -1]> = [
   ['VENDOR', '果摊大婶 · 玛莎', 'city4_npc_vendor', -18, 29, 1],
   ['CHILD', '小汤姆', 'city4_npc_child', -30, 30, 1],
   ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', 92, 4, -1],
-  ['GUARD_E', '城门卫兵', 'city4_npc_guard', 112, 1, -1],
+  ['GUARD_E', '城门卫兵', 'city4_npc_guard', 112.8, 2.3, -1],
   ['GUARD_S', '城门卫兵', 'city4_npc_guard', -62, 76.5, 1],
 ];
 const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, X, Z, flip]) => ({ code, name, asset: CITY4(art), ...pre25Ground(X, Z), height: 215, flip }));
