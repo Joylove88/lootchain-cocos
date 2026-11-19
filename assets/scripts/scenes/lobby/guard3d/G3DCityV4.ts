@@ -455,6 +455,7 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
   // ── 街景摆件(11-19 跑图:大片空地什么都没有;点位由 city_plan_v4.py 按街 / 房子 / 水避让着排)──
   const props = ((D as unknown as { props?: Array<[string, number, number, number]> }).props) ?? [];
   const TIMBER: Tint = [0.46, 0.4, 0.34];
+  const GREENS_F: Tint[] = [[0.14, 0.25, 0.09], [0.18, 0.3, 0.1], [0.22, 0.33, 0.12]];
   const flowers = (cx: number, cy: number, cz: number, rx: number, rz: number, n: number): void => {
     const cols: Tint[] = [[0.5, 0.08, 0.06], [0.55, 0.2, 0.05], [0.42, 0.12, 0.3], [0.62, 0.6, 0.55], [0.15, 0.24, 0.1], [0.12, 0.2, 0.09]];
     for (let i = 0; i < n; i += 1) {
@@ -572,6 +573,42 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
       }
       if (rnd() < 0.4) {
         flowers(x, y + 0.6, z, 0.4, 0.3, 6);
+      }
+    } else if (kind === 'bush') {
+      // 草坪点景(11-20 第四轮):大一点的灌木,中间一团高、两边两团矮
+      for (let k = 0; k < 3; k += 1) {
+        const g = k === 1 ? R(1.15, 1.4) : R(0.8, 1.05);
+        const c = L((k - 1) * 0.62 + R(-0.12, 0.12), 0.4 * g, R(-0.2, 0.2));
+        leafyBall(c.x, c.y, c.z, 0.55 * g, 0.48 * g, 0.5 * g, Math.round(170 * g));
+      }
+    } else if (kind === 'wildflowers') {
+      // 草里的一片野花:每片一个主色(白 / 黄 / 淡紫 / 淡蓝)夹一点别的,花头小、贴着草尖,底下几片叶子
+      const MAIN: Tint[] = [[0.86, 0.85, 0.8], [0.84, 0.7, 0.2], [0.6, 0.48, 0.74], [0.5, 0.6, 0.8], [0.82, 0.5, 0.56]];
+      const main = MAIN[Math.floor(R(0, MAIN.length))];
+      const n = 110 + Math.floor(R(0, 50));          // 要从游戏镜头看得出是一片花(太稀只是几个亮点)
+      for (let i = 0; i < n; i += 1) {
+        const a = R(0, 6.28);
+        const rr = Math.sqrt(R(0, 1)) * R(0.7, 1.0);
+        const fx = x + Math.cos(a) * rr;
+        const fz = z + Math.sin(a) * rr * 0.8;
+        const fy = y + R(0.07, 0.17);
+        const leafy = i % 3 === 0;
+        const sz = leafy ? R(0.06, 0.09) : R(0.04, 0.065);
+        const b = R(0.85, 1.05);
+        const col: Tint = leafy ? GREENS_F[Math.floor(R(0, GREENS_F.length))] : rnd() < 0.82 ? [main[0] * b, main[1] * b, main[2] * b] : MAIN[Math.floor(R(0, MAIN.length))];
+        const ly = leafy ? fy - 0.05 : fy;
+        const q = [V(fx - sz, ly, fz), V(fx, ly + sz * 0.3, fz - sz), V(fx + sz, ly, fz), V(fx, ly + sz * 0.3, fz + sz)];
+        s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
+        s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
+      }
+    } else if (kind === 'rocks') {
+      // 草里半埋的两三块石头(灰里带一点青苔绿)
+      const m = 2 + Math.floor(R(0, 2));
+      for (let k = 0; k < m; k += 1) {
+        const g = k === 0 ? R(0.45, 0.7) : R(0.2, 0.36);
+        const c = L(k === 0 ? 0 : R(-0.7, 0.7), -g * 0.25, k === 0 ? 0 : R(-0.6, 0.6));
+        const tone = R(0.46, 0.58);
+        s.stone.ball(g * R(1.0, 1.35), g * R(0.6, 0.8), g * R(0.85, 1.1), [c.x, c.y, c.z], 7, { tint: [tone * 0.95, tone, tone * 0.9] });
       }
     } else if (kind === 'hay') {
       // 圆草捆横躺(11-20 跑图:竖着的黄圆柱像奶酪块),颜色压暗偏灰

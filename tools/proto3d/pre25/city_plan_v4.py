@@ -580,6 +580,71 @@ for kind, x, z, yaw in [('cart', -30, 18, 30), ('cart', -12, 34, -20), ('cart', 
     else:
         if kind == 'fountain':
             print('fountain blocked at', x, z)
+# ── 草坪点景(11-20 跑图第四轮:城墙脚、河岸、南边大片草坪整屏什么都没有)──
+# 成组撒:每组一个中心(约 8 米一格、近八成格子有),周围 3~6 件灌木 / 野花 / 石头;组和组之间留出空草坪(均匀撒 = 圆点花布)。
+# 再沿城墙内脚每 7~12 米一丛灌木。只放在离街 / 广场 2 米、离水 2.5 米、离房子 1.5 米以外的草坪上,不压树 / 路灯 / 已有摆件。
+# 用自己的随机数(前面的摆件位置一点不变)。
+DRND = random.Random(2011)
+inside_dec = ndimage.binary_erosion(inside, iterations=int(3 * RES))
+near_open = ndimage.binary_dilation(road_m | plaza_m | key_m, iterations=int(2 * RES))
+near_water = ndimage.binary_dilation(water_m, iterations=int(2.5 * RES))
+near_house = ndimage.binary_dilation(house_m, iterations=int(1.5 * RES))
+blocked_d = ~inside_dec | near_open | near_water | near_house | green_m
+# 城墙角上的塔(7 × 7 米)和城门:离开 7 米
+for wx_, wz_ in WALL:
+    mark(wx_, wz_, 6.5)
+for gx_, gz_ in GATES.values():
+    mark(gx_, gz_, 9)
+
+
+def place_d(kind, x, z, yaw, r):
+    i, j = int((x - X0) * RES), int((z - Z0) * RES)
+    rr = int(r * RES) + 1
+    if not (rr <= i < GW - rr and rr <= j < GH - rr):
+        return False
+    win = (slice(j - rr, j + rr + 1), slice(i - rr, i + rr + 1))
+    if blocked_d[win].any() or occ_p[win].any():
+        return False
+    occ_p[win] = True
+    props.append([kind, round(x, 2), round(z, 2), round(yaw, 1)])
+    return True
+
+
+n_dec0 = len(props)
+CELL = 8
+for gz0 in range(Z0, Z1, CELL):
+    for gx0 in range(X0, X1, CELL):
+        if DRND.random() > 0.78:
+            continue
+        cx_, cz_ = gx0 + DRND.uniform(2, CELL - 2), gz0 + DRND.uniform(2, CELL - 2)
+        ci, cj = int((cx_ - X0) * RES), int((cz_ - Z0) * RES)
+        if not (0 <= ci < GW and 0 <= cj < GH) or blocked_d[cj, ci]:
+            continue
+        for _ in range(DRND.randint(3, 6)):
+            a_, d_ = DRND.uniform(0, 2 * math.pi), DRND.uniform(0, 3.6)
+            kind = DRND.choices(['shrub', 'wildflowers', 'rocks', 'bush'], [0.36, 0.34, 0.12, 0.18])[0]
+            place_d(kind, cx_ + math.cos(a_) * d_, cz_ + math.sin(a_) * d_, DRND.uniform(0, 360), {'shrub': 0.8, 'wildflowers': 0.9, 'rocks': 0.6, 'bush': 1.1}[kind])
+# 城墙内脚:每 7~12 米一丛(离墙 4.4 米,在留出的走道外沿)
+cxw, czw = sum(p_[0] for p_ in WALL) / len(WALL), sum(p_[1] for p_ in WALL) / len(WALL)
+for i in range(len(WALL)):
+    ax, az = WALL[i]
+    bx, bz = WALL[(i + 1) % len(WALL)]
+    L = math.hypot(bx - ax, bz - az)
+    nx_, nz_ = -(bz - az) / L, (bx - ax) / L
+    if nx_ * (cxw - ax) + nz_ * (czw - az) < 0:
+        nx_, nz_ = -nx_, -nz_
+    t = DRND.uniform(4, 9)
+    while t < L - 4:
+        off = 4.4 + DRND.uniform(0, 0.6)
+        place_d(DRND.choice(['shrub', 'bush', 'shrub', 'wildflowers']), ax + (bx - ax) * t / L + nx_ * off, az + (bz - az) * t / L + nz_ * off, DRND.uniform(0, 360), 0.8)
+        t += DRND.uniform(7, 12)
+print('lawn decor', len(props) - n_dec0, 'free lawn m2', int((~blocked_d).sum() / RES / RES))
+if 'decordbg' in OPT:
+    dbg = np.zeros((GH, GW, 3), np.uint8)
+    dbg[~blocked_d] = (60, 140, 60)
+    dbg[blocked_d & inside] = (90, 90, 90)
+    dbg[occ_p] = (220, 200, 60)
+    Image.fromarray(dbg).resize((GW * 2, GH * 2), Image.NEAREST).save(OPT['decordbg'])
 print('props', len(props), {k: sum(1 for p_ in props if p_[0] == k) for k in set(p_[0] for p_ in props)})
 
 # ── 高度图(每 0.5 米一格):地面 0、上城 UPPER_H、台阶 / 坡道线性;3D 摆城(房子落在多高)和游戏里人物抬高都按它 ──
