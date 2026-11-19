@@ -45,8 +45,10 @@ PROMPT = (
 
 def main():
     os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
-    refs = ['-i', os.path.join(WORK, 'plaza_render.png'), '-i', os.path.join(WORK, 'plan_rot.png')]
-    prompt = PROMPT + (('\n\nExtra: ' + OPT['extra']) if 'extra' in OPT else '')
+    # --plan=<转好朝向的平面图文件名(在 WORK 里)>、--promptfile=<整段提示词文件>:v2 扩大版用(11-19)
+    refs = ['-i', os.path.join(WORK, 'plaza_render.png'), '-i', os.path.join(WORK, OPT.get('plan', 'plan_rot.png'))]
+    base = open(OPT['promptfile'], encoding='utf-8').read() if 'promptfile' in OPT else PROMPT
+    prompt = base + (('\n\nExtra: ' + OPT['extra']) if 'extra' in OPT else '')
     stamp = time.time()
     r = subprocess.run([CODEX, 'exec', '--skip-git-repo-check', '-s', 'read-only', '-C', WORK, '-c', 'model="gpt-6.1-sol"', '-c', 'service_tier="default"'] + refs + ['-'],
                        input=prompt.encode('utf-8'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900)
