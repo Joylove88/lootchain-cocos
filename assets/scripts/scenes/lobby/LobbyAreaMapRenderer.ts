@@ -6,7 +6,7 @@ import { WORLD1_POINTS, WORLD_TABS, type WorldMapPanelState } from './LobbyWorld
 import type { TownAreaMapInfo } from './LobbyTownRenderer';
 import type { PathPoint } from './LobbyTownPathfinder';
 import { townCoordText } from './LobbyTownPathfinder';
-import { POI_MAP_ICON, worldAsset } from './LobbyWorldMaps';
+import { POI_MAP_ICON, PRE25_ON, worldAsset } from './LobbyWorldMaps';
 import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
 
 /** 竖直方向尺寸(地图页 FY 用单独的竖向缩放;高度跟着它走)。 */
@@ -48,7 +48,8 @@ export const AREA_MAP_OVERVIEW: Partial<Record<WorldMapCode, string>> = {
   GRAY: worldAsset('overview/ov_gray'),
   // 11-08 主城 v4:city_v4_gen.py 离线渲染
   // 11-11 主城月夜重做:整城图缩小的鸟瞰(tools/qa/city_moon_build.py)
-  CITY: worldAsset('citymoon/overview'),
+  // 11-19 预渲染主城(?pre25=1)换成整城底图缩略(build_map.py 出的 overview);用户拿旧月夜图判断了新城的布局
+  CITY: PRE25_ON ? 'pre25/city/overview/spriteFrame' : worldAsset('citymoon/overview'),
   // 11-09 枯木林 v4:dead_v4_gen.py 离线渲染
   DEADWOOD: worldAsset('overview/ov_deadwood'),
 };

@@ -8,7 +8,7 @@ import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
 import { CITY_PRE25, CITY_PRE25_ENTRY, pre25Enabled } from './pre25/Pre25City';
 /** 预渲染 2.5D 主城(第 0 期实验,默认关;?pre25=1 换上):主城定义和别的图进主城的落点一起换。 */
-const PRE25_ON = pre25Enabled();
+export const PRE25_ON = pre25Enabled();
 const CITY_ENTRY = PRE25_ON ? CITY_PRE25_ENTRY : CITY_MOON_ENTRY;
 import { DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {

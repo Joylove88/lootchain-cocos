@@ -119,7 +119,7 @@ for r in range(crows):
         total_c += os.path.getsize(cp)
         total_o += os.path.getsize(op)
 ov = Image.fromarray(bg8)
-ov.thumbnail((1024, 1024), Image.LANCZOS)
+ov.thumbnail((2048, 2048), Image.LANCZOS)          # 地图页要铺满全屏看得清(11-19 从 1024 提上来)
 ov.save(os.path.join(OUT, 'overview.jpg'), quality=85)
 print(f'chunks {ccols}x{crows} (存了 {len(present)} 块)  color {total_c / 1e6:.2f}MB  occ {total_o / 1e6:.2f}MB  overview {os.path.getsize(os.path.join(OUT, "overview.jpg")) / 1e3:.0f}KB')
 
@@ -130,6 +130,25 @@ AX0, AX1, AZ0, AZ1 = [float(v) for v in area]
 XMAX = float(OPT.get('xmax', 11.0))          # 整城用 --xmax=999(台地 / 大教堂由挡路块挡)          # 台地(高 2.4 米)这一期不上:台阶脚下为止
 R = 0.35
 solids = M['scene']['solids']
+# --collide=<目录>:挡路按模型真实形状(collide_raster.js 出的 collide.npy 挡路 + collide_over.npy 头顶有遮盖,
+# collide_meta.json 范围);这时挡路块只留「逻辑挡块」(高 ≤ 1 米:运河水面这类模型上看不出来、但不能走的)。
+# 11-19 用户:主城碰撞拦得太广,空地走不过去 —— 原来每栋楼 / 每棵树一个放宽的方框。
+COL = None
+if 'collide' in OPT:
+    from scipy import ndimage
+    cd = OPT['collide']
+    cm = json.load(open(os.path.join(cd, 'collide_meta.json')))
+    obst = np.load(os.path.join(cd, 'collide.npy')).astype(bool)
+    over = np.load(os.path.join(cd, 'collide_over.npy')).astype(bool)
+    rc = max(1, round(R / cm['cell']))
+    yy, xx = np.mgrid[-rc:rc + 1, -rc:rc + 1]
+    disk = (xx * xx + yy * yy) <= rc * rc
+    # 人当半径 R 的圆:实物往外胀 R。「头顶有遮盖」只取往里缩 1.2 米的芯(楼里面):屋檐比墙出挑,檐下那一条在斜视角里
+    # 是看得见的街面,不能挡;再把墙围起来的洞填实(模型外墙有缝,光靠墙会把楼里面当空地)
+    core = ndimage.binary_erosion(over, structure=np.ones((25, 25), bool))
+    COL = ndimage.binary_fill_holes(ndimage.binary_dilation(obst, structure=disk) | core)
+    solids = [s for s in solids if s[4] <= 1]
+    print(f'collide: 挡路 {obst.mean():.3f} 遮盖 {over.mean():.3f} → 合计 {COL.mean():.3f};逻辑挡块 {len(solids)} 个')
 gc, gr = math.ceil(IW / CELL), math.ceil(IH / CELL)
 grid = np.zeros((gr, gc), np.uint8)
 for r in range(gr):
@@ -150,6 +169,11 @@ for r in range(gr):
             od = NEAR + (dep[y0:y1, x0:x1, 0] / 255.0 + dep[y0:y1, x0:x1, 1] / 255.0 / 255.0) * (FAR - NEAR)
             cover = (alpha_solid[y0:y1, x0:x1] > 0.5) & (od < ground_d - 0.3)
             if cover.mean() > 0.35 and 'nocover' not in OPT:          # 整城用 --nocover:被挡住的地方主角显示成半透明剪影(pre25-actor.effect),不再整格禁走
+                ok = False
+        if ok and COL is not None:
+            ci = int((X - cm['x0']) / cm['cell'])
+            cj = int((Z - cm['z0']) / cm['cell'])
+            if not (0 <= ci < cm['nx'] and 0 <= cj < cm['nz']) or COL[cj, ci]:
                 ok = False
         if ok:
             for s in solids:
