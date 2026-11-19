@@ -12,9 +12,9 @@ import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
 import { applyCityFullGround, extendCityFull, FULL_SKIP } from './G3DCityFull';
-import { applyCityV4Ground, extendCityV4, V4_UPPER_H, v4GroundTint, v4OffUpper } from './G3DCityV4';
+import { applyCityV4Ground, extendCityV4, V4_UPPER_H, v4GroundTint, v4LawnField, v4OffUpper } from './G3DCityV4';
 import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN, CITY_TERRACE, CITY_V4, cityFloorY } from './G3DCity';
-import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaLeaves, plazaPbr, plazaTint, StoneTile, stoneTileMaps, slatePbr } from './G3DCityTex';
+import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaLeaves, plazaPbr, plazaTint, StoneTile, stoneTileMaps, slatePbr, lawnTileMaps, canvasMeanRGB } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
@@ -1706,13 +1706,29 @@ class Dungeon {
         }
         this.groundNodes = [];
         const world = this.world;
-        const add = (mesh: Mesh | null): void => {
+        const add = (mesh: Mesh | null, mat: Material = fm): void => {
           if (mesh) {
-            const gn = addMesh(world, 'DgFloor', mesh, fm, false, true);
+            const gn = addMesh(world, 'DgFloor', mesh, mat, false, true);
             gn.layer = GROUND_LAYER;
             this.groundNodes.push(gn);
           }
         };
+        // v4 草坪(11-20 跑图:草地底下透出石板缝):草坪另用一张没有缝的草地贴图,和街按 v4LawnField = 0.5 切开(分界是平滑斜线)
+        let lawnMat: Material | null = null;
+        if (CITY_V4.on) {
+          const LS = DUNGEON.tier === 'phone' ? 1024 : 2048;
+          const lawn = lawnTileMaps(LS, canvasMeanRGB(maps.albedo, DUNGEON.tier === 'phone' ? 1024 : 2048));
+          lawnMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: true, HAS_SECOND_UV: true, ALBEDO_UV: 'v_uv1', NORMAL_UV: 'v_uv1' } as any);
+          lawnMat.setProperty('mainTexture', tex(lawn.albedo, true, 16));
+          lawnMat.setProperty('normalMap', tex(lawn.normal, true, 16));
+          lawnMat.setProperty('pbrMap', tex(g.orm, false, 4));
+          lawnMat.setProperty('occlusion', 1);
+          lawnMat.setProperty('roughness', 1);
+          lawnMat.setProperty('metallic', 1);
+          lawnMat.setProperty('normalStrength', 0.6);
+          lawnMat.setProperty('specularIntensity', 0.04);
+          lawnMat.setProperty('albedoScale', new Vec3(back, back, back));
+        }
         // 整片:半米一格,还是切成 8 × 6 块;罗盘纹那一块挖掉,另铺一张 4.5 厘米一格的(纹样的边才是利的)
         const G = CITY_PLAN;
         const C = G.compass;
@@ -1722,7 +1738,16 @@ class Dungeon {
         const inHole = inHole0;
         for (let iz = 0; iz < 6; iz += 1) {
           for (let ix = 0; ix < 8; ix += 1) {
-            add(MeshBatch.groundGrid(G.x0 + (G.w * ix) / 8, G.z0 + (G.d * iz) / 6, G.x0 + (G.w * (ix + 1)) / 8, G.z0 + (G.d * (iz + 1)) / 6, 0.5, G, DUNGEON.paveM, tint, inHole));
+            const gx0 = G.x0 + (G.w * ix) / 8;
+            const gz0 = G.z0 + (G.d * iz) / 6;
+            const gx1 = G.x0 + (G.w * (ix + 1)) / 8;
+            const gz1 = G.z0 + (G.d * (iz + 1)) / 6;
+            if (lawnMat) {
+              add(MeshBatch.groundGridSplit(gx0, gz0, gx1, gz1, 0.5, G, DUNGEON.paveM, tint, v4LawnField, false, inHole));
+              add(MeshBatch.groundGridSplit(gx0, gz0, gx1, gz1, 0.5, G, DUNGEON.paveM * 4, tint, v4LawnField, true, inHole), lawnMat);          // 草地贴图一张铺 4 倍大(9.6 米),不显重复
+            } else {
+              add(MeshBatch.groundGrid(gx0, gz0, gx1, gz1, 0.5, G, DUNGEON.paveM, tint, inHole));
+            }
           }
         }
         for (let iz = 0; iz < 2; iz += 1) {
@@ -1744,9 +1769,13 @@ class Dungeon {
           // v4 上城顶面:同一套石板(按地面类别柔和上色)铺在 3 米高处,多边形外的格子不出面
           for (let bz = -110; bz < -10; bz += 25) {
             for (let bx = -110; bx < 110; bx += 32) {
-              const tm = MeshBatch.groundGrid(bx, bz, bx + 32, bz + 25, 0.5, G, DUNGEON.paveM, tint, v4OffUpper, V4_UPPER_H + 0.005);
+              const tm = MeshBatch.groundGridSplit(bx, bz, bx + 32, bz + 25, 0.5, G, DUNGEON.paveM, tint, v4LawnField, false, v4OffUpper, V4_UPPER_H + 0.005);
               if (tm) {
                 addMesh(world, 'DgTerraceTop', tm, fm, false, true);
+              }
+              const tl = lawnMat ? MeshBatch.groundGridSplit(bx, bz, bx + 32, bz + 25, 0.5, G, DUNGEON.paveM * 4, tint, v4LawnField, true, v4OffUpper, V4_UPPER_H + 0.005) : null;
+              if (tl && lawnMat) {
+                addMesh(world, 'DgTerraceTop', tl, lawnMat, false, true);
               }
             }
           }

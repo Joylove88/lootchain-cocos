@@ -304,6 +304,84 @@ export class MeshBatch {
   }
 
   /**
+   * 同 groundGrid,但每格按标量场 field(x, z)(0 ~ 1,角点取样后双线性)在 0.5 处切开:inside = true 只出 field ≥ 0.5 那一侧,false 出另一侧。
+   * 两张网格用同样的 field 切,分界线严丝合缝、是平滑的斜线(11-20 主城 v4:草坪 / 街分两种材质,按格子分会出半米一级的锯齿)。
+   */
+  static groundGridSplit(x0: number, z0: number, x1: number, z1: number, step: number, area: { x0: number; z0: number; w: number; d: number }, m: number,
+    tint: (x: number, z: number) => [number, number, number], field: (x: number, z: number) => number, inside: boolean,
+    skip?: (cx: number, cz: number) => boolean, y = 0): Mesh | null {
+    const nx = Math.max(1, Math.round((x1 - x0) / step));
+    const nz = Math.max(1, Math.round((z1 - z0) / step));
+    const F = new Float32Array((nx + 1) * (nz + 1));
+    for (let iz = 0; iz <= nz; iz += 1) {
+      for (let ix = 0; ix <= nx; ix += 1) {
+        F[iz * (nx + 1) + ix] = field(x0 + ((x1 - x0) * ix) / nx, z0 + ((z1 - z0) * iz) / nz) - 0.5;
+      }
+    }
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const uv1: number[] = [];
+    const tangents: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    const vert = (x: number, z: number): number => {
+      positions.push(x, y, z);
+      normals.push(0, 1, 0);
+      uvs.push((x - area.x0) / area.w, (z - area.z0) / area.d);
+      uv1.push(x / m, z / m);
+      tangents.push(1, 0, 0, -1);
+      const c = tint(x, z);
+      colors.push(c[0], c[1], c[2], 1);
+      return positions.length / 3 - 1;
+    };
+    const sgn = inside ? 1 : -1;
+    for (let iz = 0; iz < nz; iz += 1) {
+      for (let ix = 0; ix < nx; ix += 1) {
+        const ax = x0 + ((x1 - x0) * ix) / nx;
+        const bx = x0 + ((x1 - x0) * (ix + 1)) / nx;
+        const az = z0 + ((z1 - z0) * iz) / nz;
+        const bz = z0 + ((z1 - z0) * (iz + 1)) / nz;
+        if (skip && skip((ax + bx) / 2, (az + bz) / 2)) {
+          continue;
+        }
+        // 角点顺序 (a,a) (a,b) (b,b) (b,a);扇形三角 (0, k, k+1) 和 groundGrid 的绕向一致(朝上是正面)
+        const P: Array<[number, number, number]> = [
+          [ax, az, sgn * F[iz * (nx + 1) + ix]], [ax, bz, sgn * F[(iz + 1) * (nx + 1) + ix]],
+          [bx, bz, sgn * F[(iz + 1) * (nx + 1) + ix + 1]], [bx, az, sgn * F[iz * (nx + 1) + ix + 1]],
+        ];
+        // 留下 ≥ 0 的那部分(Sutherland–Hodgman 按标量场裁)
+        const out: Array<[number, number]> = [];
+        for (let k = 0; k < 4; k += 1) {
+          const A = P[k];
+          const B = P[(k + 1) % 4];
+          if (A[2] >= 0) {
+            out.push([A[0], A[1]]);
+          }
+          if ((A[2] >= 0) !== (B[2] >= 0)) {
+            const t = A[2] / (A[2] - B[2]);
+            out.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]);
+          }
+        }
+        if (out.length < 3) {
+          continue;
+        }
+        const ids = out.map(([x, z]) => vert(x, z));
+        for (let k = 1; k + 1 < ids.length; k += 1) {
+          indices.push(ids[0], ids[k], ids[k + 1]);
+        }
+      }
+    }
+    if (!indices.length) {
+      return null;
+    }
+    return utils.MeshUtils.createMesh({
+      positions, normals, uvs, tangents, colors, indices,
+      customAttributes: [{ attr: new gfx.Attribute(gfx.AttributeName.ATTR_TEX_COORD1, gfx.Format.RG32F), values: uv1 }],
+    }, undefined, { calculateBounds: true });
+  }
+
+  /**
    * 贴在地上的落叶:每片五个尖(枫叶的样子),只用顶点色;按 bucket 米一块分成几张网格(点光只重画它照得到的那几块)。
    */
   static groundLeaves(list: Array<{ x: number; z: number; s: number; rot: number; col: [number, number, number] }>, bucket: number, rnd: () => number): Mesh[] {

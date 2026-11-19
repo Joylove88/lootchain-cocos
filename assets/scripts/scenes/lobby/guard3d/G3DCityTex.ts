@@ -830,3 +830,99 @@ export function paintSkyline(W: number, H: number, seed: number): Cv {
   c.fillRect(0, H * 0.82, W, H * 0.18);
   return cv;
 }
+
+/**
+ * 草坪贴图(可平铺,11-20 主城 v4):没有石缝的草地 —— 大片深浅斑驳 + 细碎的草叶笔触(俯视看到的草尖,亮暗两种)。
+ * 平均颜色对齐石板贴图(meanRGB,0~255):草坪和街共用同一套顶点色(按地面类别上色),换贴图后颜色不跳。
+ */
+export function lawnTileMaps(S: number, meanRGB: [number, number, number], seed = 811): { albedo: Cv; normal: Cv } {
+  const big = new NoiseLut(256, 6, 3, seed);
+  const mid = new NoiseLut(256, 24, 2, seed + 2);
+  const fine = new NoiseLut(256, 96, 1, seed + 4);
+  const Hh = new Float32Array(S * S);
+  const L = new Float32Array(S * S);
+  for (let y = 0; y < S; y += 1) {
+    for (let x = 0; x < S; x += 1) {
+      const u = x / S;
+      const v = y / S;
+      const b = big.at(u, v) - 0.5;
+      const m = mid.at(u, v) - 0.5;
+      const f = fine.at(u, v) - 0.5;
+      L[y * S + x] = 1 + 0.22 * b + 0.16 * m + 0.12 * f;
+      Hh[y * S + x] = 0.5 * m + 0.6 * f;
+    }
+  }
+  // 草叶笔触:短的斜线,亮的(受光的草尖)/ 暗的(草根的缝),首尾相接
+  const rnd = mulberry32(seed + 9);
+  const blades = Math.round((S * S) / 90);
+  for (let i = 0; i < blades; i += 1) {
+    const x0 = rnd() * S;
+    const y0 = rnd() * S;
+    const a = -Math.PI / 2 + (rnd() - 0.5) * 1.4;
+    const len = (0.5 + rnd()) * S / 256;
+    const k = rnd() < 0.55 ? 0.16 + rnd() * 0.12 : -(0.14 + rnd() * 0.14);
+    const n = Math.max(2, Math.ceil(len * 1.5));
+    for (let t = 0; t <= n; t += 1) {
+      const px = ((Math.round(x0 + Math.cos(a) * len * t / n) % S) + S) % S;
+      const py = ((Math.round(y0 + Math.sin(a) * len * t / n) % S) + S) % S;
+      const w = 1 - (t / n) * 0.5;
+      L[py * S + px] += k * w;
+      Hh[py * S + px] += (k > 0 ? 0.35 : -0.35) * w;
+    }
+  }
+  // 平均亮度归一到 1,再乘石板贴图的平均色
+  let sum = 0;
+  for (let i = 0; i < S * S; i += 1) {
+    sum += L[i];
+  }
+  const norm = (S * S) / sum;
+  const A = makeCanvas(S, S);
+  const ac = ctxOf(A);
+  const ai = ac.createImageData(S, S);
+  for (let i = 0; i < S * S; i += 1) {
+    const l = L[i] * norm;
+    ai.data[i * 4] = Math.max(0, Math.min(255, meanRGB[0] * l * 0.96));
+    ai.data[i * 4 + 1] = Math.max(0, Math.min(255, meanRGB[1] * l * 1.04));
+    ai.data[i * 4 + 2] = Math.max(0, Math.min(255, meanRGB[2] * l * 0.94));
+    ai.data[i * 4 + 3] = 255;
+  }
+  ac.putImageData(ai, 0, 0);
+  const N = makeCanvas(S, S);
+  const nc = ctxOf(N);
+  const ni = nc.createImageData(S, S);
+  const k = 0.9;
+  for (let y = 0; y < S; y += 1) {
+    const ya = ((y - 1 + S) % S) * S;
+    const yb = ((y + 1) % S) * S;
+    for (let x = 0; x < S; x += 1) {
+      let nx = -(Hh[y * S + ((x + 1) % S)] - Hh[y * S + ((x - 1 + S) % S)]) * 0.5 * k;
+      let ny = -(Hh[yb + x] - Hh[ya + x]) * 0.5 * k;
+      const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+      nx *= inv;
+      ny *= inv;
+      const p = (y * S + x) * 4;
+      ni.data[p] = Math.round((nx * 0.5 + 0.5) * 255);
+      ni.data[p + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      ni.data[p + 2] = Math.round((inv * 0.5 + 0.5) * 255);
+      ni.data[p + 3] = 255;
+    }
+  }
+  nc.putImageData(ni, 0, 0);
+  return { albedo: A, normal: N };
+}
+
+/** 一张画布的平均颜色(0~255),隔点取样。 */
+export function canvasMeanRGB(cv: Cv, S: number): [number, number, number] {
+  const d = ctxOf(cv).getImageData(0, 0, S, S).data;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let p = 0; p < d.length; p += 4 * 7) {
+    r += d[p];
+    g += d[p + 1];
+    b += d[p + 2];
+    n += 1;
+  }
+  return [r / n, g / n, b / n];
+}

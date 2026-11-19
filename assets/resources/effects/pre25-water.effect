@@ -98,6 +98,11 @@ CCProgram water-fs %{
     return smoothstep(0.11, 0.0, d) * tw * step(0.55, h);
   }
 
+  // 水面起伏的高度场:两层各向略异的 fbm(顺流方向拉长一点)
+  float waves (vec2 q) {
+    return fbm(vec2(q.x * 0.55, q.y * 0.85)) * 0.65 + fbm(vec2(q.x * 1.3, q.y * 1.7) + vec2(4.7, 2.3)) * 0.35;
+  }
+
   vec4 frag () {
     float m = texture(maskTex, v_mask).r;
     if (m < 0.01) {
@@ -108,32 +113,53 @@ CCProgram water-fs %{
     vec2 p = v_flow;
     // 离岸多近(0 = 河心 / 湖心,1 = 岸边):河按横向米数,港湾 / 池塘按顶点里带的径向值
     float across = sp > 0.5 ? clamp(abs(p.y) / max(params.y, 0.1), 0.0, 1.0) : clamp(v_rad, 0.0, 1.0);
-    float flow = sp * params.z * (1.0 - 0.55 * across * across);
-    // ── 底色(11-20 参考燕云十六声):河心青蓝偏深、岸边浅一点带青绿;别发白 ──
+    // ── 流速场(11-20 用户「水流看着太生硬」:原来整张花纹匀速平移)──
+    // 局部流向 / 流速被一层慢慢变的大噪声扰动:河心快、岸边慢,有的地方打旋偏一点
+    vec2 wq = p * 0.12 + vec2(t * 0.03, -t * 0.02);
+    vec2 warp = vec2(fbm(wq), fbm(wq + vec2(5.2, 1.3))) - 0.5;
+    float spd = sp * params.z * 0.55 * (1.0 - 0.6 * across * across);
+    vec2 vel = vec2(1.0, 0.0) * spd * (0.75 + 0.7 * warp.x) + vec2(0.0, 1.0) * spd * 0.45 * warp.y;
+    vel += vec2(warp.y, -warp.x) * 0.06 * (1.0 - sp);          // 港湾 / 池塘:几乎不流,只微微漂
+    // ── 双相位:两层波纹各自顺流漂一段再淡出,交替接上(花纹在流里变形、更新,而不是一块板子滑走)──
+    float T = 2.6;
+    float ph0 = fract(t / T);
+    float ph1 = fract(t / T + 0.5);
+    float w0 = 1.0 - abs(1.0 - 2.0 * ph0);
+    vec2 o0 = vel * ph0 * T * 1.6 + vec2(0.0, 0.0);
+    vec2 o1 = vel * ph1 * T * 1.6 + vec2(3.7, 1.9);
+    // 静水自己的慢起伏(随时间缓缓变形)
+    vec2 drift = vec2(t * 0.05, -t * 0.035);
+    vec2 e = vec2(0.12, 0.0);
+    vec2 q0 = p - o0 + drift;
+    vec2 q1 = p - o1 + drift;
+    float h0 = waves(q0);
+    float h1 = waves(q1);
+    float h = mix(h1, h0, w0);
+    // 斜率(有限差分)→ 水面朝向:决定映天的深浅和太阳反光
+    float hx = mix(waves(q1 + e.xy), waves(q0 + e.xy), w0) - h;
+    float hy = mix(waves(q1 + e.yx), waves(q0 + e.yx), w0) - h;
+    vec2 slope = vec2(hx, hy) / e.x;
+    // ── 底色(参考燕云十六声):河心青蓝偏深、岸边浅一点带青绿 ──
     vec3 deep = vec3(0.11, 0.25, 0.31);
     vec3 shallow = vec3(0.24, 0.38, 0.36);
     vec3 col = mix(deep, shallow, smoothstep(0.45, 1.0, across));
-    // ── 天光倒影:大块、慢慢飘的云影,只淡淡地罩一层 ──
-    float cloud = fbm(vec2(p.x * 0.045 - t * 0.018, p.y * 0.07 + t * 0.006) + vec2(7.3, 1.1));
+    // ── 天光倒影:大块慢云影 + 朝向镜头一侧的波面映更多天(柔和,不发白)──
+    float cloud = fbm(vec2(p.x * 0.045 - t * 0.012, p.y * 0.07 + t * 0.004) + vec2(7.3, 1.1));
     vec3 sky = vec3(0.62, 0.74, 0.84);
-    col = mix(col, sky, 0.08 + 0.16 * smoothstep(0.4, 0.8, cloud));
-    // ── 顺流的波纹:亮的波峰 / 暗一点的波谷(各向同性一点,别拉成条)──
-    vec2 q1 = vec2(p.x * 0.42 - t * 0.85 * flow, p.y * 0.55);
-    vec2 q2 = vec2(p.x * 0.9 - t * 1.45 * flow + 3.1, p.y * 1.1 + t * 0.05);
-    float nRiver = fbm(q1) * 0.62 + fbm(q2) * 0.38;
-    float nStill = fbm(p * 0.55 + vec2(t * 0.045, -t * 0.03)) * 0.6 + fbm(p * 1.4 - vec2(t * 0.07, t * 0.05)) * 0.4;
-    float n = mix(nStill, nRiver, smoothstep(0.05, 0.6, sp));
-    col *= 0.86 + 0.26 * n;
-    col = mix(col, sky, 0.12 * smoothstep(0.58, 0.85, n));
-    // ── 太阳碎闪:小圆点,跟着水流走 ──
-    vec2 sq = vec2(p.x - t * 1.1 * flow, p.y) * 1.7;
-    float glint = sparkle(sq, t) + 0.6 * sparkle(sq * 1.9 + vec2(5.2, 1.7), t * 1.3);
-    glint *= smoothstep(0.45, 0.7, n);
-    col += vec3(1.0, 0.97, 0.9) * glint * 0.85;
-    // ── 岸边一线浪花 / 水光,跟着水动 ──
-    float foam = smoothstep(0.88, 0.995, across) * (0.4 + 0.6 * noise(vec2(p.x * 1.1 - t * (0.6 * flow + 0.15), p.y * 2.0 + t * 0.2)));
-    col = mix(col, vec3(0.78, 0.84, 0.84), foam * 0.42);
-    float a = clamp(0.86 + 0.14 * glint + 0.1 * foam, 0.0, 0.98) * params.x * m * tint.a;
+    float facing = clamp(0.5 + 0.9 * dot(slope, vec2(-0.55, 0.65)), 0.0, 1.0);
+    col = mix(col, sky, 0.06 + 0.12 * smoothstep(0.4, 0.8, cloud) + 0.16 * facing * facing);
+    col *= 0.9 + 0.16 * h;
+    // ── 太阳反光:波面正好朝太阳的地方,一点一点亮(不跟着整体平移,只在起伏里闪)──
+    float sunAlign = dot(normalize(vec3(-slope.x, 1.0, -slope.y) + vec3(0.0, 0.0, 0.0)), normalize(vec3(0.45, 1.0, -0.35)));
+    float spec = pow(clamp(sunAlign, 0.0, 1.0), 360.0);
+    vec2 cq = (p - mix(o1, o0, w0) * 0.5) * 2.2;
+    float tw = sparkle(cq, t) * smoothstep(0.5, 0.75, h);
+    float glint = clamp(spec * 0.8 + tw * 0.7, 0.0, 1.0);
+    col += vec3(1.0, 0.97, 0.9) * glint * 0.8;
+    // ── 岸边水光:一圈柔的浅色,边上被波纹打碎(不是一条匀的线)──
+    float foam = smoothstep(0.86, 1.0, across) * smoothstep(0.35, 0.75, mix(waves(q1 * 2.3), waves(q0 * 2.3), w0) + 0.15 * (1.0 - across));
+    col = mix(col, vec3(0.76, 0.83, 0.84), foam * 0.38);
+    float a = clamp(0.86 + 0.12 * glint + 0.08 * foam, 0.0, 0.98) * params.x * m * tint.a;
     return vec4(col, a);
   }
 }%

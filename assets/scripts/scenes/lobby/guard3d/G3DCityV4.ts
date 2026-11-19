@@ -66,6 +66,25 @@ export function inPoly(x: number, z: number, poly: readonly P2[]): boolean {
 }
 export const V4_UPPER_H = D.upperH;
 /** 上城顶面(地面网格 skip 用):(x, z) 不在上城多边形里 → true。 */
+/**
+ * 草坪程度(0 ~ 1):周围 ±0.5 米 9 个点里有几成是草坪 / 花园(城墙外不算)。地面网格按它 = 0.5 切成草坪 / 街两种材质(11-20)。
+ */
+export function v4LawnField(x: number, z: number): number {
+  if (!inPoly(x, z, D.wall)) {
+    return 0;
+  }
+  let n = 0;
+  for (const dx of [-0.5, 0, 0.5]) {
+    for (const dz of [-0.5, 0, 0.5]) {
+      const k = v4Surface(x + dx, z + dz);
+      if (k === 0 || k === 2) {
+        n += 1;
+      }
+    }
+  }
+  return n / 9;
+}
+
 export function v4OffUpper(x: number, z: number): boolean {
   return !inPoly(x, z, D.upper);
 }
