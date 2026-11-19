@@ -171,7 +171,30 @@ key_polys = [rot_rect(x, z, w, d, y) for _, _, x, z, w, d, y in KEYS]
 key_m = raster(key_polys + [shape_poly(TERRACE)])
 hard = road_m | water_m | plaza_m | green_m | key_m | ~inside_core
 # 11-19 用户:「建筑不要太多太密集,让玩家可以有更多走动的空间」→ 房子离街 2 米、房与房之间至少 SPACE 米、沿街间距放大、填空只补少量
-SPACE = float(OPT.get('space', 6.0))
+SPACE = float(OPT.get('space', 5.0))
+# 11-19 用户选「加更多广场 / 绿地」:在房子排之前,找城里最大的几块空地,轮流做成街心公园 / 小广场(空地有内容,不只是碎石地)
+dt = ndimage.distance_transform_edt(inside_core & ~hard) / RES
+spots = []
+dtw = dt.copy()
+while len(spots) < int(OPT.get('parks', 9)):
+    j, i = np.unravel_index(int(np.argmax(dtw)), dtw.shape)
+    r = float(dtw[j, i])
+    if r < 7:
+        break
+    x, z = X0 + i / RES, Z0 + j / RES
+    spots.append((x, z, r))
+    yy, xx = np.mgrid[0:GH, 0:GW]
+    dtw[(xx - i) ** 2 + (yy - j) ** 2 < (30 * RES) ** 2] = 0
+for k, (x, z, r) in enumerate(spots):
+    if k % 2 == 0:
+        rr = min(r - 1.5, 13)
+        GREENS.append((f'街心公园', ('ellipse', round(x, 1), round(z, 1), round(rr, 1), round(rr * 0.75, 1))))
+    else:
+        PLAZAS.append((f'小广场', ('circle', round(x, 1), round(z, 1), round(min(r - 1.5, 9), 1))))
+plaza_m = raster([shape_poly(s_) for _, s_ in PLAZAS])
+green_m = raster([shape_poly(s_) for _, s_ in GREENS] + [shape_poly(PADDOCK)])
+hard = road_m | water_m | plaza_m | green_m | key_m | ~inside_core
+print('自动加的公园 / 小广场', len(spots))
 hard_d = ndimage.binary_dilation(hard, iterations=int(2.0 * RES))
 
 # ── 沿街排房子 ──
@@ -224,7 +247,7 @@ open_m = road_m | plaza_m
 open_near = ndimage.binary_dilation(open_m, iterations=int(14 * RES))
 n_fill = 0
 for _ in range(int(OPT.get('infill', 40000))):
-    if n_fill >= int(OPT.get('fillmax', 8)):
+    if n_fill >= int(OPT.get('fillmax', 12)):
         break
     cx, cz = RND.uniform(X0, X1), RND.uniform(Z0, Z1)
     i, j = int((cx - X0) * RES), int((cz - Z0) * RES)
@@ -241,6 +264,28 @@ for _ in range(int(OPT.get('infill', 40000))):
     houses.append({'x': round(cx, 2), 'z': round(cz, 2), 'w': hw, 'd': hd, 'yaw': round(yaw, 1), 'road': 'infill'})
     house_m |= fm
     n_fill += 1
+
+# 林荫大道:主路两边每 9 米一棵树(在街沿上,不挡路)
+avenue = []
+blocked_t = water_m | plaza_m | key_m | house_m
+for name, w, c in road_curves:
+    if name not in ('南门大路', '集市路', '西路', '盘山坡道', '北岸滨河路', '学院路'):
+        continue
+    acc, nxt = 0.0, 4.0
+    for i in range(len(c) - 1):
+        a_, b_ = c[i], c[i + 1]
+        l = math.hypot(b_[0] - a_[0], b_[1] - a_[1]) or 1e-6
+        tx, tz = (b_[0] - a_[0]) / l, (b_[1] - a_[1]) / l
+        while nxt <= acc + l:
+            t = (nxt - acc) / l
+            px, pz = a_[0] + (b_[0] - a_[0]) * t, a_[1] + (b_[1] - a_[1]) * t
+            for side in (-1, 1):
+                x, z = px - tz * side * (w / 2 + 1.0), pz + tx * side * (w / 2 + 1.0)
+                gi_, gj_ = int((x - X0) * RES), int((z - Z0) * RES)
+                if 0 <= gi_ < GW and 0 <= gj_ < GH and inside_core[gj_, gi_] and not blocked_t[gj_, gi_]:
+                    avenue.append((round(x, 1), round(z, 1)))
+            nxt += 9.0
+        acc += l
 
 # 院子里的树(街坊中间空出来的地方点几棵)
 trees = []
@@ -298,6 +343,16 @@ for x, z, bw in BRIDGES:
 fillp(shape_poly(TERRACE), (110, 104, 96), (210, 198, 176), 2)
 for h in houses:
     fillp(rot_rect(h['x'], h['z'], h['w'], h['d'], h['yaw']), (54, 49, 47), (140, 114, 88))
+for x, z in avenue:
+    cx, cy = P(x, z)
+    d.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(170, 80, 44), outline=(90, 40, 20))
+for n, s_ in GREENS:
+    if n == '街心公园':
+        _, gx, gz, rx, rz = s_
+        for k in range(5):
+            a_ = 2 * math.pi * k / 5 + 0.4
+            cx, cy = P(gx + rx * 0.6 * math.cos(a_), gz + rz * 0.6 * math.sin(a_))
+            d.ellipse([cx - 7, cy - 7, cx + 7, cy + 7], fill=(150, 70, 40), outline=(90, 40, 20))
 for x, z in trees:
     cx, cy = P(x, z)
     d.ellipse([cx - 7, cy - 7, cx + 7, cy + 7], fill=(150, 70, 40), outline=(90, 40, 20))
@@ -337,7 +392,7 @@ d.line([30, by, 30 + 20 * PX, by], fill=(240, 236, 224), width=4)
 d.text((30 + 20 * PX + 10, by), '20 米', font=F, fill=(240, 236, 224), anchor='lm')
 d.text((30 + 20 * PX + 80, by), '浅灰 = 石板街 / 广场   深灰 = 碎石地(也能走)   深色 = 房子   金边 = 有 NPC / 功能   绿 = 花园(能走)', font=F, fill=(220, 214, 200), anchor='lm')
 d.text((30, by + 36), f'约 {230} × {200} 米(第一版 120 × 100);弯河穿城、上城高台、主路弯曲分叉、广场形状各异;房子少而疏、沿街排,中间是能走的空地 / 后院', font=F, fill=(220, 214, 200), anchor='lm')
-d.text((30, by + 68), f'房子 {len(houses)} 栋(复用现有 4 种民居模型,换朝向 / 大小);房与房之间至少 6 米;能走面积约占城内 {walk_m.sum() / inside.sum():.0%}', font=F, fill=(220, 214, 200), anchor='lm')
+d.text((30, by + 68), f'房子 {len(houses)} 栋(复用现有 4 种民居模型,换朝向 / 大小);房与房之间至少 5 米;能走面积约占城内 {walk_m.sum() / inside.sum():.0%}', font=F, fill=(220, 214, 200), anchor='lm')
 nx, ny = W - 50, H + 80
 d.polygon([(nx, ny - 34), (nx - 12, ny), (nx + 12, ny)], fill=(240, 236, 224))
 d.text((nx, ny + 16), '北', font=F, fill=(240, 236, 224), anchor='mm')
@@ -353,4 +408,4 @@ if 'json' in OPT:
     json.dump({'wall': WALL, 'gates': GATES, 'river': RIVER, 'riverW': RIVER_W, 'upper': UPPER, 'upperH': UPPER_H,
                'roads': [{'name': n, 'w': w, 'pts': [list(map(lambda v: round(v, 2), p)) for p in c]} for n, w, c in road_curves],
                'bridges': BRIDGES, 'plazas': PLAZAS, 'greens': GREENS, 'paddock': PADDOCK, 'keys': KEYS, 'terrace': TERRACE,
-               'houses': houses, 'trees': trees, 'npcs': NPCS}, open(OPT['json'], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+               'houses': houses, 'trees': trees, 'avenue': avenue, 'npcs': NPCS}, open(OPT['json'], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
