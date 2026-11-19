@@ -185,7 +185,11 @@ while len(spots) < int(OPT.get('parks', 9)):
     spots.append((x, z, r))
     yy, xx = np.mgrid[0:GH, 0:GW]
     dtw[(xx - i) ** 2 + (yy - j) ** 2 < (30 * RES) ** 2] = 0
+# 用户点名去掉的自动公园(11-19:「左侧这个小公园移除点」= 学院和王都花园之间那个)
+DROP_NEAR = [(-64, -50)]
 for k, (x, z, r) in enumerate(spots):
+    if not all(math.hypot(x - dx, z - dz) > 8 for dx, dz in DROP_NEAR):
+        continue          # 公园 / 广场按原来的顺序轮流分,去掉一个不影响别的
     if k % 2 == 0:
         rr = min(r - 1.5, 13)
         GREENS.append((f'街心公园', ('ellipse', round(x, 1), round(z, 1), round(rr, 1), round(rr * 0.75, 1))))
