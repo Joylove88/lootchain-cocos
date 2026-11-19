@@ -12,7 +12,8 @@ import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
 import { applyCityFullGround, extendCityFull, FULL_SKIP } from './G3DCityFull';
-import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN, CITY_TERRACE, cityFloorY } from './G3DCity';
+import { applyCityV4Ground, extendCityV4, V4_UPPER_H, v4GroundTint, v4OffUpper } from './G3DCityV4';
+import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN, CITY_TERRACE, CITY_V4, cityFloorY } from './G3DCity';
 import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaLeaves, plazaPbr, plazaTint, StoneTile, stoneTileMaps, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
@@ -1420,8 +1421,10 @@ class Dungeon {
     this.stats.floorMs = Math.round(performance.now() - t1);
     this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, CITY_PLAN, x, z);
     const bldKeys = DUNGEON.bld.split(',').filter((k) => k);
-    const C = buildCityScene(rnd, bldKeys, DUNGEON.cityFull ? FULL_SKIP : []);
-    if (DUNGEON.cityFull) {
+    const C = buildCityScene(rnd, bldKeys, DUNGEON.cityFull && !CITY_V4.on ? FULL_SKIP : []);
+    if (CITY_V4.on) {
+      extendCityV4(C, rnd);          // 主城 v4(&cityv4=1):整城按 G3DCityV4Data 重摆
+    } else if (DUNGEON.cityFull) {
       extendCityFull(C, rnd);
     }
     this.solids.push(...C.solids);
@@ -1496,7 +1499,10 @@ class Dungeon {
       this.groundNodes.push(gn);
     }
     const outerMat = std(rockPbr(256), true, 4, false);
-    outerMat.setProperty('albedoScale', new Vec3(0.16, 0.17, 0.2));
+    outerMat.setProperty('albedoScale', CITY_V4.on ? new Vec3(0.05, 0.055, 0.065) : new Vec3(0.16, 0.17, 0.2));          // v4:城外压暗
+    if (CITY_V4.on) {
+      outerMat.setProperty('metallic', 0);          // 城外地面不反天光(金属度 1 时月夜下一片发白)
+    }
     for (const m of MeshBatch.groundTiles(-150, -150, 300, 300, 2, 2, -0.04)) {
       addMesh(world, 'DgOuter', m, outerMat, false, true);
     }
@@ -1689,6 +1695,10 @@ class Dungeon {
         const tintFn = plazaTint(CITY_PLAN, DUNGEON.paveK);
         const tint = (x: number, z: number): [number, number, number] => {
           const c = tintFn(x, z);
+          if (CITY_V4.on) {
+            const k = v4GroundTint(x, z);          // v4:碎石地偏土褐、花园偏暗绿
+            return [c[0] * k[0] * VK, c[1] * k[1] * VK, c[2] * k[2] * VK];
+          }
           return [c[0] * VK, c[1] * VK, c[2] * VK];
         };
         for (const n of this.groundNodes) {
@@ -1722,10 +1732,21 @@ class Dungeon {
         // 不进平面倒影:倒影平面在 0 高度,台地上照出来会错位;积水处照天空)
         const T = CITY_TERRACE;
         const onStairs = (cx: number, cz: number): boolean => cx < T.sx1 && cz > T.z0 - 0.65 && cz < T.z1 + 0.65;
-        for (const [z0, z1] of [[T.zn, -4], [-4, 4], [4, T.zs]]) {
+        for (const [z0, z1] of (CITY_V4.on ? [] : [[T.zn, -4], [-4, 4], [4, T.zs]])) {
           const tm = MeshBatch.groundGrid(T.x + 0.4, z0, T.x + 10.5, z1, 0.5, G, DUNGEON.paveM, tint, onStairs, T.h + 0.005);
           if (tm) {
             addMesh(world, 'DgTerraceTop', tm, fm, false, true);
+          }
+        }
+        if (CITY_V4.on) {
+          // v4 上城顶面:同一套石板铺在 3 米高处(多边形外的格子不出面),切成几块
+          for (let bz = -110; bz < -10; bz += 25) {
+            for (let bx = -110; bx < 110; bx += 32) {
+              const tm = MeshBatch.groundGrid(bx, bz, bx + 32, bz + 25, 0.5, G, DUNGEON.paveM, tint, v4OffUpper, V4_UPPER_H + 0.005);
+              if (tm) {
+                addMesh(world, 'DgTerraceTop', tm, fm, false, true);
+              }
+            }
           }
         }
         this.floorMat = fm;
@@ -4469,7 +4490,16 @@ function boot(): void {
       }
     }
     setArea({ ...CITY, X1: CITY.X1 + 6.8 });          // 第十轮:往东放宽到教堂门口(台地前沿的矮墙是挡路块,只有台阶那一段能上去)
-    if (param('cityfull') === '1') {
+    if (param('cityv4') === '1') {
+      DUNGEON.cityFull = true;
+      applyCityV4Ground();          // 主城 v4(11-19 用户「Build v4」)
+      if (param('pavek') === null) {
+        DUNGEON.paveK = 0.66;
+      }
+      // v4 整体提亮(11-19 用户反馈旧版「部分地形模糊看不清」):月光 340k → 560k、环境光 6300 → 13000(可用 &moon= / &ambient= 覆盖)
+      DUNGEON.moon = param('moon') !== null ? Number(param('moon')) : 560000;
+      DUNGEON.ambient = param('ambient') !== null ? Number(param('ambient')) : 13000;
+    } else if (param('cityfull') === '1') {
       DUNGEON.cityFull = true;
       applyCityFullGround();
       if (param('pavek') === null) {

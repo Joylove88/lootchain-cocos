@@ -63,16 +63,19 @@ GATES = {'south': (-70, 86), 'east': (120, 6)}           # 西南门 → 村外�
 RIVER = catmull([(-126, 10), (-96, 26), (-64, 36), (-38, 40), (-12, 50), (16, 66), (46, 80), (80, 88), (126, 94)])
 RIVER_W = 11
 HARBOR = ('ellipse', 80, 88, 18, 7)                       # 河在东南放宽成港湾
-UPPER = [(-100, -34), (-60, -30), (-34, -24), (-12, -18), (6, -16), (30, -14), (56, -20), (84, -34), (106, -62), (60, -96),
+UPPER = [(-100, -34), (-60, -30), (-34, -26), (-12, -23), (30, -23), (56, -24), (84, -34), (106, -62), (60, -96),
          (-14, -102), (-82, -92)]
+# 台阶 / 坡道:(名字, 底端中点, 顶端中点, 宽);高度沿底 → 顶从 0 线性到 UPPER_H(台阶在 3D 里按 15 厘米一级搭)
+STAIRS = [('大台阶', (8, -14.6), (8, -23.6), 12), ('学院侧台阶', (-26, -17.6), (-26, -26.6), 6)]
+RAMP = ('盘山坡道', (71, -6), (71, -30), 8)
 UPPER_H = 3.0
 ROADS = [
     ('王都大道', 14, [(-70, 84), (-62, 70), (-50, 56), (-40, 42), (-30, 28), (-18, 14)]),
-    ('大台阶', 12, [(4, -13), (14, -22), (22, -28)]),
+    ('大台阶', 12, [(8, -13), (8, -24), (16, -28)]),
     ('东市街', 10, [(12, 4), (34, 8), (58, 10), (82, 8), (102, 6), (120, 6)]),
-    ('盘山坡道', 8, [(58, 10), (68, -4), (72, -20), (62, -32), (42, -30)]),
+    ('盘山坡道', 8, [(58, 10), (66, 2), (71, -6), (71, -30), (62, -33), (42, -30)]),
     ('西街', 9, [(-20, -2), (-40, -2), (-60, -8), (-80, -18), (-94, -36)]),
-    ('学院台阶路', 7, [(-20, -14), (-26, -26), (-30, -40), (-32, -52)]),
+    ('学院台阶路', 7, [(-20, -14), (-26, -17), (-26, -27), (-30, -40), (-32, -52)]),
     ('上城环路', 8, [(-94, -36), (-80, -56), (-54, -72), (-32, -52), (-8, -64), (18, -70), (44, -74), (70, -62), (76, -42), (62, -32)]),
     ('北岸滨河路', 7, [(-108, 14), (-84, 24), (-62, 28), (-40, 32), (-20, 38), (6, 52), (34, 66), (60, 74)]),
     ('下城路', 8, [(-50, 56), (-30, 66), (-6, 76), (20, 86), (46, 94), (66, 100)]),
@@ -91,7 +94,7 @@ PLAZAS = [
     ('罗盘广场(传送)', ('rect', -20, -14, 12, 14)),
     ('桥头集市', ('poly', [(-34, 22), (-14, 16), (-6, 30), (-22, 34)])),
     ('大教堂广场', ('circle', 24, -30, 13)),
-    ('观景台', ('poly', [(-10, -26), (4, -24), (6, -18), (-8, -20)])),
+    ('观景台', ('poly', [(-10, -31), (0, -30), (0, -25), (-10, -25)])),
     ('城门广场', ('circle', -64, 74, 10)),
     ('码头广场', ('poly', [(50, 96), (72, 100), (70, 104), (48, 102)])),
     ('兵营校场', ('rect', 86, -2, 108, 20)),
@@ -106,7 +109,7 @@ KEYS = [
     ('帝国学院', '帝国学者', -32, -74, 30, 13, 10),
     ('佣兵公会', '公会会长', -42, -16, 16, 12, 0),
     ('金麦酒馆', '酒馆老板', -2, 22, 14, 11, -25),
-    ('马厩', '', -96, 30, 18, 8, 70),
+    ('马厩', '', -80, 46, 18, 8, 80),
     ('王都兵营', '卫队长', 98, -14, 18, 9, 0),
     ('贵族宅邸', '', 14, -86, 18, 12, 0),
     ('贵族宅邸', '', 46, -86, 14, 10, -10),
@@ -274,7 +277,7 @@ for _ in range(int(OPT.get('infill', 40000))):
     house_m |= fm
     n_fill += 1
 
-# 林荫大道:主路两边每 9 米一棵树(在街沿上,不挡路)
+# 林荫大道:主路两边每 12 米一棵树(在街沿上,不挡路)
 avenue = []
 blocked_t = water_m | plaza_m | key_m | house_m
 for name, w, c in road_curves:
@@ -293,7 +296,7 @@ for name, w, c in road_curves:
                 gi_, gj_ = int((x - X0) * RES), int((z - Z0) * RES)
                 if 0 <= gi_ < GW and 0 <= gj_ < GH and inside_core[gj_, gi_] and not blocked_t[gj_, gi_]:
                     avenue.append((round(x, 1), round(z, 1)))
-            nxt += 9.0
+            nxt += 12.0
         acc += l
 
 # 院子里的树(街坊中间空出来的地方点几棵)
@@ -419,3 +422,91 @@ if 'json' in OPT:
                'roads': [{'name': n, 'w': w, 'pts': [list(map(lambda v: round(v, 2), p)) for p in c]} for n, w, c in road_curves],
                'bridges': BRIDGES, 'plazas': PLAZAS, 'greens': GREENS, 'paddock': PADDOCK, 'keys': KEYS, 'terrace': TERRACE,
                'houses': houses, 'trees': trees, 'avenue': avenue, 'npcs': NPCS}, open(OPT['json'], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+
+
+# ── 高度图(每 0.5 米一格):地面 0、上城 UPPER_H、台阶 / 坡道线性;3D 摆城(房子落在多高)和游戏里人物抬高都按它 ──
+HRES = 2
+HW, HH = (X1 - X0) * HRES, (Z1 - Z0) * HRES
+height = np.zeros((HH, HW), np.float32)
+um = Image.new('L', (HW, HH), 0)
+ImageDraw.Draw(um).polygon([((x - X0) * HRES, (z - Z0) * HRES) for x, z in UPPER], fill=255)
+height[np.asarray(um) > 0] = UPPER_H
+yy, xx = np.mgrid[0:HH, 0:HW]
+wx = X0 + (xx + 0.5) / HRES
+wz = Z0 + (yy + 0.5) / HRES
+for name, b0, b1, w in STAIRS + [RAMP]:
+    ax, az = b1[0] - b0[0], b1[1] - b0[1]
+    L2 = ax * ax + az * az
+    t = ((wx - b0[0]) * ax + (wz - b0[1]) * az) / L2
+    lat = np.abs((wx - b0[0]) * az - (wz - b0[1]) * ax) / math.sqrt(L2)
+    m = (t >= -0.02) & (t <= 1.0) & (lat <= w / 2)
+    height[m] = np.clip(t[m], 0, 1) * UPPER_H
+# 桥面:桥模型(11 米长时)从桥头到桥顶量过的高度表,按缩放倍数等比放大;沿桥的轴(垂直于河)铺进高度图,同时记成「桥面」(能走的水面)
+BRIDGE11 = [0, 0.16, 0.41, 0.72, 0.98, 1.08, 1.08, 1.02, 0.84, 0.58, 0.26, 0.03, 0]
+bridge_m = np.zeros((HH, HW), bool)
+for bi, (bx_, bz_, bw_) in enumerate(BRIDGES):
+    # 最近的河道点和切线
+    best = None
+    for i in range(len(RIVER) - 1):
+        ax_, az_ = RIVER[i]
+        cx_, cz_ = RIVER[i + 1]
+        dx_, dz_ = cx_ - ax_, cz_ - az_
+        l2 = dx_ * dx_ + dz_ * dz_ or 1e-9
+        t_ = max(0, min(1, ((bx_ - ax_) * dx_ + (bz_ - az_) * dz_) / l2))
+        px_, pz_ = ax_ + dx_ * t_, az_ + dz_ * t_
+        dd = math.hypot(bx_ - px_, bz_ - pz_)
+        if best is None or dd < best[0]:
+            l = math.sqrt(l2)
+            best = (dd, px_, pz_, dx_ / l, dz_ / l)
+    _, px_, pz_, tx_, tz_ = best
+    blen = RIVER_W + (7 if bi == 0 else 5)          # 同 G3DCityV4 的桥长
+    sc = blen / 11
+    deck = 3.4 * sc
+    nx_, nz_ = -tz_, tx_                              # 桥的轴 = 河的法线
+    u = (wx - px_) * nx_ + (wz - pz_) * nz_           # 沿桥轴(-blen/2 .. blen/2)
+    v = (wx - px_) * tx_ + (wz - pz_) * tz_           # 横向
+    m = (np.abs(u) <= blen / 2) & (np.abs(v) <= deck / 2)
+    tt = (u[m] + blen / 2) / blen * 12
+    i0 = np.clip(np.floor(tt).astype(int), 0, 11)
+    fr = tt - i0
+    prof = np.array(BRIDGE11)
+    height[m] = np.maximum(height[m], (prof[i0] * (1 - fr) + prof[i0 + 1] * fr) * sc)
+    bridge_m |= m
+if 'json' in OPT:
+    base = OPT['json'].replace('.json', '')
+    np.save(base + '_height.npy', height)
+    np.save(base + '_bridge.npy', bridge_m)
+    surf = np.where(water_m, 3, np.where(green_m, 2, np.where(road_m | plaza_m, 1, 0))).astype(np.uint8)
+    np.save(base + '_surface.npy', surf)
+    inside_wall = np.asarray(Image.fromarray((inside * 255).astype(np.uint8))) > 0
+    np.save(base + '_inside.npy', inside_core)
+    json.dump({'x0': X0, 'z0': Z0, 'res': HRES, 'w': HW, 'h': HH, 'surfRes': RES}, open(base + '_grid.json', 'w'))
+if 'ts' in OPT:
+    def hstr(a):
+        q = np.clip(np.round(a * 10), 0, 255).astype(np.uint8).ravel()        # 0.1 米一档
+        out, i = [], 0
+        while i < len(q):                                                         # 行程编码:值,长度
+            j = i
+            while j < len(q) and q[j] == q[i] and j - i < 65535:
+                j += 1
+            out += [int(q[i]), j - i]
+            i = j
+        return out
+    model = lambda h: ('house_b' if h['w'] >= 9 else 'house_c' if h['w'] <= 6.5 else ['house', 'house_d'][int(abs(h['x'] * 7 + h['z'] * 13)) % 2])
+    data = {
+        'bounds': [X0, Z0, X1, Z1], 'wall': WALL, 'gates': GATES, 'river': [[round(x, 2), round(z, 2)] for x, z in RIVER], 'riverW': RIVER_W,
+        'harbor': HARBOR[1:], 'upper': UPPER, 'upperH': UPPER_H, 'stairs': [[n, list(a), list(b), w] for n, a, b, w in STAIRS],
+        'ramp': [RAMP[0], list(RAMP[1]), list(RAMP[2]), RAMP[3]],
+        'roads': [{'name': n, 'w': w, 'pts': [[round(v, 2) for v in p] for p in c]} for n, w, c in road_curves],
+        'bridges': BRIDGES, 'plazas': [[n, list(sh)] for n, sh in PLAZAS], 'greens': [[n, list(sh)] for n, sh in GREENS],
+        'pond': list(POND[1:]), 'paddock': PADDOCK[1], 'terrace': TERRACE[1],
+        'keys': [list(k) for k in KEYS],
+        'houses': [dict(h, model=model(h)) for h in houses],
+        'trees': trees, 'avenue': avenue, 'npcs': NPCS,
+        'height': {'res': HRES, 'w': HW, 'h': HH, 'rle': hstr(height)},
+        # 地面类别(同一套 0.5 米格):0 碎石 / 土,1 石板街 / 广场,2 花园草地,3 水(给 3D 地面上色用)
+        'surface': {'res': RES, 'w': GW, 'h': GH, 'rle': hstr((np.where(water_m, 3, np.where(green_m, 2, np.where(road_m | plaza_m, 1, 0)))).astype(np.float32) / 10)},
+    }
+    head = '// 自动生成:tools/proto3d/pre25/city_plan_v4.py --ts=…(主城 v4 布局;别手改)' + chr(10) + '/* eslint-disable */' + chr(10)
+    open(OPT['ts'], 'w', encoding='utf-8').write(head + 'export const CITY_V4_DATA = ' + json.dumps(data, ensure_ascii=False, separators=(',', ':')) + ' as const;' + chr(10))
+    print('ts', OPT['ts'])

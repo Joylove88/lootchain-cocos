@@ -82,13 +82,15 @@ for g in ('bld', 'trees', 'stone'):
 alpha[alpha < 0.03] = 0
 
 bg8 = np.clip(bg, 0, 255).astype(np.uint8)
-Image.fromarray(bg8).save(os.path.join(CAP, 'full_bg.jpg'), quality=90)
+if 'walkonly' not in OPT:
+    Image.fromarray(bg8).save(os.path.join(CAP, 'full_bg.jpg'), quality=90)
 occ = np.zeros((IH, IW, 3), np.uint8)
 solid = alpha > 0
 occ[..., 0] = np.where(solid, dep[..., 0], 255).astype(np.uint8)
 occ[..., 1] = np.where(solid, dep[..., 1], 255).astype(np.uint8)
 occ[..., 2] = (alpha * 255 + 0.5).astype(np.uint8)
-Image.fromarray(occ).save(os.path.join(CAP, 'full_occ.png'))
+if 'walkonly' not in OPT:
+    Image.fromarray(occ).save(os.path.join(CAP, 'full_occ.png'))
 
 # ── 切块 ──
 ccols, crows = math.ceil(IW / CHUNK), math.ceil(IH / CHUNK)
@@ -110,6 +112,8 @@ for r in range(crows):
         if bgp[sl].max() < 6:
             continue
         present.append([r, c])
+        if 'walkonly' in OPT:          # 只重算可走格(调碰撞时):块已经写过,不再编码
+            continue
         cp = os.path.join(OUT, f'c_{r}_{c}.webp')
         Image.fromarray(bgp[sl]).save(cp, 'WEBP', quality=Q, method=6)
         op = os.path.join(OUT, f'o_{r}_{c}.webp')
@@ -118,9 +122,10 @@ for r in range(crows):
         Image.fromarray(o).save(op, 'WEBP', lossless=True, method=6)
         total_c += os.path.getsize(cp)
         total_o += os.path.getsize(op)
-ov = Image.fromarray(bg8)
-ov.thumbnail((2048, 2048), Image.LANCZOS)          # 地图页要铺满全屏看得清(11-19 从 1024 提上来)
-ov.save(os.path.join(OUT, 'overview.jpg'), quality=85)
+if 'walkonly' not in OPT:
+    ov = Image.fromarray(bg8)
+    ov.thumbnail((2048, 2048), Image.LANCZOS)          # 地图页要铺满全屏看得清(11-19 从 1024 提上来)
+    ov.save(os.path.join(OUT, 'overview.jpg'), quality=85)
 print(f'chunks {ccols}x{crows} (存了 {len(present)} 块)  color {total_c / 1e6:.2f}MB  occ {total_o / 1e6:.2f}MB  overview {os.path.getsize(os.path.join(OUT, "overview.jpg")) / 1e3:.0f}KB')
 
 # ── 可走格:图片里每格中心 → 画面平面 → 地面(y = 0)上的世界点 → 在广场里、不在挡路块里、不上台地 ──
@@ -151,7 +156,82 @@ if 'collide' in OPT:
     print(f'collide: 挡路 {obst.mean():.3f} 遮盖 {over.mean():.3f} → 合计 {COL.mean():.3f};逻辑挡块 {len(solids)} 个')
 gc, gr = math.ceil(IW / CELL), math.ceil(IH / CELL)
 grid = np.zeros((gr, gc), np.uint8)
-for r in range(gr):
+# ── 主城 v4(--bands=<collide_bands.py 的目录> --layout=<city_plan_v4 的布局前缀>):向量化算可走格 ──
+# 地面高度(上城 / 台阶 / 坡道 / 桥面)来自布局的高度图;挡路 = 该格地面 +0.3 ~ +1.9 米之间有东西(分层栅格);头顶有遮盖的芯 + 填洞 = 楼里面;
+# 水面(河 / 港湾 / 池塘)不能走,桥面能走;相邻格高差超过 0.6 米(挡土墙边)不能走。
+V4 = 'bands' in OPT
+HEIGHT_OUT = None
+if V4:
+    from scipy import ndimage
+    bm = json.load(open(os.path.join(OPT['bands'], 'bands.json')))
+    bands = np.load(os.path.join(OPT['bands'], 'bands.npy'))
+    LP = OPT['layout']
+    lg = json.load(open(LP + '_grid.json'))
+    Hgrid = np.load(LP + '_height.npy')
+    bridge = np.load(LP + '_bridge.npy')
+    surf = np.load(LP + '_surface.npy')
+    inside = np.load(LP + '_inside.npy')
+    lay = json.load(open(LP + '.json', encoding='utf-8'))
+    HEIGHT_OUT = (lg, Hgrid)
+    # 分层栅格每格的地面高度(从布局高度图取)
+    bx = bm['x0'] + (np.arange(bm['nx']) + 0.5) * bm['cell']
+    bz = bm['z0'] + (np.arange(bm['nz']) + 0.5) * bm['cell']
+    hi_ = np.clip(((bx - lg['x0']) * lg['res']).astype(int), 0, lg['w'] - 1)
+    hj_ = np.clip(((bz - lg['z0']) * lg['res']).astype(int), 0, lg['h'] - 1)
+    Hb = Hgrid[hj_][:, hi_]
+    # 0.25 米一层(第 k 层 = -1 + 0.25k 米起):挡路窗口 = 下沿 ≥ 地面 +0.25(台阶面 / 桥面的误差在这之内)~ 地面 +1.9
+    lo = np.ceil((Hb + 1.25) / 0.25).astype(np.uint64)
+    hi = np.minimum(np.floor((Hb + 2.9) / 0.25), 62).astype(np.uint64)
+    B = bands.astype(np.uint64)
+    one = np.uint64(1)
+    win = ((one << (hi + one)) - one) & ~((one << lo) - one)
+    obst = (B & win) != 0
+    over = (B >> (hi + one)) != 0
+    rc = max(1, round(R / bm['cell']))
+    yy, xx = np.mgrid[-rc:rc + 1, -rc:rc + 1]
+    disk = (xx * xx + yy * yy) <= rc * rc
+    core = ndimage.binary_erosion(over, structure=np.ones((13, 13), bool))
+    COLB = ndimage.binary_fill_holes(ndimage.binary_dilation(obst, structure=disk) | core)
+    # 布局栅格上的「不能走」:城墙内侧以外、水(桥面除外)、池塘、挡土墙边的陡坎
+    water = (surf == 3) & ~bridge
+    gx = lg['x0'] + (np.arange(lg['w']) + 0.5) / lg['res']
+    gz = lg['z0'] + (np.arange(lg['h']) + 0.5) / lg['res']
+    GX, GZ = np.meshgrid(gx, gz)
+    pe = OPT.get('pond', '-68,-51,7,4.5').split(',')          # 王都花园的池塘(椭圆:中心 x, z,半轴 rx, rz)
+    pe = [float(v) for v in pe]
+    pondm = ((GX - pe[0]) / (pe[2] + 0.4)) ** 2 + ((GZ - pe[1]) / (pe[3] + 0.4)) ** 2 <= 1
+    dmax = np.zeros_like(Hgrid)
+    for dj in (-1, 0, 1):
+        for di in (-1, 0, 1):
+            dmax = np.maximum(dmax, np.abs(Hgrid - np.roll(np.roll(Hgrid, dj, 0), di, 1)))
+    cliff = ndimage.binary_dilation(dmax > 0.6, iterations=1)
+    BADL = ~inside | water | pondm | cliff
+    # 每个可走格中心 → 画面平面 → 地面 (X, Z)(y = 0 投影,和游戏里的 2D 逻辑坐标一致)
+    ixs = (np.arange(gc) + 0.5) * CELL
+    iys = (np.arange(gr) + 0.5) * CELL
+    IXc, IYc = np.meshgrid(ixs, iys)
+    sxv = sx0 + IXc / PPM
+    syv = sy1 - IYc / PPM
+    tv = syv / math.sin(p)
+    Xw = C0[0] + sxv * RR[0] + tv * HH[0]
+    Zw = C0[2] + sxv * RR[2] + tv * HH[2]
+    bi = ((Xw - bm['x0']) / bm['cell']).astype(int)
+    bj = ((Zw - bm['z0']) / bm['cell']).astype(int)
+    okb = (bi >= 0) & (bj >= 0) & (bi < bm['nx']) & (bj < bm['nz'])
+    li = ((Xw - lg['x0']) * lg['res']).astype(int)
+    lj = ((Zw - lg['z0']) * lg['res']).astype(int)
+    okl = (li >= 0) & (lj >= 0) & (li < lg['w']) & (lj < lg['h'])
+    g = okb & okl
+    g[g] = ~COLB[bj[g], bi[g]] & ~BADL[lj[g], li[g]]
+    grid = g.astype(np.uint8)
+    lab_, nlab = ndimage.label(grid)
+    if nlab > 1:
+        sz = ndimage.sum(grid, lab_, range(1, nlab + 1))
+        keep = int(np.argmax(sz)) + 1
+        print(f'walk 连通块 {nlab} 个,只留最大的({int(sz[keep - 1])} 格),去掉孤岛 {int(grid.sum() - sz[keep - 1])} 格')
+        grid = (lab_ == keep).astype(np.uint8)
+    print(f'v4 collide: 挡路 {obst.mean():.3f} 遮盖 {over.mean():.3f} 合计 {COLB.mean():.3f}')
+for r in (range(0) if V4 else range(gr)):
     for c in range(gc):
         ix, iy = (c + 0.5) * CELL, (r + 0.5) * CELL
         sx = sx0 + ix / PPM
@@ -185,7 +265,7 @@ for r in range(gr):
 # 只留连成一片的最大那块(四邻接):零碎的孤岛走进去就出不来
 lab = np.zeros(grid.shape, np.int32)
 sizes = [0]
-for r0 in range(gr):
+for r0 in (range(0) if V4 else range(gr)):
     for c0 in range(gc):
         if grid[r0, c0] and not lab[r0, c0]:
             k = len(sizes)
@@ -232,6 +312,19 @@ data = {
     'near': NEAR, 'far': FAR, 'dist': M['dist'], 'c0': C0, 'plane': M['plane'],
     'walk': {'cell': CELL, 'cols': gc, 'rows': rows_hex}, 'lights': lights,
 }
+if HEIGHT_OUT is not None:
+    # 地面高度图(地面坐标 X / Z,米;0.1 米一档,行程编码 [值, 长度, …]):游戏里人物 / NPC 站在上城、台阶、桥面上时抬高用
+    lg_, Hg_ = HEIGHT_OUT
+    q = np.clip(np.round(Hg_ * 10), 0, 255).astype(np.uint8).ravel()
+    rle = []
+    i_ = 0
+    while i_ < len(q):
+        j_ = i_
+        while j_ < len(q) and q[j_] == q[i_] and j_ - i_ < 65535:
+            j_ += 1
+        rle += [int(q[i_]), j_ - i_]
+        i_ = j_
+    data['height'] = {'x0': lg_['x0'], 'z0': lg_['z0'], 'res': lg_['res'], 'w': lg_['w'], 'h': lg_['h'], 'rle': rle}
 with open(TS, 'w', encoding='utf-8', newline='\n') as f:
     f.write('/**\n * 预渲染 2.5D 主城广场(第 0 期)的地图数据(由 tools/proto3d/pre25/build_map.py 生成,别手改)。\n'
             ' * px = 整图像素;chunk = 每块边长;grid = 块的列 / 行数;unit = 一个图片像素合多少世界单位;\n'

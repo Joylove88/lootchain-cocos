@@ -142,12 +142,20 @@ def tile_center(row, col):
     return cx, cy
 
 
+SHADOW_FOLLOW = float(OPT.get('shadowfollow', 0))          # --shadowfollow=36:每块的影子范围(米,半宽)
+
+
 def aim(cx, cy):
     # 画面平面上 (cx, cy) 对应的世界点 = C0 + cx·R + cy·U;镜头放在它沿 -F 退 DIST 的地方
     T = tuple(C0[i] + cx * R[i] + cy * U[i] for i in range(3))
     pos = [T[i] - F[i] * DIST for i in range(3)]
     js = (f"var d=D.dungeon; D.shot({json.dumps(pos)}, {json.dumps(list(T))}, 30);"
           f"d.cam.projection=0; d.cam.orthoHeight={ortho_h:.6f}; d.cam.near={NEAR}; d.cam.far={FAR}; return [d.cam.projection, d.cam.orthoHeight]")
+    if SHADOW_FOLLOW:
+        # 月光影子跟着这一块走(11-19 主城 v4):固定范围的影子以月光节点为中心;整城罩一张图太糊,改成每块只罩自己附近
+        t = -T[1] / F[1] if abs(F[1]) > 1e-6 else 0
+        G = [T[i] + F[i] * t for i in range(3)]
+        ev(f"var m=D.dungeon.moon; m.node.setWorldPosition({G[0]:.3f}, {G[1]:.3f}, {G[2]:.3f}); m.shadowOrthoSize={SHADOW_FOLLOW}; m.shadowFar=400; return 1")
     return ev(js)
 
 

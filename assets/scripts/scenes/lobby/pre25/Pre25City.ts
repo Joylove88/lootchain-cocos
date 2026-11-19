@@ -66,23 +66,37 @@ export function pre25WorldToGround(x: number, y: number): [number, number] {
 }
 
 /**
- * 站在高出地面的可走面上时人物要抬高多少米(目前只有运河石桥)。预渲染底图里桥面是高的,可走格 / 人物脚底按地面算,
- * 不抬就是「人在桥洞底下的水里走」。桥面高度从整城深度图量的(11-19,摄影棚里桥已整座下沉 1.95 米让桥头落到街面,
- * 见 G3DCityFull BRIDGE_SINK):沿桥中线 x = -7,z = 30.5 → 41.5 每米一个。
+ * 站在高出地面的可走面上时人物要抬高多少米:主城 v4 的上城(+3 米)、台阶、坡道、桥面。高度图由 build_map.py 从布局
+ * (city_plan_v4.py 的高度图,桥面按桥模型量过的高度表放大)写进 PRE25_CITY_DATA.height(地面坐标,0.1 米一档,行程编码)。
+ * 可走格 / 人物的逻辑位置都按地面投影算,画的时候按这里的高度往上挪、遮挡也按抬高后的脚底比深度。
  */
-const BRIDGE_LIFT = { x: -7, half: 1.8, z0: 30.5, step: 1, h: [0, 0.16, 0.41, 0.72, 0.98, 1.08, 1.08, 1.02, 0.84, 0.58, 0.26, 0.03] };
+const HG = (D as unknown as { height?: { x0: number; z0: number; res: number; w: number; h: number; rle: number[] } }).height;
+let HGRID: Uint8Array | null = null;
 export function pre25Lift(x: number, y: number): number {
+  if (!HG) {
+    return 0;
+  }
+  if (!HGRID) {
+    HGRID = new Uint8Array(HG.w * HG.h);
+    let k = 0;
+    for (let i = 0; i < HG.rle.length; i += 2) {
+      HGRID.fill(HG.rle[i], k, k + HG.rle[i + 1]);
+      k += HG.rle[i + 1];
+    }
+  }
   const [X, Z] = pre25WorldToGround(x, y);
-  const b = BRIDGE_LIFT;
-  if (Math.abs(X - b.x) > b.half) {
+  const fx = (X - HG.x0) * HG.res - 0.5;
+  const fz = (Z - HG.z0) * HG.res - 0.5;
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  if (i < 0 || j < 0 || i >= HG.w - 1 || j >= HG.h - 1) {
     return 0;
   }
-  const f = (Z - b.z0) / b.step;
-  if (f <= 0 || f >= b.h.length - 1) {
-    return 0;
-  }
-  const i = Math.floor(f);
-  return b.h[i] + (b.h[i + 1] - b.h[i]) * (f - i);
+  const u = fx - i;
+  const v = fz - j;
+  const g = HGRID;
+  const at = (a: number, b: number): number => g[b * HG.w + a] / 10;
+  return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
 }
 
 /** 运行时(Pre25Actors)要的几个数:整图尺寸、每像素世界单位、深度编码、块。 */
@@ -128,23 +142,19 @@ const CITY4 = (name: string): string => `ui/world/city4/${name}/spriteFrame`;
 // 11-19 整城:斜视角下一栋楼会盖住它身后(画面上方)约「楼高」那么远的街面,NPC 贴着楼背后站就像站在屋檐上。
 // 点位按整城深度图挑的:脚下往前一段地面要露着、身子不被挡、周围 1.2 米能走(挑点脚本思路见 pre25-phase0 记忆)。
 const NPCS: Array<[WorldNpcCode, string, string, number, number, 1 | -1]> = [
-  // 罗盘广场
+  // 主城 v4(11-19):功能 NPC 都在罗盘广场一圈 40 米内;点位见 tools/proto3d/pre25/city_plan_v4.py 的 NPCS
   ['BARD', '吟游诗人 · 林恩', 'city4_npc_bard', -6.5, 3.2, 1],
   ['FLOWER_GIRL', '卖花姑娘 · 艾米', 'city4_npc_flower_girl', 4, 4, -1],
   ['OLD_MAN', '老镇民 · 霍克', 'city4_npc_old_man', 4, -5.5, 1],
-  // 帝国学院门口
-  ['SCHOLAR', '帝国学者 · 艾德里安', 'city4_npc_scholar', -2, -30, 1],
-  // 西街:佣兵公会 / 金麦酒馆门口
-  ['GUILDMASTER', '公会会长 · 维克', 'city4_npc_guildmaster', -41, -3.5, 1],
-  ['INNKEEPER', '酒馆老板 · 巴克', 'city4_npc_innkeeper', -39.5, 3.5, 1],
-  // 集市街:摊位前、兵营门口、东门
-  ['MERCHANT', '杂货商 · 托比', 'city4_npc_merchant', 30.5, 21.4, -1],
-  ['VENDOR', '果摊大婶 · 玛莎', 'city4_npc_vendor', 44, 18.4, 1],
-  ['CHILD', '小汤姆', 'city4_npc_child', 38.5, 18.5, 1],
-  ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', 41.5, 17.5, -1],
-  ['GUARD_E', '城门卫兵', 'city4_npc_guard', 53.4, 21.7, -1],
-  // 南门(过石桥)
-  ['GUARD_S', '城门卫兵', 'city4_npc_guard', -10.6, 44.1, 1],
+  ['SCHOLAR', '帝国学者 · 艾德里安', 'city4_npc_scholar', -32, -58, 1],
+  ['GUILDMASTER', '公会会长 · 维克', 'city4_npc_guildmaster', -34, -4, 1],
+  ['INNKEEPER', '酒馆老板 · 巴克', 'city4_npc_innkeeper', -8, 28, 1],
+  ['MERCHANT', '杂货商 · 托比', 'city4_npc_merchant', -26, 22, -1],
+  ['VENDOR', '果摊大婶 · 玛莎', 'city4_npc_vendor', -18, 29, 1],
+  ['CHILD', '小汤姆', 'city4_npc_child', -30, 30, 1],
+  ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', 92, 4, -1],
+  ['GUARD_E', '城门卫兵', 'city4_npc_guard', 112, 1, -1],
+  ['GUARD_S', '城门卫兵', 'city4_npc_guard', -62, 76.5, 1],
 ];
 const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, X, Z, flip]) => ({ code, name, asset: CITY4(art), ...pre25Ground(X, Z), height: 215, flip }));
 
@@ -198,21 +208,23 @@ export const CITY_PRE25: WorldMapDef = {
   waypoint: { ...WAYPOINT, drawn: false },
   places: [
     { name: '罗盘广场', ...WAYPOINT, icon: 'portal' },
-    { name: '圣辉大教堂', ...pre25Ground(11, 0), icon: 'place' },
-    { name: '帝国学院', ...pre25Ground(-4, -31), icon: 'npc' },
-    { name: '佣兵公会', ...pre25Ground(-41, -4), icon: 'npc' },
-    { name: '金麦酒馆', ...pre25Ground(-41, 4), icon: 'npc' },
-    { name: '集市街', ...pre25Ground(39, 24), icon: 'npc' },
-    { name: '王都兵营', ...pre25Ground(41, 26.5), icon: 'place' },
-    { name: '石桥', ...pre25Ground(-7, 36), icon: 'place' },
-    { name: '东门', ...pre25Ground(55, 24), icon: 'place' },
-    { name: '南门', ...pre25Ground(-7, 47.5), icon: 'place' },
+    { name: '圣辉大教堂', ...pre25Ground(26, -32), icon: 'place' },
+    { name: '帝国学院', ...pre25Ground(-32, -60), icon: 'npc' },
+    { name: '佣兵公会', ...pre25Ground(-42, -8), icon: 'npc' },
+    { name: '金麦酒馆', ...pre25Ground(-8, 26), icon: 'npc' },
+    { name: '桥头集市', ...pre25Ground(-22, 26), icon: 'npc' },
+    { name: '王都兵营', ...pre25Ground(96, 6), icon: 'place' },
+    { name: '王都花园', ...pre25Ground(-66, -50), icon: 'place' },
+    { name: '主桥', ...pre25Ground(-36, 40), icon: 'place' },
+    { name: '港口', ...pre25Ground(60, 96), icon: 'place' },
+    { name: '东门', ...pre25Ground(114, 6), icon: 'place' },
+    { name: '西南门', ...pre25Ground(-64, 78), icon: 'place' },
   ],
   camps: [],
-  // 出口在两座城门的门洞里:东门 → 灰岩荒原,南门(过石桥)→ 村外林地
+  // 主城 v4:西南门 → 村外林地(主轴起点),东门 → 灰岩荒原;出口圈在门洞里面一点
   exits: [
-    { key: 'to_woods', label: '前往 · 村外林地', ...pre25Ground(-7, 48.6), radius: 140, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
-    { key: 'to_gray', label: '前往 · 灰岩荒原', ...pre25Ground(56.6, 24), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
+    { key: 'to_woods', label: '前往 · 村外林地', ...pre25Ground(-65, 79), radius: 140, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
+    { key: 'to_gray', label: '前往 · 灰岩荒原', ...pre25Ground(114, 6), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
   ],
   scene: SCENE,
   minimapArt: `${DIR}/overview/spriteFrame`,
@@ -220,6 +232,6 @@ export const CITY_PRE25: WorldMapDef = {
 
 /** 别的地图通往主城的落点(出口圈里面一点)。 */
 export const CITY_PRE25_ENTRY = {
-  fromWoods: pre25Ground(-7, 45),
-  fromGray: pre25Ground(52.5, 24),
+  fromWoods: pre25Ground(-61, 74),
+  fromGray: pre25Ground(108, 6),
 };

@@ -32,6 +32,11 @@ export function cityFloorY(x: number, z: number): number {
 /** 地面那张大贴图管的范围(比可走的范围大一圈:房子的墙脚、教堂的台阶也在它上面)。 */
 export const CITY_GROUND = { x0: -32, z0: -24, w: 64, d: 48 };
 /**
+ * 主城 v4(预渲染第 1 期,11-19 用户「Build v4」):整城按 G3DCityV4 重摆。on 时广场东边的旧台地 / 台阶 / 立像不搭(大教堂挪到主轴尽头的上城),
+ * trees = 额外的树 [x, z, 高, 树根高度](上城上的树站在 3 米高台上)。由 G3DCityV4.applyCityV4Ground 设置。
+ */
+export const CITY_V4 = { on: false, trees: [] as Array<[number, number, number, number]> };
+/**
  * 月光:从西北方向的高处照下来 —— 教堂的正面(朝西)和广场都照得到,影子往东南方向拖。
  * 原型里月亮画在教堂的左上方(东北),照那个方向打光的话教堂正面是全黑的;所以天上看得见的月亮(CITY_MOON_SKY)和打光的方向分开了,
  * 影子和天上的月亮对不上,这是有意的取舍。
@@ -833,6 +838,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
     solid(24, -2, 8, 12, 30);
   }
 
+  if (!CITY_V4.on) {          // v4:大教堂挪到上城,广场东边的旧台地不搭
   // ── 教堂前的台地(第四轮,照原型):广场东沿一道石挡墙,墙顶一排石柱和铁栏;正中一段宽台阶上到台地,台阶两头各一根带灯的石柱。
   //    教堂、柏树、立像都站在台地上(以前是平地上一排栏杆,台阶跟着教堂斜过去)──
   {
@@ -959,6 +965,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
       s.stone.box(0.14, 0.9, 0.14, V(14.85, TH + 3.6, -8.05), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
     }
   }
+  }
 
   // ── 水井:一圈石井栏、两根立柱撑着一个小顶棚、一根辘轳、一只桶 ──
   {
@@ -1081,15 +1088,15 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
   lamp(2.4, 8.4);
 
   // ── 枫树:叶子快掉光了,只在梢头剩几片红叶 ──
-  const maple = (x: number, z: number, h: number, r0: number, seed: number): void => {
+  const maple = (x: number, z: number, h: number, r0: number, seed: number, y0 = 0): void => {
     const lean = [R(-0.1, 0.1), R(-0.1, 0.1)];
     const wob = [R(0, 6.28), R(0, 6.28)];
-    const at = (t: number): Vec3 => V(x + lean[0] * h * t + Math.sin(wob[0] + t * 4) * 0.012 * h * t, h * t, z + lean[1] * h * t + Math.cos(wob[1] + t * 3.3) * 0.012 * h * t);
+    const at = (t: number): Vec3 => V(x + lean[0] * h * t + Math.sin(wob[0] + t * 4) * 0.012 * h * t, y0 + h * t, z + lean[1] * h * t + Math.cos(wob[1] + t * 3.3) * 0.012 * h * t);
     const trunk: Vec3[] = [];
     for (let i = 0; i <= 9; i += 1) {
       trunk.push(at((i / 9) * 0.82));
     }
-    trunk[0].y = -0.1;
+    trunk[0].y = y0 - 0.1;
     const tone = R(0.5, 0.66);
     const tint: Tint = [tone, tone * 0.96, tone * 0.92];
     s.bark.tube(trunk, (t) => r0 * (1 - 0.7 * t) * (1 + 0.6 * Math.max(0, 1 - t * 9) ** 2), 9, { tint, den: 0.5 });
@@ -1142,11 +1149,12 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
     // 树脚一圈石头围的树池
     for (let i = 0; i < 10; i += 1) {
       const a = (i / 10) * 6.283;
-      s.stone.box(0.5, 0.22, 0.3, V(x + Math.cos(a) * 0.95, 0.11, z + Math.sin(a) * 0.95), V(0, -(a * 180) / Math.PI + 90, 0), [0.6, 0.61, 0.66], 0.25, rnd, 0.03);
+      s.stone.box(0.5, 0.22, 0.3, V(x + Math.cos(a) * 0.95, y0 + 0.11, z + Math.sin(a) * 0.95), V(0, -(a * 180) / Math.PI + 90, 0), [0.6, 0.61, 0.66], 0.25, rnd, 0.03);
     }
     solid(x, z, r0 * 1.3, r0 * 1.3, h);
   };
   TREES.forEach(([x, z, h], i) => maple(x, z, h, 0.3 + (h - 7) * 0.045, i + 1));
+  CITY_V4.trees.forEach(([x, z, h, y0], i) => maple(x, z, h, 0.3 + (h - 7) * 0.045, i + 11, y0));
 
   // ── 零碎:墙根的木桶、几只木箱 ──
   barrel(-19.7, -11.6, 1);

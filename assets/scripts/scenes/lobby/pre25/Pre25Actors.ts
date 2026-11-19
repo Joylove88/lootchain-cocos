@@ -50,6 +50,7 @@ class Pre25Layer {
   private occ = new Map<string, Texture2D | null>();
   private occUsed = new Map<string, number>();
   private npcMats = new Map<Node, Material>();
+  private npcLift = new Map<Node, number>();
   private lift = 0;
   private occSweepAt = 0;
   private node: Node | null = null;
@@ -138,9 +139,19 @@ class Pre25Layer {
         sp.customMaterial = mat;
         this.npcMats.set(e.art, mat);
       }
+      // 站在上城 / 台阶 / 桥上的 NPC:身体和头顶名牌一起往上挪(节点本身不动,逻辑位置还是地面投影)
+      const lift = pre25Lift(e.x, e.y);
+      const upU = lift * R.cosP * R.ppm * R.unit;
+      const had = this.npcLift.get(e.node) ?? 0;
+      if (Math.abs(upU - had) > 0.5) {
+        for (const ch of e.node.children) {
+          ch.setPosition(ch.position.x, ch.position.y + upU - had, ch.position.z);
+        }
+        this.npcLift.set(e.node, upU);
+      }
       const inst = sp.getMaterialInstance(0);
       if (inst) {
-        this.applyOcc(inst, e.x, e.y, e.node, 0);
+        this.applyOcc(inst, e.x, e.y, e.node, lift);
       }
     }
   }
@@ -297,6 +308,7 @@ class Pre25Layer {
     this.occ.clear();
     this.occUsed.clear();
     this.npcMats.clear();
+    this.npcLift.clear();
     const w: Node | null = this.owner?.world ?? this.chunkWorld;
     if (w && w.isValid) {
       const op = w.getComponent(UIOpacity);
@@ -321,6 +333,11 @@ class Pre25Layer {
     this.node = null;
     this.sprite = null;
     this.owner = null;
+  }
+
+  /** 队长当前抬高了多少世界单位(镜头跟着往上看)。 */
+  liftUnits(): number {
+    return this.lift * R.cosP * R.ppm * R.unit;
   }
 
   info(): unknown {
@@ -572,6 +589,26 @@ function install(): void {
   };
   (wrapped as any).__pre25 = true;
   proto.step = wrapped;
+  const origCam = proto.applyCamera;
+  if (typeof origCam === 'function' && !origCam.__pre25) {
+    const cam = function (this: any, ...args: any[]): any {
+      const r = origCam.apply(this, args);
+      try {
+        if (this.def === CITY_PRE25 && this.leader && this.world && this.world.isValid) {
+          const up = layer.liftUnits() * (this.k || 1);
+          if (up > 0.5) {
+            const p = this.world.position;
+            this.world.setPosition(p.x, p.y - up, p.z);
+          }
+        }
+      } catch (error) {
+        // 镜头偏移失败不影响原来的镜头
+      }
+      return r;
+    };
+    (cam as any).__pre25 = true;
+    proto.applyCamera = cam;
+  }
   const origMul = proto.moveMul;
   if (typeof origMul === 'function' && !origMul.__pre25) {
     const mul = function (this: any, ...args: any[]): number {
