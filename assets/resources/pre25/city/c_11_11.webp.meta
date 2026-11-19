@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "dae209ea-78ba-425b-8664-93c218d036b9",
+  "uuid": "e3619f9d-4f37-4b58-bc7e-4d433140d10b",
   "files": [
     ".json",
     ".webp"
@@ -10,7 +10,7 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "dae209ea-78ba-425b-8664-93c218d036b9@6c48a",
+      "uuid": "e3619f9d-4f37-4b58-bc7e-4d433140d10b@6c48a",
       "displayName": "c_11_11",
       "id": "6c48a",
       "name": "texture",
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "dae209ea-78ba-425b-8664-93c218d036b9",
+        "imageUuidOrDatabaseUri": "e3619f9d-4f37-4b58-bc7e-4d433140d10b",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,7 +34,7 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "dae209ea-78ba-425b-8664-93c218d036b9@f9941",
+      "uuid": "e3619f9d-4f37-4b58-bc7e-4d433140d10b@f9941",
       "displayName": "c_11_11",
       "id": "f9941",
       "name": "spriteFrame",
@@ -59,7 +59,7 @@
         "pivotY": 0.5,
         "meshType": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "dae209ea-78ba-425b-8664-93c218d036b9@6c48a",
+        "imageUuidOrDatabaseUri": "e3619f9d-4f37-4b58-bc7e-4d433140d10b@6c48a",
         "atlasUuid": "",
         "trimType": "none",
         "vertices": {
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": false,
-    "redirect": "dae209ea-78ba-425b-8664-93c218d036b9@6c48a",
+    "redirect": "e3619f9d-4f37-4b58-bc7e-4d433140d10b@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "lc-android-astc4"

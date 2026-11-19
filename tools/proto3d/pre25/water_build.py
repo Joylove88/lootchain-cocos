@@ -71,7 +71,8 @@ def vert(X, Z, h, u, v, speed, rad=0.0):
 
 river = lay['river']
 RW = lay['riverW']
-half = RW / 2 + 0.8
+half = RW / 2 + 2.2          # 网格比河宽两边各多 2.2 米(底图的水往岸下伸,原来盖不住露出一条浅蓝边;多出来的由遮罩裁)
+shore = RW / 2 + 0.3          # 着色器里「岸边」的位置(浅水 / 浪花按它算)
 s = 0.0
 prev = None
 for i, (x, z) in enumerate(river):
@@ -125,6 +126,28 @@ water = np.zeros((mh, mw), bool)
 water[ok] = (surf[gj[ok], gi[ok]] == 3) & ~bridge[gj[ok], gi[ok]]
 Xp, Zp = ground(POND_Y)
 water |= ((Xp - POND[0]) / POND[2]) ** 2 + ((Zp - POND[1]) / POND[3]) ** 2 <= 1
+# 11-20 用户「岸边浅蓝细边」:布局的水面比底图里拍出来的水窄一点 → 往外扩 2 米当候选,再按底图颜色认「是水」(偏蓝:B > 1.3R 且 B ≥ G)
+from scipy import ndimage
+cand = ndimage.binary_dilation(water, iterations=int(round(2.0 * PPM / SC)))
+bridge_px = np.zeros((mh, mw), bool)
+bridge_px[ok] = bridge[gj[ok], gi[ok]]
+cand &= ~bridge_px
+blue = np.zeros((mh, mw), bool)
+ys0, xs0 = np.nonzero(cand)
+cr0, cc0 = (iy[ys0, xs0] // CH).astype(int), (ix[ys0, xs0] // CH).astype(int)
+for r_, c_ in set(zip(cr0.tolist(), cc0.tolist())):
+    pth = f'{ROOT}/assets/resources/pre25/city/c_{r_}_{c_}.webp'
+    if not os.path.exists(pth):
+        continue
+    sel = (cr0 == r_) & (cc0 == c_)
+    cimg = np.asarray(Image.open(pth).convert('RGB')).astype(np.int32)
+    py = (iy[ys0[sel], xs0[sel]] - r_ * CH).astype(int)
+    px = (ix[ys0[sel], xs0[sel]] - c_ * CH).astype(int)
+    R_, G_, B_ = cimg[py, px, 0], cimg[py, px, 1], cimg[py, px, 2]
+    blue[ys0[sel], xs0[sel]] = (B_ > R_ * 1.3 + 4) & (B_ >= G_)
+added = cand & blue & ~water
+water |= cand & blue
+print('water px', int(water.sum()), 'added by color', int(added.sum()))
 # 前面有东西挡着的像素去掉(查遮挡块的 b 通道)
 vis = np.zeros((mh, mw), bool)
 ys, xs = np.nonzero(water)
@@ -138,11 +161,11 @@ for r_, c_ in set(zip(cr.tolist(), cc.tolist())):
     py = (iy[ys[sel], xs[sel]] - r_ * CH).astype(int)
     px = (ix[ys[sel], xs[sel]] - c_ * CH).astype(int)
     vis[ys[sel], xs[sel]] = o[py, px, 2] < 100
-m = Image.fromarray((vis * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.8))
+m = Image.fromarray((vis * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.55))
 m.save(OUT_MASK, optimize=True)
 print('mask', OUT_MASK, m.size, f'{vis.mean():.4f}', os.path.getsize(OUT_MASK) // 1024, 'KB')
 
-data = {'pos': pos, 'uv0': uv0, 'uv1': uv1, 'speed': col, 'radial': radial, 'idx': idx, 'mask': 'pre25/city/water_mask/texture', 'riverHalf': half}
+data = {'pos': pos, 'uv0': uv0, 'uv1': uv1, 'speed': col, 'radial': radial, 'idx': idx, 'mask': 'pre25/city/water_mask/texture', 'riverHalf': shore}
 with open(OUT_TS, 'w', encoding='utf-8', newline='\n') as f:
     f.write('// 自动生成:tools/proto3d/pre25/water_build.py(主城 v4 流动的水:网格 + 遮罩路径;别手改)\n/* eslint-disable */\n')
     f.write('export const PRE25_WATER = ' + json.dumps(data, separators=(',', ':')) + ' as const;\n')

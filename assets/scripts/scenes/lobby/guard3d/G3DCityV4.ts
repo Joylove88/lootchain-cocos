@@ -305,7 +305,8 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
   }
 
   // ── 河:水面 + 两岸石砌河堤(桥下断开);港湾 ──
-  const water: Tint = [0.15, 0.21, 0.25];          // 参考图:清的蓝灰,映着天          // 偏蓝绿、清一点(原来近乎黑)
+  const water: Tint = [0.08, 0.15, 0.19];          // 11-20:压暗接近游戏里叠的动态水面(原来底图的水亮蓝,露在岸边成一条浅边)
+  // 旧:          // 参考图:清的蓝灰,映着天          // 偏蓝绿、清一点(原来近乎黑)
   const RW = D.riverW;
   const rv = D.river as unknown as Array<[number, number]>;
   const bridges = D.bridges as unknown as Array<[number, number, number]>;
@@ -359,7 +360,7 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
     for (let i = 0; i < n; i += 1) {
       const a0 = (i / n) * Math.PI * 2;
       const a1 = ((i + 1) / n) * Math.PI * 2;
-      s.winDark.facet([V(px, y, pz), V(px + Math.cos(a1) * rx, y, pz + Math.sin(a1) * rz), V(px + Math.cos(a0) * rx, y, pz + Math.sin(a0) * rz)], [[0.5, 0.5], [1, 0], [0, 0]], [0.14, 0.2, 0.22]);
+      s.winDark.facet([V(px, y, pz), V(px + Math.cos(a1) * rx, y, pz + Math.sin(a1) * rz), V(px + Math.cos(a0) * rx, y, pz + Math.sin(a0) * rz)], [[0.5, 0.5], [1, 0], [0, 0]], [0.08, 0.15, 0.18]);
       const am = (a0 + a1) / 2;
       s.stone.box(1.0, 0.3, 0.5, V(px + Math.cos(am) * (rx + 0.25), y + 0.1, pz + Math.sin(am) * (rz + 0.25)), V(0, -deg(am) + 90, 0), STONE, 0.5, rnd, 0.03);
     }
@@ -583,12 +584,43 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
     }
   }
 
-  // ── 草丛(11-19 参考图:满地的草):草坪 / 花园上每 0.5 米左右一簇,三片草叶,深浅几种绿,偶尔一朵小野花 ──
-  const GREENS: Tint[] = [[0.2, 0.32, 0.12], [0.26, 0.4, 0.14], [0.32, 0.46, 0.16], [0.4, 0.48, 0.2]];
-  for (let gz = BZ0; gz < BZ1; gz += 0.5) {
-    for (let gx = BX0; gx < BX1; gx += 0.5) {
-      const x = gx + R(-0.22, 0.22);
-      const z = gz + R(-0.22, 0.22);
+  // ── 草丛(11-19 参考图:满地的草;11-20 用户「看起来像是一堆刺」)──
+  // 原来每簇 3 片 5~9 厘米宽、直立的三角形 + 亮黄绿尖 = 一根根刺。改成:每 0.45 米一簇、每簇 7~10 片细草叶(1.6~2.8 厘米宽),
+  // 从簇心往外弯(两段:下段偏直、上段往外倒),颜色贴着草坪(根部暗、尖上只亮一点),高矮不一 → 俯视是一团团软的草,不是竖着的刺
+  const GREENS: Tint[] = [[0.15, 0.26, 0.09], [0.18, 0.3, 0.1], [0.22, 0.34, 0.12], [0.27, 0.37, 0.14]];
+  // 疏密:约 3 米一格的平滑噪声(密的地方草簇大、叠两簇,稀的地方露草坪)—— 均匀撒点看起来像圆点花布
+  const hs = (i: number, j: number): number => {
+    const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const dens = (x: number, z: number): number => {
+    const fx = x / 3.2;
+    const fz = z / 3.2;
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const u = fx - i;
+    const v = fz - j;
+    const su = u * u * (3 - 2 * u);
+    const sv = v * v * (3 - 2 * v);
+    const a0 = hs(i, j) + (hs(i + 1, j) - hs(i, j)) * su;
+    const a1 = hs(i, j + 1) + (hs(i + 1, j + 1) - hs(i, j + 1)) * su;
+    const n1 = a0 + (a1 - a0) * sv;
+    const gx2 = x / 1.1;
+    const gz2 = z / 1.1;
+    const i2 = Math.floor(gx2);
+    const j2 = Math.floor(gz2);
+    const n2 = hs(i2 + 50, j2 + 50) * (1 - (gx2 - i2)) + hs(i2 + 51, j2 + 50) * (gx2 - i2);
+    return Math.max(0, Math.min(1, n1 * 0.8 + n2 * 0.2));
+  };
+  // 第三版(11-20):少量高草簇俯视像刺 / 小扇子 → 改成大量又短又细的草叶铺满(像一层绒毛),密的地方长一点、多一点
+  for (let gz = BZ0; gz < BZ1; gz += 0.28) {
+    for (let gx = BX0; gx < BX1; gx += 0.28) {
+      const x = gx + R(-0.13, 0.13);
+      const z = gz + R(-0.13, 0.13);
+      const dn = dens(x, z);
+      if (rnd() > 0.45 + 0.7 * dn) {
+        continue;
+      }
       const k = v4Surface(x, z);
       if ((k !== 0 && k !== 2) || !inPoly(x, z, D.wall)) {
         continue;
@@ -598,28 +630,35 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
         continue;          // 池塘里不长草
       }
       // 草地边上(靠近街)稀一点,别把路边吃成一条绿边
-      if (k === 0 && (v4Surface(x + 0.8, z) === 1 || v4Surface(x - 0.8, z) === 1 || v4Surface(x, z + 0.8) === 1 || v4Surface(x, z - 0.8) === 1) && rnd() < 0.6) {
+      if (k === 0 && (v4Surface(x + 0.6, z) === 1 || v4Surface(x - 0.6, z) === 1 || v4Surface(x, z + 0.6) === 1 || v4Surface(x, z - 0.6) === 1) && rnd() < 0.5) {
         continue;
       }
       const y = v4Height(x, z);
       const c0 = GREENS[Math.floor(R(0, GREENS.length))];
-      for (let b = 0; b < 3; b += 1) {
-        const a = R(0, 6.28);
-        const h = R(0.14, 0.32) * (k === 2 ? 1.2 : 1);
-        const w = R(0.025, 0.045);
-        const lean = R(0.03, 0.12);
-        const bx = x + Math.cos(a) * 0.05;
-        const bz = z + Math.sin(a) * 0.05;
-        const p0 = V(bx - Math.sin(a) * w, y, bz + Math.cos(a) * w);
-        const p1 = V(bx + Math.sin(a) * w, y, bz - Math.cos(a) * w);
-        const p2 = V(bx + Math.cos(a) * lean, y + h, bz + Math.sin(a) * lean);
-        const col: Tint = [c0[0] * R(0.85, 1.15), c0[1] * R(0.85, 1.15), c0[2]];
-        s.leaf.facet([p0, p1, p2], [[0, 0], [1, 0], [0.5, 1]], col);
-        s.leaf.facet([p2, p1, p0], [[0.5, 1], [1, 0], [0, 0]], col);
+      const tall = R(0.75, 1.1) * (0.7 + 0.7 * dn) * (k === 2 ? 1.15 : 1);
+      const nb = 5 + Math.floor(R(0, 3 + 3 * dn));
+      const a0 = R(0, 6.28);
+      for (let b = 0; b < nb; b += 1) {
+        const a = a0 + (b / nb) * 6.28 + R(-0.5, 0.5);
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const h = R(0.05, 0.12) * tall;
+        const w = R(0.009, 0.015);
+        const lean = h * R(0.3, 0.75);
+        const r0 = R(0, 0.06);
+        const bx = x + ca * r0;
+        const bz = z + sa * r0;
+        const p0 = V(bx - sa * w, y, bz + ca * w);
+        const p1 = V(bx + sa * w, y, bz - ca * w);
+        const tip = V(bx + ca * lean, y + h, bz + sa * lean);
+        const v = R(0.78, 1.08);
+        const col: Tint = [c0[0] * v, c0[1] * v, c0[2] * v];
+        s.leaf.facet([p0, p1, tip], [[0, 0], [1, 0], [0.5, 1]], col);
+        s.leaf.facet([tip, p1, p0], [[0.5, 1], [1, 0], [0, 0]], col);
       }
-      if (rnd() < 0.015) {
+      if (rnd() < 0.006) {
         const fc: Tint = ([[0.85, 0.85, 0.8], [0.85, 0.75, 0.2], [0.55, 0.4, 0.75]] as Tint[])[Math.floor(R(0, 3))];
-        const fy = y + R(0.18, 0.3);
+        const fy = y + R(0.07, 0.14);
         s.leaf.facet([V(x - 0.04, fy, z), V(x, fy, z - 0.04), V(x + 0.04, fy, z), V(x, fy, z + 0.04)], [[0, 0], [1, 0], [1, 1], [0, 1]], fc);
       }
     }
