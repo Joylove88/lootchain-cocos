@@ -64,21 +64,21 @@ ROADS = [
     ('西路', 9, [(-20, 0), (-34, -3), (-46, -1), (-60, -9), (-72, -20), (-82, -36), (-80, -54)]),
     ('学院路', 7, [(-14, -14), (-20, -28), (-26, -40), (-34, -50)]),
     ('北岸滨河路', 6, [(110, 60), (90, 56), (64, 46), (30, 41), (-6, 45), (-40, 54), (-72, 48), (-104, 54)]),
-    ('南岸滨河路', 5, [(104, 82), (88, 76), (62, 66), (30, 60), (-6, 66), (-40, 74), (-76, 69), (-100, 76)]),
-    ('北巷', 5, [(-80, -54), (-62, -74), (-34, -84), (-6, -86), (8, -68)]),
+    ('南岸滨河路', 6, [(104, 82), (88, 76), (62, 66), (30, 60), (-6, 66), (-40, 74), (-76, 69), (-100, 76)]),
+    ('北巷', 6, [(-80, -54), (-62, -74), (-34, -84), (-6, -86), (8, -68)]),
     ('东巷', 6, [(60, -42), (80, -32), (96, -14), (104, 6), (98, 27)]),
-    ('西坊巷', 5, [(-60, -9), (-68, 8), (-84, 22), (-90, 40), (-80, 50)]),
-    ('酒馆巷', 5, [(-46, -1), (-42, 14), (-30, 24), (-20, 32), (-8, 34)]),
-    ('东坊巷', 5, [(12, 13), (20, 26), (30, 36), (40, 42)]),
+    ('西坊巷', 6, [(-60, -9), (-68, 8), (-84, 22), (-90, 40), (-80, 50)]),
+    ('酒馆巷', 6, [(-46, -1), (-42, 14), (-30, 24), (-20, 32), (-8, 34)]),
+    ('东坊巷', 6, [(12, 13), (20, 26), (30, 36), (40, 42)]),
     ('东桥路', 6, [(48, 24), (52, 38), (56, 50), (60, 64), (64, 80)]),
-    ('西桥路', 5, [(-58, 30), (-58, 46), (-60, 62), (-64, 80)]),
-    ('坊间小巷', 4.5, [(-68, 8), (-50, 14), (-42, 14)]),
-    ('坊间小巷', 4.5, [(-90, 40), (-72, 34), (-58, 30), (-42, 30), (-30, 24)]),
-    ('坊间小巷', 4.5, [(80, 31), (84, 46), (90, 56)]),
-    ('坊间小巷', 4.5, [(-34, -50), (-50, -64), (-62, -74)]),
-    ('坊间小巷', 4.5, [(28, -64), (40, -80), (60, -84)]),
-    ('坊间小巷', 4.5, [(-6, 66), (-20, 82), (-40, 88)]),
-    ('坊间小巷', 4.5, [(30, 60), (34, 78), (20, 90)]),
+    ('西桥路', 6, [(-58, 30), (-58, 46), (-60, 62), (-64, 80)]),
+    ('坊间小巷', 5, [(-68, 8), (-50, 14), (-42, 14)]),
+    ('坊间小巷', 5, [(-90, 40), (-72, 34), (-58, 30), (-42, 30), (-30, 24)]),
+    ('坊间小巷', 5, [(80, 31), (84, 46), (90, 56)]),
+    ('坊间小巷', 5, [(-34, -50), (-50, -64), (-62, -74)]),
+    ('坊间小巷', 5, [(28, -64), (40, -80), (60, -84)]),
+    ('坊间小巷', 5, [(-6, 66), (-20, 82), (-40, 88)]),
+    ('坊间小巷', 5, [(30, 60), (34, 78), (20, 90)]),
 ]
 BRIDGES = [(-6, 55, 7), (56, 52, 7), (-60, 62, 5)]          # x, z, 宽
 PLAZAS = [
@@ -170,7 +170,9 @@ green_m = raster([shape_poly(s) for _, s in GREENS] + [shape_poly(PADDOCK)])
 key_polys = [rot_rect(x, z, w, d, y) for _, _, x, z, w, d, y in KEYS]
 key_m = raster(key_polys + [shape_poly(TERRACE)])
 hard = road_m | water_m | plaza_m | green_m | key_m | ~inside_core
-hard_d = ndimage.binary_dilation(hard, iterations=int(1.0 * RES))
+# 11-19 用户:「建筑不要太多太密集,让玩家可以有更多走动的空间」→ 房子离街 2 米、房与房之间至少 SPACE 米、沿街间距放大、填空只补少量
+SPACE = float(OPT.get('space', 6.0))
+hard_d = ndimage.binary_dilation(hard, iterations=int(2.0 * RES))
 
 # ── 沿街排房子 ──
 houses = []
@@ -184,7 +186,7 @@ for name, w, c in road_curves:
         while s < total:
             hw = RND.choice([6.5, 7.0, 7.5, 8.0, 9.0, 10.0])
             hd = RND.choice([6.0, 6.5, 7.0, 8.0])
-            gap = RND.uniform(2.6, 5.0)
+            gap = RND.uniform(SPACE, SPACE * 2.2)
             # 弧长 s 处的点和切线
             acc = 0
             for (a, b), l in zip(seg, L):
@@ -197,12 +199,12 @@ for name, w, c in road_curves:
             else:
                 break
             nx, nz = -tz * side, tx * side
-            off = w / 2 + 1.3 + hd / 2 + RND.uniform(0, 1.0)
+            off = w / 2 + 2.3 + hd / 2 + RND.uniform(0, 1.0)
             cx, cz = px + nx * off, pz + nz * off
             yaw = math.degrees(math.atan2(-tz, tx)) + RND.uniform(-6, 6)
             poly = rot_rect(cx, cz, hw, hd, yaw)
             fm = raster([poly])
-            if not (fm & hard_d).any() and not (fm & ndimage.binary_dilation(house_m, iterations=int(2.6 * RES))).any():
+            if not (fm & hard_d).any() and not (fm & ndimage.binary_dilation(house_m, iterations=int(SPACE * RES))).any():
                 houses.append({'x': round(cx, 2), 'z': round(cz, 2), 'w': hw, 'd': hd, 'yaw': round(yaw, 1), 'road': name})
                 house_m |= fm
                 s += hw + gap
@@ -220,7 +222,10 @@ for name, w, c in road_curves:
 S = np.array(samples)
 open_m = road_m | plaza_m
 open_near = ndimage.binary_dilation(open_m, iterations=int(14 * RES))
+n_fill = 0
 for _ in range(int(OPT.get('infill', 40000))):
+    if n_fill >= int(OPT.get('fillmax', 8)):
+        break
     cx, cz = RND.uniform(X0, X1), RND.uniform(Z0, Z1)
     i, j = int((cx - X0) * RES), int((cz - Z0) * RES)
     if not (0 <= i < GW and 0 <= j < GH) or not inside_core[j, i] or hard_d[j, i] or not open_near[j, i]:
@@ -231,10 +236,11 @@ for _ in range(int(OPT.get('infill', 40000))):
     hd = RND.choice([6.0, 6.5, 7.0])
     poly = rot_rect(cx, cz, hw, hd, yaw)
     fm = raster([poly])
-    if (fm & hard_d).any() or (fm & ndimage.binary_dilation(house_m, iterations=int(2.6 * RES))).any():
+    if (fm & hard_d).any() or (fm & ndimage.binary_dilation(house_m, iterations=int(SPACE * RES))).any():
         continue
     houses.append({'x': round(cx, 2), 'z': round(cz, 2), 'w': hw, 'd': hd, 'yaw': round(yaw, 1), 'road': 'infill'})
     house_m |= fm
+    n_fill += 1
 
 # 院子里的树(街坊中间空出来的地方点几棵)
 trees = []
@@ -330,8 +336,8 @@ by = H + 50
 d.line([30, by, 30 + 20 * PX, by], fill=(240, 236, 224), width=4)
 d.text((30 + 20 * PX + 10, by), '20 米', font=F, fill=(240, 236, 224), anchor='lm')
 d.text((30 + 20 * PX + 80, by), '浅灰 = 石板街 / 广场   深灰 = 碎石地(也能走)   深色 = 房子   金边 = 有 NPC / 功能   绿 = 花园(能走)', font=F, fill=(220, 214, 200), anchor='lm')
-d.text((30, by + 36), f'约 {230} × {200} 米(第一版 120 × 100);弯河穿城、上城高台、主路弯曲分叉、广场形状各异;房子沿街排,中间是能走的后院', font=F, fill=(220, 214, 200), anchor='lm')
-d.text((30, by + 68), f'房子 {len(houses)} 栋(复用现有 4 种民居模型,换朝向 / 大小);巷子至少 2.5 米;能走面积约占城内 {walk_m.sum() / inside.sum():.0%}', font=F, fill=(220, 214, 200), anchor='lm')
+d.text((30, by + 36), f'约 {230} × {200} 米(第一版 120 × 100);弯河穿城、上城高台、主路弯曲分叉、广场形状各异;房子少而疏、沿街排,中间是能走的空地 / 后院', font=F, fill=(220, 214, 200), anchor='lm')
+d.text((30, by + 68), f'房子 {len(houses)} 栋(复用现有 4 种民居模型,换朝向 / 大小);房与房之间至少 6 米;能走面积约占城内 {walk_m.sum() / inside.sum():.0%}', font=F, fill=(220, 214, 200), anchor='lm')
 nx, ny = W - 50, H + 80
 d.polygon([(nx, ny - 34), (nx - 12, ny), (nx + 12, ny)], fill=(240, 236, 224))
 d.text((nx, ny + 16), '北', font=F, fill=(240, 236, 224), anchor='mm')
