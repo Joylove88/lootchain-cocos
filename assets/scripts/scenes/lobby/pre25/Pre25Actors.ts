@@ -1,7 +1,7 @@
-import { EffectAsset, JsonAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UITransform, Vec2, Vec4 } from 'cc';
+import { assetManager, builtinResMgr, EffectAsset, JsonAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec2, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { LobbyTownRenderer } from '../LobbyTownRenderer';
-import { CITY_PRE25, PRE25_CITY_RUNTIME as R } from './Pre25City';
+import { CITY_PRE25, PRE25_CHUNKS, PRE25_CITY_RUNTIME as R, pre25Lift } from './Pre25City';
 
 /**
  * 预渲染 2.5D(第 0 期):主城换成 CITY_PRE25 时,队长的 2D 骨骼藏起来,换成 3D 模型离线拍的 8 方向序列帧,
@@ -23,6 +23,8 @@ const EPS_M = 0.35;                 // 判定余量(米):人物当竖板,手和�
 const SPEED_MUL = 1.8;
 /** 跑步片段原本的前进速度(米 / 秒,转套时量的位移 ÷ 时长);播放进度按实际走过的地面距离推,脚步和位移对得上。 */
 const RUN_MPS = 4.25;
+/** 遮挡块多久没用到就放掉(毫秒):整城 253 块,一块解压 4MB,只留身边的。 */
+const OCC_IDLE_MS = 8000;
 
 interface HeroAtlas {
   ppm: number;
@@ -36,6 +38,7 @@ interface HeroAtlas {
 }
 
 const v4 = new Vec4();
+const WHITE = (): Texture2D => builtinResMgr.get<Texture2D>('white-texture');
 
 class Pre25Layer {
   private atlas: HeroAtlas | null = null;
@@ -45,6 +48,10 @@ class Pre25Layer {
   private failed = '';
   private frameCache = new Map<string, SpriteFrame>();
   private occ = new Map<string, Texture2D | null>();
+  private occUsed = new Map<string, number>();
+  private npcMats = new Map<Node, Material>();
+  private lift = 0;
+  private occSweepAt = 0;
   private node: Node | null = null;
   private sprite: Sprite | null = null;
   private owner: any = null;
@@ -59,7 +66,7 @@ class Pre25Layer {
   /** 跑步片段的相位(0~1 循环),按实际走过的地面距离推。 */
   private runPhase = 0;
   private lastPoseAt = 0;
-  private stats = { frames: 0, occLoads: 0, block: '' };
+  private stats = { frames: 0, occLoads: 0, block: '', chunks: 0, chunkLoads: 0 };
 
   sync(self: any): void {
     if (self.def !== CITY_PRE25) {
@@ -68,6 +75,7 @@ class Pre25Layer {
       }
       return;
     }
+    this.streamChunks(self);
     if (!this.ready()) {
       return;
     }
@@ -89,11 +97,214 @@ class Pre25Layer {
     if (leader.spineNode && leader.spineNode.isValid && leader.spineNode.active) {
       leader.spineNode.active = false;
     }
+    this.lift = pre25Lift(leader.x, leader.y);
     this.pose(self, leader);
-    this.uniforms(leader);
+    const mat = this.sprite?.getMaterialInstance(0);
+    if (mat) {
+      this.stats.block = this.applyOcc(mat, leader.x, leader.y, leader.node, this.lift);
+    }
+    this.npcOcclusion(self);
+    this.sweepOcc();
+  }
+
+  /**
+   * NPC 也挂同一个遮挡材质(11-19 整城:斜视角下 NPC 常站在前面那栋房子的屋檐后面,不挡就画到屋顶上去了)。
+   * 只更新镜头附近的;站立图换成骨骼的(art 上没有 Sprite)不管。
+   */
+  private npcOcclusion(self: any): void {
+    const list = self.npcNodes as Array<{ node: Node; art: Node; x: number; y: number }> | undefined;
+    const layout = self.layout;
+    if (!list || !layout || !this.effect) {
+      return;
+    }
+    const k = self.k || 1;
+    const hw = Math.max(layout.width, layout.stageWidth) / k / 2 + 300;
+    const hh = Math.max(layout.height, layout.stageHeight) / k / 2 + 400;
+    for (const e of list) {
+      if (!e.node || !e.node.isValid || !e.art || !e.art.isValid) {
+        continue;
+      }
+      if (Math.abs(e.x - self.camX) > hw || Math.abs(e.y - self.camY) > hh) {
+        continue;
+      }
+      const sp = e.art.getComponent(Sprite);
+      if (!sp || !e.art.activeInHierarchy) {
+        continue;
+      }
+      let mat = this.npcMats.get(e.art);
+      if (!mat || sp.customMaterial !== mat) {
+        mat = new Material();
+        mat.initialize({ effectAsset: this.effect });
+        sp.customMaterial = mat;
+        this.npcMats.set(e.art, mat);
+      }
+      const inst = sp.getMaterialInstance(0);
+      if (inst) {
+        this.applyOcc(inst, e.x, e.y, e.node, 0);
+      }
+    }
+  }
+
+  /** 放掉一阵子没用到的遮挡块(每秒扫一次)。 */
+  private sweepOcc(): void {
+    const now = Date.now();
+    if (now < this.occSweepAt) {
+      return;
+    }
+    this.occSweepAt = now + 1000;
+    for (const [key, at] of Array.from(this.occUsed.entries())) {
+      if (now - at < OCC_IDLE_MS) {
+        continue;
+      }
+      const tex = this.occ.get(key);
+      this.occ.delete(key);
+      this.occUsed.delete(key);
+      if (tex) {
+        tex.decRef();
+        assetManager.releaseAsset(tex);
+      }
+    }
+  }
+
+  // ── 地面块跟着镜头载入 / 释放 ──
+  private chunks = new Map<string, { node: Node; sf: SpriteFrame | null; ready: boolean }>();
+  private chunkWorld: Node | null = null;
+  private revealed = false;
+
+  private streamChunks(self: any): void {
+    const root: Node | null = self.groundRoot;
+    const world: Node | null = self.world;
+    const layout = self.layout;
+    if (!root || !root.isValid || !world || !world.isValid || !layout) {
+      return;
+    }
+    if (this.chunkWorld !== world) {
+      // 换了图 / 世界重建:旧节点跟着旧世界没了,只要放掉贴图;新世界先藏起来,等眼前的块到齐
+      this.releaseChunks(false);
+      this.chunkWorld = world;
+      this.revealed = false;
+    }
+    const k = self.k || 1;
+    const hw = Math.max(layout.width, layout.stageWidth) / k / 2;
+    const hh = Math.max(layout.height, layout.stageHeight) / k / 2;
+    const cx = self.camX;
+    const cy = self.camY;
+    const need = (m: number) => (ch: { x: number; y: number; size: number }) =>
+      Math.abs(ch.x - cx) < hw + ch.size / 2 + m && Math.abs(ch.y - cy) < hh + ch.size / 2 + m;
+    const want = need(R.chunk * R.unit * 0.5);
+    const keep = need(R.chunk * R.unit * 1.5);
+    // 插在平铺底纹(Tile_*,整图外沿黑角的兜底)/ 多层地表后面;别的贴地件、传送阵光圈都在它们之后,照样压在地面块上面。
+    // 只在真要新建块时才扫一遍子节点
+    let after = -2;
+    const insertAt = (): number => {
+      if (after === -2) {
+        after = -1;
+        root.children.forEach((n, i) => {
+          if (n.name.startsWith('Tile_') || n.name.startsWith('GroundTile') || n.name.startsWith('GroundSplat') || n.name === 'Splat') {
+            after = i;
+          }
+        });
+      }
+      after += 1;
+      return after;
+    };
+    let visibleReady = true;
+    for (const ch of PRE25_CHUNKS) {
+      const key = `${ch.r}_${ch.c}`;
+      const have = this.chunks.get(key);
+      if (want(ch)) {
+        if (!have) {
+          const node = new Node(`Pre25Chunk_${key}`);
+          node.layer = root.layer;
+          node.addComponent(UITransform).setContentSize(ch.size, ch.size);
+          const sp = node.addComponent(Sprite);
+          sp.sizeMode = Sprite.SizeMode.CUSTOM;
+          sp.trim = false;
+          root.addChild(node);
+          node.setSiblingIndex(insertAt());
+          node.setPosition(ch.x, ch.y, 0);
+          const entry = { node, sf: null as SpriteFrame | null, ready: false };
+          this.chunks.set(key, entry);
+          resources.load(ch.path, SpriteFrame, (err, sf) => {
+            if (err || !sf) {
+              return;
+            }
+            if (!node.isValid || this.chunks.get(key) !== entry) {
+              return;
+            }
+            sf.addRef();
+            entry.sf = sf;
+            sp.spriteFrame = sf;
+            entry.ready = true;
+            this.stats.chunkLoads += 1;
+          });
+          visibleReady = false;
+        } else if (!have.ready) {
+          visibleReady = false;
+        }
+      } else if (have && !keep(ch)) {
+        this.dropChunk(key);
+      }
+    }
+    // 进图先藏住世界,等眼前的块都到了再显示(不出现缺图的地面)
+    const op = world.getComponent(UIOpacity) ?? world.addComponent(UIOpacity);
+    if (!this.revealed) {
+      op.opacity = visibleReady ? 255 : 0;
+      this.revealed = visibleReady;
+    }
+    this.stats.chunks = this.chunks.size;
+  }
+
+  private dropChunk(key: string): void {
+    const e = this.chunks.get(key);
+    if (!e) {
+      return;
+    }
+    this.chunks.delete(key);
+    if (e.node.isValid) {
+      e.node.destroy();
+    }
+    if (e.sf) {
+      e.sf.decRef();
+      assetManager.releaseAsset(e.sf);
+    }
+  }
+
+  private releaseChunks(destroyNodes: boolean): void {
+    for (const key of Array.from(this.chunks.keys())) {
+      const e = this.chunks.get(key)!;
+      if (!destroyNodes) {
+        this.chunks.delete(key);
+        if (e.sf) {
+          e.sf.decRef();
+          assetManager.releaseAsset(e.sf);
+        }
+      } else {
+        this.dropChunk(key);
+      }
+    }
   }
 
   stop(): void {
+    this.releaseChunks(true);
+    // 离开主城:遮挡块全放掉(sweepOcc 只在城里跑)
+    for (const tex of Array.from(this.occ.values())) {
+      if (tex) {
+        tex.decRef();
+        assetManager.releaseAsset(tex);
+      }
+    }
+    this.occ.clear();
+    this.occUsed.clear();
+    this.npcMats.clear();
+    const w: Node | null = this.owner?.world ?? this.chunkWorld;
+    if (w && w.isValid) {
+      const op = w.getComponent(UIOpacity);
+      if (op) {
+        op.opacity = 255;
+      }
+    }
+    this.chunkWorld = null;
     const leader = this.owner?.leader;
     if (leader?.spineNode && leader.spineNode.isValid) {
       leader.spineNode.active = true;
@@ -275,49 +486,49 @@ class Pre25Layer {
     const cx = (ox + w / 2) * s;
     const cy = -(oy + h / 2) * s;
     const flip = mirrored !== undefined ? -1 : 1;
-    this.node.setPosition(cx * flip, cy, 0);
+    // 站在桥上:整个人往上挪(抬高 h 米 → 画面上移 h·cos 俯角 米)
+    const up = this.lift * R.cosP * R.ppm * R.unit;
+    this.node.setPosition(cx * flip, cy + up, 0);
     this.node.setScale(flip, 1, 1);
   }
 
   // ── 遮挡材质的参数 ──
-  private uniforms(leader: any): void {
-    const mat = this.sprite?.getMaterialInstance(0);
-    if (!mat || !this.node) {
-      return;
-    }
+  /**
+   * 给一个站在 2D 世界 (x, y)(脚底)的人物设遮挡参数;ref = 坐标原点就在脚底的那个节点(换算世界 → 整图像素用),
+   * lift = 脚底高出地面多少米(桥上)。返回用到的 2 × 2 块的左上块号。
+   */
+  private applyOcc(mat: Material, x: number, y: number, ref: Node, lift: number): string {
     const [IW, IH] = R.px;
-    const wp = leader.node.worldPosition;
-    const s = leader.node.worldScale.x || 1;
-    const Wx = wp.x - leader.x * s;
-    const Wy = wp.y - leader.y * s;
+    const wp = ref.worldPosition;
+    const s = ref.worldScale.x || 1;
+    const Wx = wp.x - x * s;
+    const Wy = wp.y - y * s;
     mat.setProperty('xf', v4.set(Wx - (IW / 2) * s * R.unit, Wy + (IH / 2) * s * R.unit, 1 / (s * R.unit), 0));
-    const footIy = IH / 2 - leader.y / R.unit;
-    const sy = R.planeTop - footIy / R.ppm;
-    mat.setProperty('foot', v4.set(footIy, sy / R.tanP + R.dist, R.tanP / R.ppm, EPS_M));
+    // 地面上脚底那一点的整图 y 和视深;抬高 lift 米后:画面上移 lift·cos、离镜头近 lift·sin
+    const groundIy = IH / 2 - y / R.unit;
+    const groundDepth = (R.planeTop - groundIy / R.ppm) / R.tanP + R.dist;
+    const footIy = groundIy - lift * R.cosP * R.ppm;
+    mat.setProperty('foot', v4.set(footIy, groundDepth - lift * R.sinP, R.tanP / R.ppm, EPS_M));
     mat.setProperty('nf', v4.set(R.near, R.far, 0, 0));
     // 2 × 2 遮挡块:人物中心(脚上方约 80 像素)往左上半块取整
-    const ix = IW / 2 + leader.x / R.unit;
+    const ix = IW / 2 + x / R.unit;
     const iy = footIy - 80;
     const ch = R.chunk;
     const [cols, rows] = R.grid;
     const bc = Math.max(0, Math.min(cols - 2, Math.floor((ix - ch / 2) / ch)));
     const br = Math.max(0, Math.min(rows - 2, Math.floor((iy - ch / 2) / ch)));
     mat.setProperty('blk', v4.set(bc * ch, br * ch, ch, 0));
-    const key = `${br}_${bc}`;
-    if (key !== this.stats.block) {
-      this.stats.block = key;
-    }
     const names = ['occ0', 'occ1', 'occ2', 'occ3'];
     [[br, bc], [br, bc + 1], [br + 1, bc], [br + 1, bc + 1]].forEach(([r, c], k) => {
-      const t = this.occTex(r, c);
-      if (t) {
-        mat.setProperty(names[k], t);
-      }
+      // 还没载到(或刚被放掉)的块先给白图 = 「这里没有遮挡」,不留着上一块的旧图
+      mat.setProperty(names[k], this.occTex(r, c) ?? WHITE());
     });
+    return `${br}_${bc}`;
   }
 
   private occTex(r: number, c: number): Texture2D | null {
     const key = `${r}_${c}`;
+    this.occUsed.set(key, Date.now());
     if (this.occ.has(key)) {
       return this.occ.get(key) ?? null;
     }
@@ -326,6 +537,12 @@ class Pre25Layer {
       if (err || !tex) {
         return;
       }
+      if (!this.occ.has(key)) {
+        // 载到之前已经被放掉了(走远了)
+        assetManager.releaseAsset(tex);
+        return;
+      }
+      tex.addRef();
       // 深度拆成两个 8 位存的,不能插值(插值会把高 8 位和低 8 位搅在一起);也不要多级渐远
       tex.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
       tex.setMipFilter(Texture2D.Filter.NONE);

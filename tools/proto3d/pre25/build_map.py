@@ -54,7 +54,12 @@ def stitch(kind):
     full = np.zeros((ROWS * TH, COLS * TW, 3), np.float32)
     for r in range(ROWS):
         for c in range(COLS):
-            a = load(os.path.join(CAP, 'tiles', f'{r}_{c}_{kind}.png'))
+            path = os.path.join(CAP, 'tiles', f'{r}_{c}_{kind}.png')
+            if not os.path.exists(path):          # 多边形外没拍的块:留黑(颜色)/ 留 0(深度、蒙版 → 当成没东西)
+                if kind.startswith('m_') and kind.endswith('_255'):
+                    full[r * TH:(r + 1) * TH, c * TW:(c + 1) * TW] = 255
+                continue
+            a = load(path)
             full[r * TH:(r + 1) * TH, c * TW:(c + 1) * TW] = a[MG:MG + TH, MG:MG + TW]
     return full[:IH, :IW]
 
@@ -98,9 +103,13 @@ occp[..., 0] = 255
 occp[..., 1] = 255
 occp[:IH, :IW] = occ
 total_c = total_o = 0
+present = []          # 存下来的块 [行, 列];整块落在没拍的区域(纯黑)的不存,游戏里也不铺
 for r in range(crows):
     for c in range(ccols):
         sl = (slice(r * CHUNK, (r + 1) * CHUNK), slice(c * CHUNK, (c + 1) * CHUNK))
+        if bgp[sl].max() < 6:
+            continue
+        present.append([r, c])
         cp = os.path.join(OUT, f'c_{r}_{c}.webp')
         Image.fromarray(bgp[sl]).save(cp, 'WEBP', quality=Q, method=6)
         op = os.path.join(OUT, f'o_{r}_{c}.webp')
@@ -112,13 +121,13 @@ for r in range(crows):
 ov = Image.fromarray(bg8)
 ov.thumbnail((1024, 1024), Image.LANCZOS)
 ov.save(os.path.join(OUT, 'overview.jpg'), quality=85)
-print(f'chunks {ccols}x{crows}  color {total_c / 1e6:.2f}MB  occ {total_o / 1e6:.2f}MB  overview {os.path.getsize(os.path.join(OUT, "overview.jpg")) / 1e3:.0f}KB')
+print(f'chunks {ccols}x{crows} (存了 {len(present)} 块)  color {total_c / 1e6:.2f}MB  occ {total_o / 1e6:.2f}MB  overview {os.path.getsize(os.path.join(OUT, "overview.jpg")) / 1e3:.0f}KB')
 
 # ── 可走格:图片里每格中心 → 画面平面 → 地面(y = 0)上的世界点 → 在广场里、不在挡路块里、不上台地 ──
 B = M['bounds']
 area = OPT.get('area', '-20,20,-14,14').split(',')
 AX0, AX1, AZ0, AZ1 = [float(v) for v in area]
-XMAX = float(OPT.get('xmax', 11.0))          # 台地(高 2.4 米)这一期不上:台阶脚下为止
+XMAX = float(OPT.get('xmax', 11.0))          # 整城用 --xmax=999(台地 / 大教堂由挡路块挡)          # 台地(高 2.4 米)这一期不上:台阶脚下为止
 R = 0.35
 solids = M['scene']['solids']
 gc, gr = math.ceil(IW / CELL), math.ceil(IH / CELL)
@@ -140,7 +149,7 @@ for r in range(gr):
             ground_d = sy / math.tan(p) + M['dist']
             od = NEAR + (dep[y0:y1, x0:x1, 0] / 255.0 + dep[y0:y1, x0:x1, 1] / 255.0 / 255.0) * (FAR - NEAR)
             cover = (alpha_solid[y0:y1, x0:x1] > 0.5) & (od < ground_d - 0.3)
-            if cover.mean() > 0.35:
+            if cover.mean() > 0.35 and 'nocover' not in OPT:          # 整城用 --nocover:被挡住的地方主角显示成半透明剪影(pre25-actor.effect),不再整格禁走
                 ok = False
         if ok:
             for s in solids:
@@ -195,7 +204,7 @@ for L in M['scene'].get('lights', []):
         lights.append([round(ix), round(iy), L['kind'], [round(v) for v in L['c']]])
 
 data = {
-    'px': [IW, IH], 'chunk': CHUNK, 'grid': [ccols, crows], 'unit': UNIT, 'ppm': PPM, 'pitch': M['pitch'], 'yaw': YAW,
+    'px': [IW, IH], 'chunk': CHUNK, 'grid': [ccols, crows], 'chunks': present, 'unit': UNIT, 'ppm': PPM, 'pitch': M['pitch'], 'yaw': YAW,
     'near': NEAR, 'far': FAR, 'dist': M['dist'], 'c0': C0, 'plane': M['plane'],
     'walk': {'cell': CELL, 'cols': gc, 'rows': rows_hex}, 'lights': lights,
 }

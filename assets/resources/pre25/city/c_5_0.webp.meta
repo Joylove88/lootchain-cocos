@@ -2,15 +2,39 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1",
+  "uuid": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213",
   "files": [
     ".json",
     ".webp"
   ],
   "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213@6c48a",
+      "displayName": "c_5_0",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1@f9941",
+      "uuid": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213@f9941",
       "displayName": "c_5_0",
       "id": "f9941",
       "name": "spriteFrame",
@@ -35,7 +59,7 @@
         "pivotY": 0.5,
         "meshType": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1@6c48a",
+        "imageUuidOrDatabaseUri": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213@6c48a",
         "atlasUuid": "",
         "trimType": "none",
         "vertices": {
@@ -99,37 +123,13 @@
         ".json"
       ],
       "subMetas": {}
-    },
-    "6c48a": {
-      "importer": "texture",
-      "uuid": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1@6c48a",
-      "displayName": "c_5_0",
-      "id": "6c48a",
-      "name": "texture",
-      "userData": {
-        "wrapModeS": "clamp-to-edge",
-        "wrapModeT": "clamp-to-edge",
-        "minfilter": "linear",
-        "magfilter": "linear",
-        "mipfilter": "none",
-        "anisotropy": 0,
-        "isUuid": true,
-        "imageUuidOrDatabaseUri": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1",
-        "visible": false
-      },
-      "ver": "1.0.22",
-      "imported": true,
-      "files": [
-        ".json"
-      ],
-      "subMetas": {}
     }
   },
   "userData": {
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": false,
-    "redirect": "90c904cf-1bc1-453f-ab61-fb3756e0d4b1@6c48a",
+    "redirect": "ab97d6a5-1a34-4ad6-b59b-7c6c8df30213@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "lc-android-astc4"

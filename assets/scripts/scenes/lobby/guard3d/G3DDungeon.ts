@@ -11,6 +11,7 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
+import { applyCityFullGround, extendCityFull, FULL_SKIP } from './G3DCityFull';
 import { buildCityScene, CITY, CITY_GROUND, CITY_MOON, CITY_MOON_SKY, CITY_PLAN, CITY_TERRACE, cityFloorY } from './G3DCity';
 import { paintMoon, paintSkyline, paintWindow, plasterPbr, rubblePbr, plazaLeaves, plazaPbr, plazaTint, StoneTile, stoneTileMaps, slatePbr } from './G3DCityTex';
 import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
@@ -155,6 +156,8 @@ export interface DungeonCfg {
   scene: 'hall' | 'wild' | 'city';
   /** 主城里哪些建筑换成「图转 3D」的模型(逗号隔开的键,地址 &bld=smithy);空 = 全用代码拼的。模型临时拷在 resources/g3d_bld/<键>/。 */
   bld: string;
+  /** 整城(预渲染第 1 期,&cityfull=1):中心广场外面接上整座城(G3DCityFull)。 */
+  cityFull: boolean;
   /** 建筑模型的窗(颜色贴图里暖黄发亮的地方)自己发光的强度;0 = 不发光。地址 &bglow=。 */
   bldGlow: number;
   /** 石板地面(&bld=…,ground):一块贴图铺多少米、颜色乘多少、高光强度(越大倒影越亮,迎着月光也越亮)。地址 &pavem= &pavek= &pavespec=。 */
@@ -191,7 +194,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, bldShadow: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', cityFull: false, bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -216,6 +219,17 @@ const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; 
   well: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.72, 0.74, 0.8] },
   lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, sx: 0.6, glow: 0.75, tone: [1, 0.93, 0.82], ab: [0.3, 0.3, 0.32], metal: 0.35 },          // 第十二轮:原型是细黑铁杆,我们是银亮金属 → 颜色压暗、金属感减到 0.35          // 平台给的路灯偏粗壮(原型是细长的铁灯柱):横向收到 0.6;灯罩偏橙 → 发光弱一点、颜色往暖白拉
   statue: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.6, ab: [0.86, 0.9, 1.0] },
+  // 整城第 1 期新转的十样(11-19,G3DCityFull):平台给的正面同样朝 +x → 转 -90°;码头的栈桥长边在 x 上,不转。贴图比设定图浅 → 先按民房压暗
+  academy: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
+  guild: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.64, 0.66, 0.72] },
+  tavern: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.64, 0.66, 0.72] },
+  stable: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.62, 0.62, 0.66] },
+  barracks: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
+  gate: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
+  wall: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.58, 0.6, 0.66] },
+  wall_tower: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.58, 0.6, 0.66] },
+  bridge: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
+  dock: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.62, 0.6, 0.6] },
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
@@ -1406,7 +1420,10 @@ class Dungeon {
     this.stats.floorMs = Math.round(performance.now() - t1);
     this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, CITY_PLAN, x, z);
     const bldKeys = DUNGEON.bld.split(',').filter((k) => k);
-    const C = buildCityScene(rnd, bldKeys);
+    const C = buildCityScene(rnd, bldKeys, DUNGEON.cityFull ? FULL_SKIP : []);
+    if (DUNGEON.cityFull) {
+      extendCityFull(C, rnd);
+    }
     this.solids.push(...C.solids);
     BRAZIERS.splice(0, BRAZIERS.length, { x: C.forge.x, z: C.forge.z });          // 火的特效和声音认这张表:城里就是铁匠铺的锻炉
     this.cityNpcSpots = C.npcs;
@@ -1509,8 +1526,8 @@ class Dungeon {
     litWindow(C.winLancet, paintWindow('lancet', 96, 336, 5), 1.0, 'DgWinLancet');
     litWindow(C.winRose, paintWindow('rose', 256, 256, 7), 0.95, 'DgWinRose');
 
-    // ── 远处的城:两圈屋顶和塔楼的剪影 ──
-    for (const [rad, hgt, seed, y0, rep2] of [[58, 16, 3, -1, 3], [78, 26, 9, -1, 4]] as Array<[number, number, number, number, number]>) {
+    // ── 远处的城:两圈屋顶和塔楼的剪影(整城模式不要:城墙外面就是城外,俯视预渲染时这圈剪影会立在城墙外)──
+    for (const [rad, hgt, seed, y0, rep2] of (DUNGEON.cityFull ? [] : [[58, 16, 3, -1, 3], [78, 26, 9, -1, 4]]) as Array<[number, number, number, number, number]>) {
       const line = new Sculpt();
       line.surf(48, 1, (u, v, out) => {
         const a = u * Math.PI * 2;
@@ -2336,8 +2353,8 @@ class Dungeon {
       moon.shadowNormalBias = 0.02;
       moon.shadowFixedArea = true;
       moon.shadowNear = 1;
-      moon.shadowFar = this.outdoor ? 160 : 90;
-      moon.shadowOrthoSize = this.city ? 40 : this.wild ? 26 : 17;
+      moon.shadowFar = DUNGEON.cityFull ? 320 : this.outdoor ? 160 : 90;
+      moon.shadowOrthoSize = DUNGEON.cityFull ? 86 : this.city ? 40 : this.wild ? 26 : 17;          // 整城:罩住城墙一圈
     }
     this.applyLights();
     // 后期:沿用野外那套,数值按「暗房间、亮灯」重新给
@@ -4452,6 +4469,13 @@ function boot(): void {
       }
     }
     setArea({ ...CITY, X1: CITY.X1 + 6.8 });          // 第十轮:往东放宽到教堂门口(台地前沿的矮墙是挡路块,只有台阶那一段能上去)
+    if (param('cityfull') === '1') {
+      DUNGEON.cityFull = true;
+      applyCityFullGround();
+      if (param('pavek') === null) {
+        DUNGEON.paveK = 0.6;          // 整城:地面压暗(原型里是暗的湿石板;0.84 时俯视整城月光下一片发白)
+      }
+    }
   }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
   if (param('autoq') === '0' || param('bench') === '1') {          // 自动测速时以档位默认画质为准,不让自动降级先动

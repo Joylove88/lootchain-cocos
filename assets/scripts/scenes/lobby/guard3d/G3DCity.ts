@@ -84,7 +84,7 @@ export interface CityScene {
 
 const V = (x: number, y: number, z: number): Vec3 => new Vec3(x, y, z);
 
-export function buildCityScene(rnd: () => number, skip: string[] = []): CityScene {
+export function buildCityScene(rnd: () => number, skip: string[] = [], omit: string[] = []): CityScene {
   const mk = (): Sculpt => new Sculpt();
   const s: CityScene = {
     stone: mk(), rubble: mk(), plaster: mk(), timber: mk(), slate: mk(), iron: mk(), bark: mk(), cloth: mk(), goods: mk(), leaf: mk(),
@@ -95,6 +95,9 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
   const has = (k: string): boolean => skip.indexOf(k) >= 0;
   /** 一栋房子的位置:这种样式的模型在用就登记占位(换成模型),否则用代码拼。(x, z) = 正面那条线的中点。 */
   const slot = (key: string, id: string, x: number, z: number, yaw: number, w: number, proc: (() => void) | null, o: { far?: boolean; y?: number } = {}): void => {
+    if (omit.indexOf(id) >= 0) {
+      return;          // 整城模式(G3DCityFull)里和新街区撞在一起的远景房子不摆
+    }
     if (has(key)) {
       s.bldSpots.push({ key, id, x, z, yaw, w, d: 7, front: true, far: o.far, y: o.y });
     } else if (proc) {
@@ -529,7 +532,9 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     // 换成模型的两栋:北排东头、南排集市后面(各一栋,离得远、大小朝向不一样,不会一眼看出是同一个模型)
     // w = 正面的宽(模型按它缩放:门高约 1.9 米);中心 = 正面那条线往后退半个进深
     s.bldSpots.push({ key: 'house', id: 'house_n', x: 13.6, z: CITY.Z0 - 0.9 - 3.1, yaw: 0, w: 6.6, d: 6.3 });
-    s.bldSpots.push({ key: 'house', id: 'house_s', x: 6.9, z: CITY.Z1 + 3.2 + 3.3, yaw: 180, w: 7.0, d: 6.7 });
+    if (omit.indexOf('house_s') < 0) {
+      s.bldSpots.push({ key: 'house', id: 'house_s', x: 6.9, z: CITY.Z1 + 3.2 + 3.3, yaw: 180, w: 7.0, d: 6.7 });
+    }
     slot('house_d', 'house_d_se', 14.6, CITY.Z1 + 3.2, 180, 7.6, () => house(14.1, CITY.Z1 + 3.2, 180, 6.8, 8, { upper: 1, lit: 2, tone: 0.84 }));
   } else {
     house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
