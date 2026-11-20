@@ -892,6 +892,8 @@ export class LootChainGameRoot extends Component {
         return;
       }
       finished = true;
+      mark('login');
+      console.info('[LootChain] boot trace', JSON.stringify(trace));
       this.bootPreloadActive = false;
       this.removeNodeFromContent('BootLoadingRoot');
       // 会话持久化(token 7 天):本地有 token+userId 就直接进大厅(不先画登录页);没有会话才画登录页。
@@ -907,11 +909,36 @@ export class LootChainGameRoot extends Component {
     };
     // 第一段(Web/H5):按 asset-manifest.json 把缺的文件整包下载进浏览器缓存;没有清单 / 空间不够就跳过,
     // 退回按页面首开时加载。下载期间不设兜底超时(网速慢也要下完),失败的文件下次访问继续补。
+    // 启动各阶段耗时(11-20 用户:加载页停在 0% 几十秒):打到控制台,也存进本地(lootchain.bootTrace),下次慢了能看出卡在哪一步
+    const traceT0 = Date.now();
+    const trace: Array<[string, number]> = [];
+    const mark = (name: string): void => {
+      trace.push([name, Date.now() - traceT0]);
+      try {
+        sys.localStorage.setItem('lootchain.bootTrace', JSON.stringify(trace));
+      } catch {
+        // 忽略
+      }
+    };
+    // 没有进度可报的阶段:超过 0.4 秒才换标题(快的时候不闪字)
+    const phaseText = (title: string): (() => void) => {
+      const timer = setTimeout(() => {
+        if (titleLabel.isValid) {
+          titleLabel.string = title;
+        }
+      }, 400);
+      return () => clearTimeout(timer);
+    };
     const downloadPack = async (): Promise<void> => {
+      mark('pack-start');
+      const stopManifestText = phaseText('正在获取资源清单');
       const manifest = (await fetchAssetManifest()) as TieredManifest | null;
+      stopManifestText();
+      mark('manifest');
       if (!manifest) {
         return;
       }
+      const stopCacheText = phaseText('正在读取本地缓存');
       // 10-30 分层下载(领导:首访 500 多 M 会吓跑用户):首访只下开局包(清单前 core 个,约 100MB,晨风村为止),
       // 其余登记给后台下载器,进大厅后低并发慢慢下;去了还没下完的地方由 ensurePackResources 整块补下 + 加载页拦住
       // 发版后第一次打开:核对缓存里同名改内容的文件。这一步以前不显示进度,缓存大的老玩家看到的就是一直不动的 0%
@@ -933,6 +960,8 @@ export class LootChainGameRoot extends Component {
           percentLabel.string = `${done} / ${total}`;
         }
       });
+      stopCacheText();
+      mark('cache-checked');
       const core = coreManifestFiles(manifest, missing);
       const coreCount = manifest.core ?? manifest.files.length;
       const coreTotal = manifest.files.slice(0, coreCount).reduce((sum, entry) => sum + entry[1], 0);
@@ -945,7 +974,11 @@ export class LootChainGameRoot extends Component {
           console.warn(`[LootChain] pack: 浏览器剩余空间不足 ${mb(allMissingBytes)}MB,改为按页面加载`);
         }
       }
-      await initPackDownloader(manifest);
+      mark('core-done');
+      // 后台部分直接用上面算好的缺失清单(开局包刚下过的去掉),不再把整个缓存重列一遍
+      const coreSet = new Set(core.map(([path]) => path));
+      await initPackDownloader(manifest, missing.filter(([path]) => !coreSet.has(path)));
+      mark('downloader-ready');
       // 发版后旧版本文件留在缓存里没用,进游戏后后台清掉
       setTimeout(() => void pruneStaleAssetCache(manifest), 20000);
     };
@@ -1014,9 +1047,13 @@ export class LootChainGameRoot extends Component {
       if (bundleError) {
         console.warn('[LootChain] boot preload: resources bundle 加载失败', bundleError);
       }
+      mark('bundle');
       // 首次访问先等 Service Worker 接管页面,之后引擎的资源请求才会命中本地缓存(不支持/超时照常预载)。
       void ensureAssetServiceWorker(true)
-        .then(() => downloadPack())
+        .then(() => {
+          mark('sw-ready');
+          return downloadPack();
+        })
         .catch((error) => console.warn('[LootChain] full pack download failed', error))
         .then(() => startPreload());
     });

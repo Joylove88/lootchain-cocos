@@ -628,9 +628,10 @@ export function coreManifestFiles(manifest: TieredManifest, missing: Array<[stri
 }
 
 /** 启动:开局包下完后调用,登记清单 + 本地还缺的(含后台部分),进游戏后再 startBackgroundPack。 */
-export async function initPackDownloader(manifest: TieredManifest): Promise<void> {
+export async function initPackDownloader(manifest: TieredManifest, known?: Array<[string, number]>): Promise<void> {
   const cache = await caches.open(ASSET_CACHE_NAME);
-  const missing = await missingManifestFiles(manifest);
+  // known = 启动时刚算过的缺失清单(11-20 用户:加载页停在 0% 几十秒 —— 这里原来又把整个缓存列一遍,老玩家缓存一两万个文件时很慢)
+  const missing = known ?? (await missingManifestFiles(manifest));
   packDownloader.init(manifest, missing, cache);
   // 自验脚本(tools/qa/web_tier_check.py)读进度 / 暂停后台用
   (globalThis as unknown as { __lootchainPack?: PackDownloader }).__lootchainPack = packDownloader;
