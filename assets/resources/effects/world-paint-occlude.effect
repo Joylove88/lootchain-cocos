@@ -1,0 +1,67 @@
+// 野外整图重绘的遮挡件(2026-11-20 林地整图重绘,LobbyFieldPaint):
+// 地面 + 立物都画在重绘图块里;比人高的立物另画一层「遮挡件」,人走到它后面时把人盖住。
+// 颜色直接取重绘图块(cc_spriteTexture,精灵帧 = 图块上这件立物盖住的那一块,和地面同一批像素,叠上去没有色差),
+// 形状取这件立物原来的贴图透明度(maskTex,uv 由 baseRect → maskRect 换算;maskRect 宽度为负 = 左右翻转)。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: paint-occlude-vs:vert
+      frag: paint-occlude-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        maskTex: { value: white }
+        baseRect: { value: [0.0, 0.0, 1.0, 1.0] }
+        maskRect: { value: [0.0, 0.0, 1.0, 1.0] }
+}%
+
+CCProgram paint-occlude-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram paint-occlude-fs %{
+  precision highp float;
+
+  in vec4 color;
+  in vec2 uv0;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D maskTex;
+
+  uniform PaintOcclude {
+    vec4 baseRect;
+    vec4 maskRect;
+  };
+
+  vec4 frag () {
+    vec4 base = texture(cc_spriteTexture, uv0);
+    vec2 l = (uv0 - baseRect.xy) / baseRect.zw;
+    float a = texture(maskTex, maskRect.xy + l * maskRect.zw).a;
+    return vec4(base.rgb * color.rgb, a * color.a);
+  }
+}%

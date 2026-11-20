@@ -3,6 +3,7 @@
  * 坐标系同主城(LobbyTownConfig):世界单位 = 900 高舞台设计像素,y 向上,地图中心为原点;
  * 建筑 (x, y) = 贴图底边中点(脚线),footprint 从脚线往屏幕上方延伸的不可走矩形,door = 交互点(相对脚线)。
  */
+import { FIELD_PAINT } from './LobbyFieldPaintData';
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
@@ -1021,6 +1022,11 @@ export function worldMapPackPrefixes(code: WorldMapCode): string[] {
     return [];
   }
   const set = new Set<string>(worldMapAssetPaths(code).map((path) => path.replace(/\/spriteFrame$/, '')));
+  // 11-20 整图重绘的图块目录(LobbyFieldPaint 按镜头加载,不进开图预读;整目录随这张图下到本地)
+  const paint = FIELD_PAINT[code];
+  if (paint) {
+    set.add(paint.dir);
+  }
   // 骨骼 NPC / 整图场景里走动的人:骨骼目录也算进这张图
   for (const npc of def.npcs) {
     if (npc.spine) {

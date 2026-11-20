@@ -20,6 +20,7 @@ import {
   Tween,
   Vec3,
   input,
+  resources,
   sp,
   tween,
 } from 'cc';
@@ -60,6 +61,8 @@ import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSk
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { FieldLook } from './LobbyFieldLook';
+import { FieldPaint, fieldPaintDef } from './LobbyFieldPaint';
+import type { FieldPaintDef } from './LobbyFieldPaintData';
 import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
@@ -557,6 +560,9 @@ export class LobbyTownRenderer {
   private readonly ambient = new TownAmbient();
   /** 11-20 野外画质看齐守卫战:调色 / 光照图 / 暗角空气感 / 鬼火(LobbyFieldLook)。 */
   private readonly look = new FieldLook();
+  /** 11-20 野外整图重绘(LobbyFieldPaint):登记了重绘图块的地图用图块代替多层地表 + 立物贴图。 */
+  private readonly paint = new FieldPaint();
+  private paintDef: FieldPaintDef | null = null;
   private readonly scene = new TownScene();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
   private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind']; name: Label | null; label: string; badge: Node | null; badgeY: number }>();
@@ -1116,7 +1122,8 @@ export class LobbyTownRenderer {
     // 11-08 用户「镜头太近」:地图可配 cameraZoom(林地 1.4 = 同屏看到 1.4 倍远),世界层头顶字按 uiZ 反向放大
     this.uiZ = this.def.cameraZoom ?? 1;
     this.k = layout.stageHeight / 900 / this.uiZ;
-    this.look.prepare(this.def.code, this.def.width, this.def.height);
+    this.paintDef = fieldPaintDef(this.def.code);
+    this.look.prepare(this.def.code, this.def.width, this.def.height, !!this.paintDef);
     if (!restored || !this.world || !this.world.isValid || !this.world.parent) {
       this.buildWorld();
     }
@@ -1147,6 +1154,7 @@ export class LobbyTownRenderer {
       const view = this.viewSize();
       this.look.mount(this.world, this.camX, this.camY, view.w, view.h);
     }
+    this.stepPaint();
   }
 
   /** 整图场景(11-11):遮挡条 / 灯火烟雾 / 走动的人;世界层重建后重挂,素材没到就下一帧再试。 */
@@ -1270,6 +1278,7 @@ export class LobbyTownRenderer {
     world.setScale(this.k, this.k, 1);
     this.world = world;
     this.look.reset();
+    this.paint.reset();
     this.backdropNode = def.backdrop ? this.host.addChildPlainNode(world, 'Backdrop', 0, def.height / 2, 10, 10) : null;
     this.groundRoot = this.host.addChildPlainNode(world, 'Ground', 0, 0, def.width, def.height);
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, def.width, def.height);
@@ -1302,6 +1311,10 @@ export class LobbyTownRenderer {
     }
     const def = this.def;
     const splat = def.groundSplat;
+    if (this.paintDef) {
+      // 整图重绘:图块容器压在最底;多层地表留着当兜底(镜头内图块没到齐时露出来,到齐后在 step 里关掉)
+      this.paint.mount(root, this.paintDef);
+    }
     if (splat) {
       // 11-08 多层地表:素材到齐后整图一个四边形压在最底,旧平铺底纹(兜底)拆掉
       mountGroundSplat(root, def.width, def.height, splat, (node) => {
@@ -1513,6 +1526,10 @@ export class LobbyTownRenderer {
       if (parent.getChildByName(name)) {
         return;
       }
+      if (this.paintDef) {
+        this.ensurePaintedProp(prop, name, entities);
+        return;
+      }
       const node = this.host.addChildPlainNode(parent, name, prop.x, prop.y, prop.width, prop.width);
       const sprite = this.host.addSprite('Art', prop.asset, 0, 0, prop.width, prop.width, node);
       if (!sprite) {
@@ -1570,6 +1587,35 @@ export class LobbyTownRenderer {
       }
       this.propNodes.push({ node, y: prop.y });
     });
+  }
+
+  /**
+   * 整图重绘地图的立物(11-20):贴地件 / 矮物件已经画进重绘图块,不再建精灵;
+   * 比人高的只建一个遮挡件(颜色取图块、形状取原贴图,FieldPaint 在图块到了以后挂),照旧参与排序 / 视野裁剪 / 挡人淡出。
+   */
+  private ensurePaintedProp(prop: WorldMapProp, name: string, entities: Node): void {
+    if (prop.flat) {
+      return;
+    }
+    const frame = resources.get(prop.asset, SpriteFrame);
+    if (!frame) {
+      return;
+    }
+    const ow = frame.originalSize.width || 1;
+    const h = prop.width * ((frame.originalSize.height || 1) / ow);
+    if (h < OCCLUDER_MIN_H) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(entities, name, prop.x, prop.y, prop.width, prop.width);
+    const art = new Node('Art');
+    art.layer = node.layer;
+    art.addComponent(UITransform).setContentSize(new Size(prop.width, h));
+    const sprite = art.addComponent(Sprite);
+    node.addChild(art);
+    this.paint.addOccluder(art, prop.x, prop.y, prop.width, h, !!prop.flipX, frame);
+    this.addCull(node, prop.x - prop.width / 2, prop.x + prop.width / 2, prop.y - 40, prop.y + h);
+    this.occluders.push({ node, sprite, x: prop.x, y: prop.y, w: prop.width, h, sway: false, hole: false, fade: 255 });
+    this.propNodes.push({ node, y: prop.y });
   }
 
   /**
@@ -2341,6 +2387,20 @@ export class LobbyTownRenderer {
     if (this.look.active) {
       const view = this.viewSize();
       this.look.step(this.camX, this.camY, view.w, view.h, this.world);
+    }
+    this.stepPaint();
+  }
+
+  /** 整图重绘:按镜头加载图块;镜头内图块到齐后关掉兜底的多层地表(省一层全屏填充),没到齐时再打开。 */
+  private stepPaint(): void {
+    if (!this.paint.active || !this.layout) {
+      return;
+    }
+    const view = this.viewSize();
+    this.paint.step(this.camX, this.camY, view.w, view.h);
+    const splat = this.groundRoot?.getChildByName('Splat');
+    if (splat && splat.active === this.paint.covered) {
+      splat.active = !this.paint.covered;
     }
   }
 

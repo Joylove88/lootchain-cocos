@@ -60,6 +60,17 @@ export const FIELD_LOOKS: Record<string, FieldLookDef> = {
   },
 };
 
+/**
+ * 整图重绘的地图(11-20 林地):光影 / 投影 / 颜色都已经画进重绘图,地面着色器和立物乘色用不上;
+ * 只留很轻的暗角 + 远处空气感,不要鬼火。
+ */
+const PAINTED_LOOKS: Record<string, FieldLookDef> = {
+  WOODS: {
+    sat: 1, val: 1, contrast: 0, shadowTint: [1, 1, 1], hiTint: [1, 1, 1], pool: 0, rays: 0,
+    vig: 0.32, haze: [170, 188, 176, 0.06],
+  },
+};
+
 const LIGHT_W = 1024;
 const LIGHT_H = 512;
 const MOTE = 'ui/world/fx/mote/spriteFrame';
@@ -201,15 +212,16 @@ export class FieldLook {
   private wispLoading = false;
 
   /** 进图 / 换图时调(建世界之前):光照图同步生成并缓存;没登记的地图返回 false。 */
-  prepare(code: string, mapW: number, mapH: number): boolean {
-    if (this.code !== code) {
-      this.code = code;
+  prepare(code: string, mapW: number, mapH: number, painted = false): boolean {
+    const key = painted ? `${code}#paint` : code;
+    if (this.code !== key) {
+      this.code = key;
       // ?fieldlook=0:关掉(性能 / 观感 A/B 对比用;地面材质的离线降噪不受影响)
       const off = typeof location !== 'undefined' && /[?&]fieldlook=0(&|$)/.test(location.search);
-      this.def = off ? null : FIELD_LOOKS[code] ?? null;
+      this.def = off ? null : (painted ? PAINTED_LOOKS[code] : FIELD_LOOKS[code]) ?? null;
       this.mapW = mapW;
       this.mapH = mapH;
-      this.light = this.def ? buildLight(code, mapW, mapH, this.def) : null;
+      this.light = this.def ? buildLight(key, mapW, mapH, this.def) : null;
     }
     return !!this.def;
   }
