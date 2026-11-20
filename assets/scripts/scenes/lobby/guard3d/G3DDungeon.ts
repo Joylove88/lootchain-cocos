@@ -1,4 +1,4 @@
-import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, ImageAsset, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, gfx, ImageAsset, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
 import { charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
@@ -3186,31 +3186,19 @@ class Dungeon {
     const lights0 = DUNGEON.realLights;
     const moon = this.moon;
     const shadow0 = !!moon?.shadowEnabled;
-    // 11-20 诊断行(上线后 Arc 复测:阴影关掉快 42%,但投影几何只剩 43 万面 —— 要拆开看贵在阴影图那一遍、接收端采样还是遍数开销)
-    const shG = director.getScene()!.globals.shadows;
-    const size0 = shG.shadowMapSize;
-    const pcf0 = moon ? moon.shadowPcf : 0;
-    const mrs = this.world ? this.world.getComponentsInChildren(MeshRenderer) : [];
-    const receivers = mrs.filter((m) => m.receiveShadow === MeshRenderer.ShadowReceivingMode.ON);
-    const casters = mrs.filter((m) => m.shadowCastingMode === MeshRenderer.ShadowCastingMode.ON);
-    const chars: Node[] = [this.leader?.node, ...this.followers.map((f) => f.c.node)].filter((n): n is Node => !!n);
+    // 11-20 诊断版 3(Arc 140V 换 OpenGL 翻译后显卡 25 → 10 毫秒:D3D11 这条路在 Intel 上有慢点):逐个试 D3D11 下的嫌疑项。
+    // 会触发着色器重编的项(slow)前后多等一会儿,D3D11 下编着色器很慢
     const res = (k: number): string => (cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : '?');
-    type Step = { name: string; on: () => void; off: () => void };
-    const csm0 = moon?.csmLevel ?? 1;
+    type Step = { name: string; on: () => void; off: () => void; slow?: boolean };
+    const cfgFog = (post.info().cfg as { fog: boolean }).fog;
+    const cfgHdr = (post.info().cfg as { hdr: boolean }).hdr;
     const steps: Step[] = [
       { name: '关遮蔽(AO)', on: () => post.set({ ao: false }), off: () => post.set({ ao: cfg0.ao }) },
       { name: '关泛光', on: () => post.set({ bloom: false }), off: () => post.set({ bloom: cfg0.bloom }) },
       { name: '关月光阴影', on: () => { if (moon) { moon.shadowEnabled = false; } }, off: () => { if (moon) { moon.shadowEnabled = shadow0; } } },
-      ...(this.ml && this.ml.enabled ? [{ name: '逐灯加画(旧做法)', on: () => { if (this.ml) { this.ml.enabled = false; } }, off: () => { if (this.ml) { this.ml.enabled = true; } } }] : []),
-      ...(shadow0 && csm0 === 1 ? [{ name: '阴影画 4 遍(旧做法)', on: () => { if (moon) { moon.csmLevel = renderer.scene.CSMLevel.LEVEL_4; } }, off: () => { if (moon) { moon.csmLevel = csm0; } } }] : []),
-      ...(shadow0 ? [
-        { name: '诊断:只关阴影接收', on: () => receivers.forEach((m) => { m.receiveShadow = MeshRenderer.ShadowReceivingMode.OFF; }), off: () => receivers.forEach((m) => { m.receiveShadow = MeshRenderer.ShadowReceivingMode.ON; }) },
-        { name: '诊断:只关阴影投射', on: () => casters.forEach((m) => { m.shadowCastingMode = MeshRenderer.ShadowCastingMode.OFF; }), off: () => casters.forEach((m) => { m.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON; }) },
-        { name: '诊断:阴影柔边改硬边', on: () => { if (moon) { moon.shadowPcf = renderer.scene.PCFType.HARD; } }, off: () => { if (moon) { moon.shadowPcf = pcf0; } } },
-        { name: `诊断:阴影图减半(${Math.round(size0 / 2)})`, on: () => { shG.shadowMapSize = Math.max(256, Math.round(size0 / 2)); }, off: () => { shG.shadowMapSize = size0; } },
-      ] : []),
-      { name: '诊断:泛光 3 级', on: () => post.set({ bloomLevels: 3 }), off: () => post.set({ bloomLevels: cfg0.bloomLevels }) },
-      { name: '藏起角色', on: () => chars.forEach((n) => { n.active = false; }), off: () => chars.forEach((n) => { n.active = true; }) },
+      ...(shadow0 && shadowMapIsFloat() ? [{ name: '诊断:阴影图改 8 位打包', slow: true, on: () => setShadowMapPacked(true), off: () => setShadowMapPacked(false) }] : []),
+      { name: '诊断:不存场景深度', on: () => post.set({ ao: false, fog: false }), off: () => post.set({ ao: cfg0.ao, fog: cfgFog }) },
+      ...(cfgHdr ? [{ name: '诊断:画面改 8 位', slow: true, on: () => post.set({ hdr: false }), off: () => post.set({ hdr: true }) }] : []),
       { name: `分辨率×0.7(${res(scale0 * 0.7)})`, on: () => post.set({ scale: +(scale0 * 0.7).toFixed(3) }), off: () => post.set({ scale: scale0 }) },
       { name: '关全部后期', on: () => this.set({ post: 0 }), off: () => { this.set({ post: 2 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); } },
       { name: '全关(后期 / 阴影 / 灯)', on: () => { this.set({ post: 0, realLights: 0 }); if (moon) { moon.shadowEnabled = false; } },
@@ -3225,8 +3213,10 @@ class Dungeon {
     const power = bat ? (bat.charging ? `插电 ${bat.level}%` : `用电池 ${bat.level}%`) : '电源未知';
     const SETTLE = 1200;
     const MEASURE = 2500;
+    const SLOW = 7000;
     const total = steps.length * 2 + 1;
-    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil((total * (SETTLE + MEASURE)) / 1000) + 5} 秒)\n${GPU_NAME.slice(0, 70)}\n${String(dev.browser ?? '浏览器未知')} · ${power} · ${dev.cores ?? '?'} 线程 · 内存 ${dev.memGB ?? '?'}GB\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}${gpuT.ok ? '' : ' · 浏览器不给显卡计时'}\n`;
+    const nSlow = steps.filter((x) => x.slow).length * 2;
+    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil((total * (SETTLE + MEASURE) + nSlow * (SLOW - SETTLE)) / 1000) + 5} 秒)\n${GPU_NAME.slice(0, 70)}\n${String(dev.browser ?? '浏览器未知')} · ${power} · ${dev.cores ?? '?'} 线程 · 内存 ${dev.memGB ?? '?'}GB\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}${gpuT.ok ? '' : ' · 浏览器不给显卡计时'}\n`;
     const colHead = `${padW('项', 24)}${padW('帧率', 6, true)}${padW('每帧毫秒', 9, true)}${padW('比现状', 7, true)}${padW('显卡毫秒', 9, true)}${padW('比现状', 7, true)}${padW('万面', 5, true)}${padW('绘制', 5, true)}`;
     type Meas = { fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number };
     type Row = { name: string; fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number; dAvg?: number; dGpu?: number | null; base?: { avg: number; gpu: number | null } };
@@ -3236,10 +3226,10 @@ class Dungeon {
     const dv = (): { numTris?: number; numDrawCalls?: number } => ((director.root as unknown as { device?: { numTris?: number; numDrawCalls?: number } })?.device ?? {});
     const r1 = (v: number): number => +v.toFixed(1);
     let done = 0;
-    const measure = async (label: string): Promise<Meas> => {
+    const measure = async (label: string, settle = SETTLE): Promise<Meas> => {
       done += 1;
       el.textContent = `${head}${colHead}\n${rows.join('\n')}\n▶ 正在测 ${done}/${total}:${label}`;
-      const r = await this.measureFrames(SETTLE, MEASURE, gpuT.ok ? gpuT : undefined);
+      const r = await this.measureFrames(settle, MEASURE, gpuT.ok ? gpuT : undefined);
       return { fps: r.fps, avg: r.avg, worst: r.worst, gpu: r.gpu, tris: dv().numTris ?? 0, draws: dv().numDrawCalls ?? 0 };
     };
     const pct = (v: number | null | undefined): string => (v === null || v === undefined ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(0)}%`);
@@ -3252,14 +3242,14 @@ class Dungeon {
       } catch (error) {
         void error;
       }
-      const m = await measure(s.name);
+      const m = await measure(s.name, s.slow ? SLOW : SETTLE);
       try {
         s.off();
       } catch (error) {
         void error;
       }
       const prev = bases[bases.length - 1];
-      const next = await measure('现状(对照)');
+      const next = await measure('现状(对照)', s.slow ? SLOW : SETTLE);
       bases.push(next);
       const bAvg = (prev.avg + next.avg) / 2;
       const bGpu = prev.gpu !== null && next.gpu !== null ? (prev.gpu + next.gpu) / 2 : null;
@@ -4588,6 +4578,34 @@ class Dungeon {
 }
 
 export const dungeon = new Dungeon();
+
+// ── 诊断:阴影图从 32 位浮点(R32F)改成 8 位打包(RGBA8)。引擎按「显卡支不支持 R32F 当渲染目标」自动选,这里临时让它以为不支持 ──
+let packForced = false;
+let packMacro0: number | null = null;
+function shadowMapIsFloat(): boolean {
+  const ppl: any = director.root!.pipeline;
+  return ppl.getMacroInt?.('CC_SHADOWMAP_FORMAT') === 0;
+}
+function setShadowMapPacked(on: boolean): void {
+  const root: any = director.root!;
+  const dev: any = root.device;
+  if (!dev.__lcFF) {
+    const orig = dev.getFormatFeatures.bind(dev);
+    dev.__lcFF = orig;
+    dev.getFormatFeatures = (f: number): number => {
+      const v = orig(f);
+      return packForced && f === gfx.Format.R32F ? v & ~gfx.FormatFeatureBit.RENDER_TARGET : v;
+    };
+  }
+  const ppl = root.pipeline;
+  if (packMacro0 === null) {
+    packMacro0 = ppl.getMacroInt('CC_SHADOWMAP_FORMAT');
+  }
+  packForced = on;
+  ppl.setMacroInt('CC_SHADOWMAP_FORMAT', on ? 1 : packMacro0);
+  root.onGlobalPipelineStateChanged();
+  (rendering as any).forceResizeAllWindows?.();
+}
 
 function param(name: string): string | null {
   try {
