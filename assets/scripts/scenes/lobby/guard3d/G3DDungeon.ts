@@ -4549,12 +4549,12 @@ function boot(): void {
       }
       // v4 整体提亮(11-19 用户反馈旧版「部分地形模糊看不清」):月光 340k → 560k、环境光 6300 → 13000(可用 &moon= / &ambient= 覆盖)
       // 白天(11-19 参考燕云十六声):太阳 950k、路灯压到 5(白天只剩一点暖点)
-      DUNGEON.moon = param('moon') !== null ? Number(param('moon')) : 950000;
+      DUNGEON.moon = param('moon') !== null ? Number(param('moon')) : 780000;          // 11-20 第五轮:950k → 780k(配合天光加大,亮处不变、影子透亮)
       DUNGEON.ambient = param('ambient') !== null ? Number(param('ambient')) : 75000;
       DUNGEON.lamp = param('lamp') !== null ? Number(param('lamp')) : 5;
       // 11-20 跑图:影子里黑成一片(教堂背阴面整块看不见)→ 天光 4200 → 30000;地面改哑光干地(粗糙度 1、高光 0.08),
       // 湿石板的天光反射在正交拍摄下按每块的视线算会一格一格明暗不一,燕云的地面本来也是干的沙土 / 草
-      DUNGEON.skyK = param('skyk') !== null ? Number(param('skyk')) : 30000;
+      DUNGEON.skyK = param('skyk') !== null ? Number(param('skyk')) : 95000;          // 11-20 第五轮:30000 → 95000(大教堂背阴面 / 影子里草地 16,26,13 → 28,46,23)
       DUNGEON.gloss = 1;
       DUNGEON.paveSpec = 0.08;
     } else if (param('cityfull') === '1') {

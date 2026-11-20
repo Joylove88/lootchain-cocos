@@ -99,15 +99,53 @@ export function v4GroundTint(x: number, z: number): Tint {
     return [0.42, 0.42, 0.44];          // 城墙外:压暗(预渲染的角上会拍到一点)
   }
   const o: Tint = [0, 0, 0];
+  let street = 0;
   for (const dx of [-0.75, 0, 0.75]) {
     for (const dz of [-0.75, 0, 0.75]) {
-      const t = TINT[v4Surface(x + dx, z + dz)] ?? TINT[0];
+      const k = v4Surface(x + dx, z + dz);
+      const t = TINT[k] ?? TINT[0];
       o[0] += t[0] / 9;
       o[1] += t[1] / 9;
       o[2] += t[2] / 9;
+      if (k === 1) {
+        street += 1 / 9;
+      }
     }
   }
+  // 11-20 跑图:沙土街 / 广场一整片同一个颜色,像刷了一层漆 → 大块的深浅(踩实的深一点、偏灰褐,浮土浅一点、偏暖)+ 细碎斑驳;
+  // 草坪也加一层很淡的冷暖色块(燕云的草地有黄绿 / 深绿的大片起伏)。都按顶点上色,不动贴图
+  const big = vnoise(x / 7.5, z / 7.5) * 0.65 + vnoise(x / 3.1 + 17, z / 3.1 - 5) * 0.35;
+  const fine = vnoise(x / 1.1 - 31, z / 1.1 + 9);
+  const s = street;
+  const g = 1 - s;
+  const lum = 1 + s * ((big - 0.5) * 0.24 + (fine - 0.5) * 0.08);
+  const warm = s * (big - 0.5) * 0.1;
+  const lawn = vnoise(x / 9 + 53, z / 9 - 21);
+  const lg = 1 + g * (lawn - 0.5) * 0.12;
+  o[0] *= lum * (1 + warm) * (1 + g * (lawn - 0.5) * 0.22);
+  o[1] *= lum * lg;
+  o[2] *= lum * (1 - warm) * (1 - g * (lawn - 0.5) * 0.1);
   return o;
+}
+
+/** 平滑值噪声(0 ~ 1),整数格上取哈希、三次插值;只给地面上色用。 */
+function vhash(i: number, j: number): number {
+  let h = (i * 374761393 + j * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x: number, z: number): number {
+  const i = Math.floor(x);
+  const j = Math.floor(z);
+  let u = x - i;
+  let v = z - j;
+  u = u * u * (3 - 2 * u);
+  v = v * v * (3 - 2 * v);
+  const a = vhash(i, j);
+  const b = vhash(i + 1, j);
+  const c = vhash(i, j + 1);
+  const d = vhash(i + 1, j + 1);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
 }
 
 /** 要在建场景之前调:地面扩到整城、打开 v4 开关、登记树(带树根高度)。 */
@@ -146,6 +184,20 @@ function nearest(pts: readonly P2[], x: number, z: number): { x: number; z: numb
   return best;
 }
 const deg = (r: number): number => (r * 180) / Math.PI;
+
+/** 点到闭合折线(多边形边界)的最近距离(米)。 */
+function distToRing(ring: ReadonlyArray<readonly [number, number]>, x: number, z: number): number {
+  let best = 1e9;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i];
+    const [bx, bz] = ring[(i + 1) % ring.length];
+    const dx = bx - ax;
+    const dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+  }
+  return best;
+}
 
 export function extendCityV4(s: CityScene, rnd: () => number): void {
   const spots = s.bldSpots;
@@ -208,6 +260,15 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
     const len = Math.hypot(bx - ax, bz - az);
     const n = Math.max(1, Math.round(len / 2));
     const ang = deg(Math.atan2(bz - az, bx - ax));
+    // 这条高台边有一半以上贴着城墙(6 米内)→ 整条按墙根处理(按段判断的话,城门凹进去那一截会一段暗一段亮)
+    let nearN = 0;
+    for (let k = 0; k < n; k += 1) {
+      const t = (k + 0.5) / n;
+      if (distToRing(D.wall as unknown as Array<[number, number]>, ax + (bx - ax) * t, az + (bz - az) * t) < 6) {
+        nearN += 1;
+      }
+    }
+    const edgeByWall = nearN * 2 >= n;
     for (let k = 0; k < n; k += 1) {
       const t = (k + 0.5) / n;
       const x = ax + (bx - ax) * t;
@@ -215,11 +276,27 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
       const seg = len / n + 0.06;
       // 只有外沿(下面是地面)才砌挡土墙:城墙那一侧(外面是城外)也砌,看着是城墙内的高台
       s.rubble.box(seg, H + 0.02, 1.0, V(x, H / 2, z), V(0, -ang, 0), [0.4, 0.4, 0.43], 0.4, rnd, 0.03);
-      s.stone.box(seg, 0.12, 1.15, V(x, H + 0.06, z), V(0, -ang, 0), TOP, 0.5, rnd, 0.02);
+      // 11-20 跑图:高台贴着城墙的那几段,压顶石在城墙根露成一条发白的石带 → 那里改成压低、偏暗的苔土色(看着是墙根的土边)
+      // 随机数的消耗次数要和 3.5 米那版一样(之后的摆件全靠同一串随机数,变了别处也会跟着变、局部重拍会出接缝)
+      const dw = distToRing(D.wall as unknown as Array<[number, number]>, x, z);
+      const byWall = edgeByWall;          // 6 米:北墙那段高台边离城墙 4~5 米(p01 跑图)
+      const r0 = dw < 3.5 ? rnd() : (Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * 43758.5453) % 1;
+      if (byWall) {
+        const mt = 0.85 + r0 * 0.15;
+        s.stone.box(seg, 0.04, 1.15, V(x, H + 0.02, z), V(0, -ang, 0), [0.34 * mt, 0.37 * mt, 0.27 * mt], 0.5, rnd, 0.01);
+      } else {
+        s.stone.box(seg, 0.12, 1.15, V(x, H + 0.06, z), V(0, -ang, 0), TOP, 0.5, rnd, 0.02);
+      }
       const open = openings.some(([ox, oz, ow]) => Math.hypot(x - ox, z - oz) < ow / 2 + 0.8);
       if (!open && v4Height(x, z) > H - 0.5) {
-        s.stone.box(seg, 0.85, 0.45, V(x, H + 0.12 + 0.42, z), V(0, -ang, 0), STONE, 0.5, rnd, 0.02);
-        s.stone.box(seg + 0.02, 0.1, 0.6, V(x, H + 0.12 + 0.9, z), V(0, -ang, 0), TOP, 0.5, rnd, 0.02);
+        if (byWall) {
+          for (let q = 0; q < 4; q += 1) {
+            rnd();          // 贴城墙的段不砌栏墙(零星几块浮在墙根),但照样消耗两个方块的随机数
+          }
+        } else {
+          s.stone.box(seg, 0.85, 0.45, V(x, H + 0.12 + 0.42, z), V(0, -ang, 0), STONE, 0.5, rnd, 0.02);
+          s.stone.box(seg + 0.02, 0.1, 0.6, V(x, H + 0.12 + 0.9, z), V(0, -ang, 0), TOP, 0.5, rnd, 0.02);
+        }
       }
     }
   }
