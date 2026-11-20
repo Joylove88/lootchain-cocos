@@ -10,6 +10,7 @@ import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COM
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { installMultiLightEffect, MultiLight } from './G3DMultiLight';
+import { installShadowPingPong, shadowPP } from './G3DShadowPP';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -524,6 +525,11 @@ class Dungeon {
               this.ml = null;
             }
           }
+          // 11-21:月光阴影图双缓冲(主画面读上一帧画好的那张,拆掉「同一帧画完马上读」;&shpp=0 关)
+          if (param('shpp') !== '0' && installShadowPingPong()) {
+            shadowPP.on = true;
+          }
+          this.tuneStart();
           this.takeOver();
           this.opened = true;
           director.on(Director.EVENT_BEFORE_UPDATE, this.tick, this);
@@ -3035,6 +3041,128 @@ class Dungeon {
     const px = cv ? Math.max(1, cv.width * cv.height) : 2073600;
     return Math.min(1, Math.max(0.35, Math.sqrt(900000 / px)));
   }
+  // ── 11-21 自动选档(低端兼容第 3 期):开场用显卡计时实测,超预算就按「最不显眼的先让」一步步调,结果按显卡 + 场景记在本机 ──
+  // 只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。运行中的 autoQuality 照旧当兜底。
+  private tuneState: 'off' | 'wait' | 'run' | 'done' = 'off';
+  private tuneAt = 0;
+  private tuneGpu: GpuTimer | null = null;
+  private tuneStep = 0;
+  private tuneEl: HTMLDivElement | null = null;
+  private static readonly TUNE_BUDGET = 16;          // 显卡每帧毫秒(≈ 60 帧还有余量)
+  private tuneKey(): string {
+    return `lcG3dTune:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
+  }
+  /** 让步清单:按「看得出的程度 / 实测省下的时间」排,越靠前越不显眼。 */
+  private tuneSteps(): Array<{ name: string; apply: () => void }> {
+    const post = this.post!;
+    const floor = this.minScale();
+    return [
+      { name: '泛光 4 级', apply: () => post.set({ bloomLevels: Math.min(4, (post.info().cfg as { bloomLevels: number }).bloomLevels) }) },
+      { name: '关遮蔽', apply: () => post.set({ ao: false }) },
+      { name: '分辨率×0.85', apply: () => { const k = Math.max(floor, (post.info().cfg as { scale: number }).scale * 0.85); this.qScale = k; post.set({ scale: +k.toFixed(3) }); } },
+      { name: '灯 2 盏', apply: () => { if (DUNGEON.realLights > 2) { this.set({ realLights: 2 }); } } },
+      { name: '小物件不投影', apply: () => { if (!this.qCastCut) { this.qCastCut = true; this.cutSmallCasters(); } } },
+      { name: '分辨率降到下限', apply: () => { this.qScale = floor; post.set({ scale: +floor.toFixed(3) }); } },
+    ];
+  }
+  private tuneStart(): void {
+    if (param('dq') || param('bench') === '1' || param('autotier') === '0' || this.fixedDt > 0) {
+      return;
+    }
+    let saved: { steps: number } | null = null;
+    try {
+      if (param('autotier') === 'reset') {
+        localStorage.removeItem(this.tuneKey());
+      }
+      const raw = localStorage.getItem(this.tuneKey());
+      saved = raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      saved = null;
+    }
+    if (saved && typeof saved.steps === 'number') {
+      const steps = this.tuneSteps();
+      for (let i = 0; i < Math.min(saved.steps, steps.length); i += 1) {
+        steps[i].apply();
+        this.qSteps.push(`(本机记录)${steps[i].name}`);
+      }
+      this.tuneStep = saved.steps;
+      this.tuneState = 'done';
+      console.log('[g3dd] 自动选档:用本机记录', saved.steps, '步');
+      return;
+    }
+    this.tuneState = 'wait';
+  }
+  private tuneToast(text: string | null): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    if (!text) {
+      this.tuneEl?.remove();
+      this.tuneEl = null;
+      return;
+    }
+    if (!this.tuneEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:10000;pointer-events:none;color:#e8f0ff;font:13px/1.5 sans-serif;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px';
+      document.body.appendChild(el);
+      this.tuneEl = el;
+    }
+    this.tuneEl.textContent = text;
+  }
+  /** 帧率统计那里每半秒调一次。 */
+  private tuneTick(): void {
+    if (this.tuneState === 'off' || this.tuneState === 'done' || !this.opened || !this.post) {
+      return;
+    }
+    const now = performance.now();
+    if (this.tuneState === 'wait') {
+      if (this.bldTotal > 0 && this.bldDone < this.bldTotal) {
+        return;
+      }
+      if (!this.tuneAt) {
+        this.tuneAt = now + 4000;          // 模型到齐再等 4 秒(着色器编完、贴图传完)
+        return;
+      }
+      if (now < this.tuneAt) {
+        return;
+      }
+      this.tuneGpu = new GpuTimer();
+      this.tuneGpu.start();
+      this.tuneState = 'run';
+      this.tuneAt = now + 2000;
+      this.tuneToast('正在按本机性能调整画质(只在第一次)…');
+      this.tuneGpu.take();
+      return;
+    }
+    // run:每段量 1.5~2 秒
+    if (now < this.tuneAt) {
+      return;
+    }
+    const g = this.tuneGpu!;
+    const r = g.take();
+    const ms = g.ok && r && r.n >= 5 ? r.median : 1000 / Math.max(1, this.fps);
+    const steps = this.tuneSteps();
+    if (ms <= Dungeon.TUNE_BUDGET || this.tuneStep >= steps.length) {
+      g.stop();
+      this.tuneGpu = null;
+      this.tuneState = 'done';
+      this.tuneToast(null);
+      try {
+        localStorage.setItem(this.tuneKey(), JSON.stringify({ steps: this.tuneStep, gpu: +ms.toFixed(1), when: new Date().toISOString() }));
+      } catch (error) {
+        void error;
+      }
+      console.log('[g3dd] 自动选档完成:让步', this.tuneStep, '项,显卡', ms.toFixed(1), '毫秒');
+      return;
+    }
+    steps[this.tuneStep].apply();
+    this.qSteps.push(`(自动选档)${steps[this.tuneStep].name} @${ms.toFixed(1)}ms`);
+    this.tuneStep += 1;
+    // 前 1.3 秒等改动生效(丢掉这段的读数),之后 1.7 秒再量
+    window.setTimeout(() => g.take(), 1300);
+    this.tuneAt = now + 3000;
+  }
+
   private qSlow = 0;
   private qCool = 0;
   private qSteps: string[] = [];
@@ -3046,7 +3174,7 @@ class Dungeon {
    * 刚打开的前 8 秒(模型还在下载、着色器在编译)和截图 / 录屏逐帧推的时候不算。
    */
   private autoQuality(): void {
-    if (!DUNGEON.autoQ || this.fixedDt > 0 || this.frozen || !this.opened || !this.post) {
+    if (!DUNGEON.autoQ || this.fixedDt > 0 || this.frozen || !this.opened || !this.post || this.tuneState === 'run' || this.tuneState === 'wait') {
       return;
     }
     if (!this.qSince) {
@@ -3196,6 +3324,7 @@ class Dungeon {
       { name: '关遮蔽(AO)', on: () => post.set({ ao: false }), off: () => post.set({ ao: cfg0.ao }) },
       { name: '关泛光', on: () => post.set({ bloom: false }), off: () => post.set({ bloom: cfg0.bloom }) },
       { name: '关月光阴影', on: () => { if (moon) { moon.shadowEnabled = false; } }, off: () => { if (moon) { moon.shadowEnabled = shadow0; } } },
+      ...(shadow0 && shadowPP.on ? [{ name: '阴影画完即读(旧做法)', on: () => { shadowPP.on = false; }, off: () => { shadowPP.on = true; } }] : []),
       ...(shadow0 && shadowMapIsFloat() ? [{ name: '诊断:阴影图改 8 位打包', slow: true, on: () => setShadowMapPacked(true), off: () => setShadowMapPacked(false) }] : []),
       { name: '诊断:不存场景深度', on: () => post.set({ ao: false, fog: false }), off: () => post.set({ ao: cfg0.ao, fog: cfgFog }) },
       ...(cfgHdr ? [{ name: '诊断:画面改 8 位', slow: true, on: () => post.set({ hdr: false }), off: () => post.set({ hdr: true }) }] : []),
@@ -3596,6 +3725,7 @@ class Dungeon {
       this.fpsAcc.t = 0;
       this.fpsAcc.n = 0;
       this.maybeBench();
+      this.tuneTick();
       if (this.benchState !== 'run') {
         this.autoQuality();          // 测速时不自动降级,免得干扰每一项的读数
       }
@@ -4750,7 +4880,7 @@ function boot(): void {
 }
 
 if (!EDITOR && sys.isBrowser) {
-  (globalThis as any).__g3dd = { dungeon, cfg: DUNGEON, info: () => dungeon.info(), set: (p: Partial<DungeonCfg>) => dungeon.set(p),
+  (globalThis as any).__g3dd = { dungeon, cfg: DUNGEON, shadowPP, info: () => dungeon.info(), set: (p: Partial<DungeonCfg>) => dungeon.set(p),
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
     audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
