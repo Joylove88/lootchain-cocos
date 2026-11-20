@@ -13,6 +13,10 @@
 //   这三层改宽软过渡(高度混合的硬边在整齐铺石上像撕纸),街沿不压暗边、不画车辙。
 // 11-10 景深(用户「地面后面看起来有立体感」):depthFx = (远处空气感, 近处压暗, -, -),默认 0 不开。
 //   屏幕上方 = 远:对比度降、往暖灰雾色靠、略提亮;屏幕下方 = 近:略压暗。只作用地面,不另叠全屏层。
+// 11-20 野外画质看齐守卫战(用户确认原型「按原型开做」,LobbyFieldLook):
+//   lookA = (饱和度, 亮度, S 曲线, 光照图强度);toneLo / toneHi = 分色调色的暗部 / 亮部乘子(.w = 斜向光柱强度 / 队伍光区强度);
+//   lightTex = 整图低分辨率光照图(存的是 光照 × 0.5,树荫冷暗、透下来的光斑暖亮;LobbyFieldLook.buildLight 运行时生成)。
+//   默认值全是「不改」,没配 look 的地图(主城)画面不变。
 CCEffect %{
   techniques:
   - passes:
@@ -41,6 +45,10 @@ CCEffect %{
         tiles3: { value: [53.5, 25.8, 0.0, 0.0] }
         grade: { value: [0.10, 0.18, 1.06, 0.0] }
         depthFx: { value: [0.0, 0.0, 0.0, 0.0] }
+        lightTex: { value: grey }
+        lookA: { value: [1.0, 1.0, 0.0, 0.0] }
+        toneLo: { value: [1.0, 1.0, 1.0, 0.0] }
+        toneHi: { value: [1.0, 1.0, 1.0, 0.0] }
 }%
 
 CCProgram ground-vs %{
@@ -77,6 +85,7 @@ CCProgram ground-fs %{
   uniform sampler2D meadowTex;
   uniform sampler2D dirtTex;
   uniform sampler2D leafTex;
+  uniform sampler2D lightTex;
 
   uniform GroundFrag {
     vec4 tiles;
@@ -84,6 +93,9 @@ CCProgram ground-fs %{
     vec4 tiles3;
     vec4 grade;
     vec4 depthFx;
+    vec4 lookA;
+    vec4 toneLo;
+    vec4 toneHi;
   };
 
   float lum (vec3 c) {
@@ -146,6 +158,12 @@ CCProgram ground-fs %{
 
     // 大尺度明暗起伏(压住平铺感)
     base *= 0.9 + 0.18 * n1;
+    // 11-20 look:饱和度 / 亮度 → S 曲线 → 分色(暗部偏冷、亮部偏暖)→ 光照图(光斑 / 树荫 / 云影)
+    float lg = lum(base);
+    base = mix(vec3(lg), base, lookA.x) * lookA.y;
+    base += (lum(base) - 0.42) * lookA.z;
+    base *= mix(toneLo.rgb, toneHi.rgb, clamp(lum(base) * 2.2, 0.0, 1.0));
+    base *= mix(vec3(1.0), texture(lightTex, uv0).rgb * 2.0, lookA.w);
     // 调色:轻 S 曲线 + 暗部偏冷 / 亮部偏暖
     float l = lum(base);
     base += (l - 0.5) * grade.x;
@@ -157,6 +175,12 @@ CCProgram ground-fs %{
     float light = 1.06 - 0.10 * (sp.x * 0.6 + (1.0 - sp.y) * 0.4);
     float vig = 1.0 - grade.y * pow(clamp(length((sp - 0.5) * 2.0), 0.0, 1.0), 2.4);
     base *= light * vig;
+    // 11-20 look:斜向光柱(左上来的阳光,很淡)+ 队伍光区(屏幕中央 = 队长附近提亮、外圈略压)
+    float tr = sp.x * 0.55 + (1.0 - sp.y) * cc_screenSize.y / cc_screenSize.x;
+    float rays = pow(clamp(sin(tr * 7.0 + 1.3) * 0.5 + 0.5, 0.0, 1.0), 8.0) * clamp(0.1 + sp.y, 0.0, 1.0);
+    base *= 1.0 + rays * vec3(0.16, 0.14, 0.08) * toneLo.w;
+    vec2 pq = (sp - 0.5) / vec2(0.42, 0.62);
+    base *= 1.0 + toneHi.w * (exp(-dot(pq, pq) * 2.2) * 1.2 - 0.45);
     // 景深:远处(屏幕上方)空气感,近处(屏幕下方)压暗
     float far = smoothstep(0.30, 1.0, sp.y);
     float lf = lum(base);

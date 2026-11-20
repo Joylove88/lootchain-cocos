@@ -59,6 +59,7 @@ import { REALM_ULT_BASE, RealmUltShow, realmUltCfg, realmUltTiming } from './Rea
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
+import { FieldLook } from './LobbyFieldLook';
 import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
@@ -554,6 +555,8 @@ export class LobbyTownRenderer {
   /** 北缘远景横条(11-10 主城):世界层第一个子节点(压在地面之下),每帧按镜头做视差。 */
   private backdropNode: Node | null = null;
   private readonly ambient = new TownAmbient();
+  /** 11-20 野外画质看齐守卫战:调色 / 光照图 / 暗角空气感 / 鬼火(LobbyFieldLook)。 */
+  private readonly look = new FieldLook();
   private readonly scene = new TownScene();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
   private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind']; name: Label | null; label: string; badge: Node | null; badgeY: number }>();
@@ -1113,6 +1116,7 @@ export class LobbyTownRenderer {
     // 11-08 用户「镜头太近」:地图可配 cameraZoom(林地 1.4 = 同屏看到 1.4 倍远),世界层头顶字按 uiZ 反向放大
     this.uiZ = this.def.cameraZoom ?? 1;
     this.k = layout.stageHeight / 900 / this.uiZ;
+    this.look.prepare(this.def.code, this.def.width, this.def.height);
     if (!restored || !this.world || !this.world.isValid || !this.world.parent) {
       this.buildWorld();
     }
@@ -1139,6 +1143,10 @@ export class LobbyTownRenderer {
     this.occludeScene();
     this.sortEntities(true);
     this.ensureAmbient();
+    if (this.world && this.world.isValid && this.look.active) {
+      const view = this.viewSize();
+      this.look.mount(this.world, this.camX, this.camY, view.w, view.h);
+    }
   }
 
   /** 整图场景(11-11):遮挡条 / 灯火烟雾 / 走动的人;世界层重建后重挂,素材没到就下一帧再试。 */
@@ -1261,6 +1269,7 @@ export class LobbyTownRenderer {
     world.addComponent(UITransform).setContentSize(new Size(def.width, def.height));
     world.setScale(this.k, this.k, 1);
     this.world = world;
+    this.look.reset();
     this.backdropNode = def.backdrop ? this.host.addChildPlainNode(world, 'Backdrop', 0, def.height / 2, 10, 10) : null;
     this.groundRoot = this.host.addChildPlainNode(world, 'Ground', 0, 0, def.width, def.height);
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, def.width, def.height);
@@ -1297,6 +1306,10 @@ export class LobbyTownRenderer {
       // 11-08 多层地表:素材到齐后整图一个四边形压在最底,旧平铺底纹(兜底)拆掉
       mountGroundSplat(root, def.width, def.height, splat, (node) => {
         node.setSiblingIndex(0);
+        const groundMat = node.getComponent(Sprite)?.customMaterial;
+        if (groundMat) {
+          this.look.applyGround(groundMat);
+        }
         for (const child of root.children.slice()) {
           if (child.name.startsWith('Tile_')) {
             child.destroy();
@@ -1320,6 +1333,10 @@ export class LobbyTownRenderer {
         if (tile) {
           // 无缝贴图不再逐格调明暗(会把平铺格子暴露出来);地砖永远排最底(多层地表还在装时它是兜底)
           tile.node.setSiblingIndex(root.getChildByName('Splat') ? 1 : 0);
+          const tileTint = this.look.tileColor();
+          if (tileTint) {
+            tile.color = tileTint;
+          }
         }
       }
     }
@@ -1513,7 +1530,11 @@ export class LobbyTownRenderer {
       if (prop.flipX) {
         sprite.node.setScale(-1, 1, 1);
       }
-      if (prop.tint) {
+      // 11-20 野外画质:立物按脚下光照乘色(树荫里的暗一点、偏冷),贴地件再跟地面一起压亮度
+      const lit = this.look.propColor(prop.x, prop.y, !!prop.flat, prop.tint);
+      if (lit) {
+        sprite.color = lit;
+      } else if (prop.tint) {
         sprite.color = rgba(prop.tint[0], prop.tint[1], prop.tint[2]);
       }
       if (prop.flat) {
@@ -2316,6 +2337,10 @@ export class LobbyTownRenderer {
     if (this.def.ambient) {
       const view = this.viewSize();
       this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
+    }
+    if (this.look.active) {
+      const view = this.viewSize();
+      this.look.step(this.camX, this.camY, view.w, view.h, this.world);
     }
   }
 

@@ -1004,6 +1004,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 北缘远景横条 + 加强环境层(浮尘 / 近景树冠 / 云影)(11-10)
     ...(def.backdrop ? def.backdrop.pieces.map((p) => p.asset) : []),
     ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),
+    // 11-20 野外画质:枯木林鬼火用的柔光点(LobbyFieldLook)
+    ...(code === 'DEADWOOD' ? [worldAsset('fx/mote')] : []),
     // 整图场景:遮挡层 / 柔光点 / 站着的人(11-11)
     ...(def.scene ? [...def.scene.tiles.masks, def.scene.dot, ...def.scene.idlers.map((n) => n.asset)] : []),
     ...(def.minimapArt ? [def.minimapArt] : []),
