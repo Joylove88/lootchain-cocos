@@ -3186,12 +3186,13 @@ class Dungeon {
     const lights0 = DUNGEON.realLights;
     const moon = this.moon;
     const shadow0 = !!moon?.shadowEnabled;
-    const blds: Node[] = [];
-    this.world?.walk((nd) => {
-      if (nd.name.startsWith('DgBld_')) {
-        blds.push(nd);
-      }
-    });
+    // 11-20 诊断行(上线后 Arc 复测:阴影关掉快 42%,但投影几何只剩 43 万面 —— 要拆开看贵在阴影图那一遍、接收端采样还是遍数开销)
+    const shG = director.getScene()!.globals.shadows;
+    const size0 = shG.shadowMapSize;
+    const pcf0 = moon ? moon.shadowPcf : 0;
+    const mrs = this.world ? this.world.getComponentsInChildren(MeshRenderer) : [];
+    const receivers = mrs.filter((m) => m.receiveShadow === MeshRenderer.ShadowReceivingMode.ON);
+    const casters = mrs.filter((m) => m.shadowCastingMode === MeshRenderer.ShadowCastingMode.ON);
     const chars: Node[] = [this.leader?.node, ...this.followers.map((f) => f.c.node)].filter((n): n is Node => !!n);
     const res = (k: number): string => (cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : '?');
     type Step = { name: string; on: () => void; off: () => void };
@@ -3202,11 +3203,15 @@ class Dungeon {
       { name: '关月光阴影', on: () => { if (moon) { moon.shadowEnabled = false; } }, off: () => { if (moon) { moon.shadowEnabled = shadow0; } } },
       ...(this.ml && this.ml.enabled ? [{ name: '逐灯加画(旧做法)', on: () => { if (this.ml) { this.ml.enabled = false; } }, off: () => { if (this.ml) { this.ml.enabled = true; } } }] : []),
       ...(shadow0 && csm0 === 1 ? [{ name: '阴影画 4 遍(旧做法)', on: () => { if (moon) { moon.csmLevel = renderer.scene.CSMLevel.LEVEL_4; } }, off: () => { if (moon) { moon.csmLevel = csm0; } } }] : []),
-      { name: '灯 0 盏', on: () => this.set({ realLights: 0 }), off: () => this.set({ realLights: lights0 }) },
-      { name: '藏起建筑', on: () => blds.forEach((n) => { n.active = false; }), off: () => blds.forEach((n) => { n.active = true; }) },
+      ...(shadow0 ? [
+        { name: '诊断:只关阴影接收', on: () => receivers.forEach((m) => { m.receiveShadow = MeshRenderer.ShadowReceivingMode.OFF; }), off: () => receivers.forEach((m) => { m.receiveShadow = MeshRenderer.ShadowReceivingMode.ON; }) },
+        { name: '诊断:只关阴影投射', on: () => casters.forEach((m) => { m.shadowCastingMode = MeshRenderer.ShadowCastingMode.OFF; }), off: () => casters.forEach((m) => { m.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON; }) },
+        { name: '诊断:阴影柔边改硬边', on: () => { if (moon) { moon.shadowPcf = renderer.scene.PCFType.HARD; } }, off: () => { if (moon) { moon.shadowPcf = pcf0; } } },
+        { name: `诊断:阴影图减半(${Math.round(size0 / 2)})`, on: () => { shG.shadowMapSize = Math.max(256, Math.round(size0 / 2)); }, off: () => { shG.shadowMapSize = size0; } },
+      ] : []),
+      { name: '诊断:泛光 3 级', on: () => post.set({ bloomLevels: 3 }), off: () => post.set({ bloomLevels: cfg0.bloomLevels }) },
       { name: '藏起角色', on: () => chars.forEach((n) => { n.active = false; }), off: () => chars.forEach((n) => { n.active = true; }) },
       { name: `分辨率×0.7(${res(scale0 * 0.7)})`, on: () => post.set({ scale: +(scale0 * 0.7).toFixed(3) }), off: () => post.set({ scale: scale0 }) },
-      { name: `分辨率×0.5(${res(scale0 * 0.5)})`, on: () => post.set({ scale: +(scale0 * 0.5).toFixed(3) }), off: () => post.set({ scale: scale0 }) },
       { name: '关全部后期', on: () => this.set({ post: 0 }), off: () => { this.set({ post: 2 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); } },
       { name: '全关(后期 / 阴影 / 灯)', on: () => { this.set({ post: 0, realLights: 0 }); if (moon) { moon.shadowEnabled = false; } },
         off: () => { this.set({ post: 2, realLights: lights0 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); if (moon) { moon.shadowEnabled = shadow0; } } },
