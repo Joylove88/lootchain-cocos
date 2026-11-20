@@ -4,6 +4,34 @@ import { Sculpt, xform } from './G3DSculpt';
 import type { CityPlan } from './G3DCityTex';
 
 /**
+ * 一片折叶(11-20 用户「树叶看起来像方片纸片」):尖头长椭圆、宽约长的一半,沿中脉折一道浅 V(两半朝向不同 → 受光一明一暗),
+ * 叶尖往下垂一点,背光那半片再压暗。dir = 中脉方向,side = 叶宽方向,nrm = 叶面朝外的法线,L = 叶长,k = 只用来取形变的种子。
+ */
+export function foldedLeaf(b: Sculpt, c: Vec3, dir0: Vec3, side0: Vec3, nrm0: Vec3, L: number, col: Tint, k: number): void {
+  const dir = dir0.clone().normalize();
+  const side = side0.clone().normalize();
+  const nrm = nrm0.clone().normalize();
+  const hw = L * 0.27;
+  const fold = 0.35 + 0.25 * Math.abs(Math.sin(k));
+  const droop = L * (0.1 + 0.08 * Math.abs(Math.cos(k * 0.62)));
+  const P = (t: number, wv: number, sgn: number): Vec3 => {
+    const off = Math.abs(wv) * fold - droop * t * t;
+    return new Vec3(c.x + dir.x * (t - 0.5) * L + side.x * wv * sgn + nrm.x * off, c.y + dir.y * (t - 0.5) * L + side.y * wv * sgn + nrm.y * off, c.z + dir.z * (t - 0.5) * L + side.z * wv * sgn + nrm.z * off);
+  };
+  const base = P(0, 0, 1);
+  const tip = P(1, 0, 1);
+  const dark: Tint = [col[0] * 0.78, col[1] * 0.8, col[2] * 0.76];
+  for (const sg of [1, -1]) {
+    const half = [base, P(0.28, hw, sg), P(0.62, hw * 0.86, sg), P(0.86, hw * 0.45, sg), tip];
+    const ord = sg > 0 ? half : [...half].reverse();
+    const uv: Array<[number, number]> = ord.map((_, j) => [j / 4, sg > 0 ? 0 : 1]);
+    const tint = sg > 0 ? col : dark;
+    b.facet(ord, uv, tint);
+    b.facet([...ord].reverse(), [...uv].reverse(), tint);
+  }
+}
+
+/**
  * 主城 3D 小样 · 中心广场(月夜)。全部是代码拼的网格,照着原型摆:
  * 周报截图/2026-11-17_主城3D小样/原型/01_主城中心广场_原型.jpg(用户:「按第一版做吧」)。
  *
@@ -1151,6 +1179,33 @@ export function buildCityScene(rnd: () => number, skip: string[] = [], omit: str
             : pick < 0.45 ? [R(0.16, 0.21), R(0.28, 0.35), R(0.12, 0.15)]
               : pick < 0.8 ? [R(0.23, 0.29), R(0.36, 0.43), R(0.15, 0.19)]
                 : [R(0.36, 0.42), R(0.44, 0.5), R(0.2, 0.24)];          // 绿压一点,别发荧光
+        if (blossom && pick < 0.9) {
+          // 11-20 第六轮:天光加大后白 / 粉花瓣在太阳下顶到纯白(开花树一团死白、看不出明暗)→ 花瓣压到 0.74(只改颜色,不动随机数)
+          col[0] *= 0.74;
+          col[1] *= 0.74;
+          col[2] *= 0.74;
+        }
+        if (lush && !blossom) {
+          // 11-20 用户「树叶看起来像方片纸片」:菱形单色平面 → 折叶(见 foldedLeaf)。不加随机数调用(别的摆件位置不变)
+          const nrm = Vec3.cross(new Vec3(), V(ux, tl * sz, uz), V(-uz, 0, ux));
+          foldedLeaf(s.leaf, c, V(ux, tl * sz, uz), V(-uz, 0, ux), nrm.y < 0 ? nrm.multiplyScalar(-1) : nrm, sz * 2.1, col, a * 3.7 + i);
+          continue;
+        }
+        if (blossom) {
+          // 花瓣:方片 → 圆一点的小花(六个点、半径一大一小交替),正反两面
+          const pts: Vec3[] = [];
+          const e1 = V(ux, tl * sz, uz).normalize();
+          const e2 = V(-uz, 0, ux).normalize();
+          for (let j = 0; j < 6; j += 1) {
+            const an = (j / 6) * Math.PI * 2;
+            const rr = sz * (j % 2 === 0 ? 1 : 0.72);
+            pts.push(V(c.x + (e1.x * Math.cos(an) + e2.x * Math.sin(an)) * rr, c.y + (e1.y * Math.cos(an) + e2.y * Math.sin(an)) * rr, c.z + (e1.z * Math.cos(an) + e2.z * Math.sin(an)) * rr));
+          }
+          const uv6: Array<[number, number]> = pts.map((_, j) => [0.5 + 0.5 * Math.cos((j / 6) * 6.283), 0.5 + 0.5 * Math.sin((j / 6) * 6.283)]);
+          s.leaf.facet(pts, uv6, col);
+          s.leaf.facet([...pts].reverse(), [...uv6].reverse(), col);
+          continue;
+        }
         s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
         s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
       }

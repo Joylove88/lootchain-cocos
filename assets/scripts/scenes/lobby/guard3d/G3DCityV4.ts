@@ -1,5 +1,5 @@
 import { Vec3 } from 'cc';
-import { CITY_GROUND, CITY_PLAN, CITY_V4, CityScene } from './G3DCity';
+import { CITY_GROUND, CITY_PLAN, CITY_V4, CityScene, foldedLeaf } from './G3DCity';
 import { CITY_V4_DATA as D } from './G3DCityV4Data';
 import { xform } from './G3DSculpt';
 
@@ -579,10 +579,8 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
       const sp = R(0, 6.28);
       const e1 = V(t1.x * Math.cos(sp) + t2.x * Math.sin(sp), t1.y * Math.cos(sp) + t2.y * Math.sin(sp), t1.z * Math.cos(sp) + t2.z * Math.sin(sp));
       const e2 = V(-t1.x * Math.sin(sp) + t2.x * Math.cos(sp), -t1.y * Math.sin(sp) + t2.y * Math.cos(sp), -t1.z * Math.sin(sp) + t2.z * Math.cos(sp));
-      const q = [V(px - e1.x * sz, py - e1.y * sz, pz - e1.z * sz), V(px - e2.x * sz * 0.55, py - e2.y * sz * 0.55, pz - e2.z * sz * 0.55),
-        V(px + e1.x * sz, py + e1.y * sz, pz + e1.z * sz), V(px + e2.x * sz * 0.55, py + e2.y * sz * 0.55, pz + e2.z * sz * 0.55)];
-      s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
-      s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
+      // 11-20 用户「树叶像方片纸片」:灌木的叶子也换成折叶
+      foldedLeaf(s.leaf, V(px, py, pz), e1, e2, V(nx, ny, nz), sz * 2.1, col, sp * 5.3 + i);
     }
   };
   for (const [kind, x, z, yaw] of props) {
@@ -674,9 +672,25 @@ export function extendCityV4(s: CityScene, rnd: () => number): void {
         const b = R(0.85, 1.05);
         const col: Tint = leafy ? GREENS_F[Math.floor(R(0, GREENS_F.length))] : rnd() < 0.82 ? [main[0] * b, main[1] * b, main[2] * b] : MAIN[Math.floor(R(0, MAIN.length))];
         const ly = leafy ? fy - 0.05 : fy;
-        const q = [V(fx - sz, ly, fz), V(fx, ly + sz * 0.3, fz - sz), V(fx + sz, ly, fz), V(fx, ly + sz * 0.3, fz + sz)];
-        s.leaf.facet(q, [[0, 0], [1, 0], [1, 1], [0, 1]], col);
-        s.leaf.facet([q[3], q[2], q[1], q[0]], [[0, 1], [1, 1], [1, 0], [0, 0]], col);
+        // 11-20 用户「像方片纸片」:叶子换折叶;花头换五瓣小花(中心起扇形,半径一大一小交替),略朝一边歪
+        if (leafy) {
+          foldedLeaf(s.leaf, V(fx, ly, fz), V(Math.cos(a * 2.1), 0.25, Math.sin(a * 2.1)), V(-Math.sin(a * 2.1), 0, Math.cos(a * 2.1)), V(0, 1, 0), sz * 2.2, col, a * 4.1 + i);
+          continue;
+        }
+        const tilt = 0.25 * Math.sin(a * 3.3 + i);
+        const e1 = V(1, tilt, 0).normalize();
+        const e2 = V(0, -tilt * 0.6, 1).normalize();
+        const ctr = V(fx, ly + sz * 0.15, fz);
+        const pts: Vec3[] = [ctr];
+        const uvs: Array<[number, number]> = [[0.5, 0.5]];
+        for (let j = 0; j <= 20; j += 1) {
+          const an = (j / 20) * Math.PI * 2 + a;
+          const rp = sz * (0.45 + 0.55 * Math.pow(Math.abs(Math.cos((an - a) * 2.5)), 0.6));          // 五片圆头花瓣(不是尖的星星)
+          pts.push(V(ctr.x + (e1.x * Math.cos(an) + e2.x * Math.sin(an)) * rp, ctr.y + (e1.y * Math.cos(an) + e2.y * Math.sin(an)) * rp, ctr.z + (e1.z * Math.cos(an) + e2.z * Math.sin(an)) * rp));
+          uvs.push([0.5 + 0.5 * Math.cos(an), 0.5 + 0.5 * Math.sin(an)]);
+        }
+        s.leaf.facet(pts, uvs, col);
+        s.leaf.facet([pts[0], ...pts.slice(1).reverse()], [uvs[0], ...uvs.slice(1).reverse()], col);
       }
     } else if (kind === 'rocks') {
       // 草里半埋的两三块石头(灰里带一点青苔绿)

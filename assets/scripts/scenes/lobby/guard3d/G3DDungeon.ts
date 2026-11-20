@@ -229,7 +229,7 @@ const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; 
   gate: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
   wall: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.58, 0.6, 0.66] },
   wall_tower: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.58, 0.6, 0.66] },
-  bridge: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.6, 0.62, 0.68] },
+  bridge: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.5, 0.51, 0.55] },          // 11-20 第六轮:天光加大后白石桥面过曝 → 0.6 → 0.5
   dock: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0, ab: [0.62, 0.6, 0.6] },
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
