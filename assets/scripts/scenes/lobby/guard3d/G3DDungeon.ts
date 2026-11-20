@@ -9,6 +9,7 @@ import { deviceInfo, GpuTimer } from './G3DGpuTimer';
 import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
+import { installMultiLightEffect, MultiLight } from './G3DMultiLight';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -375,6 +376,8 @@ class Dungeon {
   moon: DirectionalLight | null = null;
   fx: FxWorld | null = null;
   post: FieldPost | null = null;
+  /** 单遍多灯(G3DMultiLight):enabled = false 退回逐灯加画(对照用)。 */
+  ml: MultiLight | null = null;
   opened = false;
   lastError = '';
   time = 0;
@@ -507,10 +510,19 @@ class Dungeon {
         this.lastError = `missing ${missing.join(',')}`;
         return;
       }
-      loadPost(() => {
+      // 11-20 低端兼容第 1 期 ⑤:单遍多灯(&ml=0 关;要在建任何 3D 材质之前把 builtin-standard 换掉)
+      const useMl = param('ml') !== '0';
+      const mlStep = (next: () => void): void => (useMl ? installMultiLightEffect(() => next()) : next());
+      mlStep(() => loadPost(() => {
         try {
           if (!this.world) {
             this.build();
+          }
+          if (useMl && this.cam && !this.ml) {
+            this.ml = new MultiLight(this.cam);
+            if (!this.ml.start()) {
+              this.ml = null;
+            }
           }
           this.takeOver();
           this.opened = true;
@@ -526,7 +538,7 @@ class Dungeon {
           this.lastError = String((error as any)?.stack ?? error);
           console.warn('[g3dd] open failed', error);
         }
-      });
+      }));
     });
   }
 
@@ -1649,6 +1661,12 @@ class Dungeon {
    * 临时拷在 resources/g3d_bld/ground/;载到之后重出一遍整张地面(石板 + 罗盘纹 + 大片水膜和积水 + 落叶),换到地面材质上。
    * 倒影还是平面反射那一套:水膜和积水的地方够滑,自然映出灯、窗和炉火。
    */
+  /** 主城地面切几 × 几块(横 × 纵);地址 &fchunk=4x3 覆盖。 */
+  floorChunks: [number, number] = ((): [number, number] => {
+    const m = /^(\d+)x(\d+)$/.exec(param('fchunk') ?? '');
+    return m ? [Math.max(1, Number(m[1])), Math.max(1, Number(m[2]))] : [8, 6];
+  })();
+
   private loadCityGround(): void {
     resources.load('g3d_bld/ground/ground', ImageAsset, (err, img) => {
       const src = (img as any)?.data;
@@ -1737,12 +1755,14 @@ class Dungeon {
         const inHole0 = (cx: number, cz: number): boolean => Math.abs(cx - C.x) < hr && Math.abs(cz - C.z) < hr;
         // v4:石板只铺在街 / 广场上,碎石地和花园另用材质(11-19 跑图:整城一种带污渍的石板,街看不出来)
         const inHole = inHole0;
-        for (let iz = 0; iz < 6; iz += 1) {
-          for (let ix = 0; ix < 8; ix += 1) {
-            const gx0 = G.x0 + (G.w * ix) / 8;
-            const gz0 = G.z0 + (G.d * iz) / 6;
-            const gx1 = G.x0 + (G.w * (ix + 1)) / 8;
-            const gz1 = G.z0 + (G.d * (iz + 1)) / 6;
+        // 11-20 低端兼容第 1 期 ③:分块数可调(&fchunk=4x3),块越少主画面 / 每盏灯的绘制次数越少,但灯照不到的像素也跟着整块多算。AMD 核显实测 4×3 少 32 次绘制、反而慢 2.4%(卡在显卡不在绘制次数),默认仍 8×6;留着给 Intel 笔记本对照
+        const [FX, FZ] = this.floorChunks;
+        for (let iz = 0; iz < FZ; iz += 1) {
+          for (let ix = 0; ix < FX; ix += 1) {
+            const gx0 = G.x0 + (G.w * ix) / FX;
+            const gz0 = G.z0 + (G.d * iz) / FZ;
+            const gx1 = G.x0 + (G.w * (ix + 1)) / FX;
+            const gz1 = G.z0 + (G.d * (iz + 1)) / FZ;
             if (lawnMat) {
               add(MeshBatch.groundGridSplit(gx0, gz0, gx1, gz1, 0.5, G, DUNGEON.paveM, tint, v4LawnField, false, inHole));
               add(MeshBatch.groundGridSplit(gx0, gz0, gx1, gz1, 0.5, G, DUNGEON.paveM * 4, tint, v4LawnField, true, inHole), lawnMat);          // 草地贴图一张铺 4 倍大(9.6 米),不显重复
@@ -2411,6 +2431,9 @@ class Dungeon {
       moon.shadowBias = 0.0004;
       moon.shadowNormalBias = 0.02;
       moon.shadowFixedArea = true;
+      // 11-20 第 1 期:只要 1 级。引擎默认 4 级,固定范围下内置管线照样按级数循环 4 遍、每遍都是同一块范围同一套矩阵、
+      // 画进同一整张阴影图 —— 4 遍结果完全一样,前 3 遍白画(投影的东西整个多画 3 次)。改 1 级画面逐像素不变。&csm4=1 退回旧做法对照
+      moon.csmLevel = param('csm4') === '1' ? renderer.scene.CSMLevel.LEVEL_4 : renderer.scene.CSMLevel.LEVEL_1;
       moon.shadowNear = 1;
       moon.shadowFar = DUNGEON.cityFull ? 320 : this.outdoor ? 160 : 90;
       moon.shadowOrthoSize = DUNGEON.cityFull ? 86 : this.city ? 40 : this.wild ? 26 : 17;          // 整城:罩住城墙一圈
@@ -3172,11 +3195,13 @@ class Dungeon {
     const chars: Node[] = [this.leader?.node, ...this.followers.map((f) => f.c.node)].filter((n): n is Node => !!n);
     const res = (k: number): string => (cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : '?');
     type Step = { name: string; on: () => void; off: () => void };
+    const csm0 = moon?.csmLevel ?? 1;
     const steps: Step[] = [
-      { name: '现状', on: () => undefined, off: () => undefined },
       { name: '关遮蔽(AO)', on: () => post.set({ ao: false }), off: () => post.set({ ao: cfg0.ao }) },
       { name: '关泛光', on: () => post.set({ bloom: false }), off: () => post.set({ bloom: cfg0.bloom }) },
       { name: '关月光阴影', on: () => { if (moon) { moon.shadowEnabled = false; } }, off: () => { if (moon) { moon.shadowEnabled = shadow0; } } },
+      ...(this.ml && this.ml.enabled ? [{ name: '逐灯加画(旧做法)', on: () => { if (this.ml) { this.ml.enabled = false; } }, off: () => { if (this.ml) { this.ml.enabled = true; } } }] : []),
+      ...(shadow0 && csm0 === 1 ? [{ name: '阴影画 4 遍(旧做法)', on: () => { if (moon) { moon.csmLevel = renderer.scene.CSMLevel.LEVEL_4; } }, off: () => { if (moon) { moon.csmLevel = csm0; } } }] : []),
       { name: '灯 0 盏', on: () => this.set({ realLights: 0 }), off: () => this.set({ realLights: lights0 }) },
       { name: '藏起建筑', on: () => blds.forEach((n) => { n.active = false; }), off: () => blds.forEach((n) => { n.active = true; }) },
       { name: '藏起角色', on: () => chars.forEach((n) => { n.active = false; }), off: () => chars.forEach((n) => { n.active = true; }) },
@@ -3187,37 +3212,76 @@ class Dungeon {
         off: () => { this.set({ post: 2, realLights: lights0 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); if (moon) { moon.shadowEnabled = shadow0; } } },
     ];
     // 11-20 第 0 期:加显卡实际耗时(GPU 计时查询)、每项的面数 / 绘制次数、设备 / 浏览器 / 电源信息,测完可一键复制
+    // 11-20 第 1 期:每测一项前后都重测一次「现状」,这一项跟前后两次现状的平均比 —— 机器测着测着变热降频(插电那次一路变慢)也扣得掉
     const gpuT = new GpuTimer();
     gpuT.start();
     const dev = await deviceInfo();
     const bat = dev.battery as { charging: boolean; level: number } | null;
     const power = bat ? (bat.charging ? `插电 ${bat.level}%` : `用电池 ${bat.level}%`) : '电源未知';
-    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil(steps.length * 4.5)} 秒)\n${GPU_NAME.slice(0, 70)}\n${String(dev.browser ?? '浏览器未知')} · ${power} · ${dev.cores ?? '?'} 线程 · 内存 ${dev.memGB ?? '?'}GB\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}${gpuT.ok ? '' : ' · 浏览器不给显卡计时'}\n`;
-    const colHead = `${padW('项', 26)}${padW('帧率', 7, true)}${padW('每帧毫秒', 10, true)}${padW('显卡毫秒', 10, true)}${padW('最慢', 6, true)}${padW('万面', 6, true)}${padW('绘制', 6, true)}`;
+    const SETTLE = 1200;
+    const MEASURE = 2500;
+    const total = steps.length * 2 + 1;
+    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil((total * (SETTLE + MEASURE)) / 1000) + 5} 秒)\n${GPU_NAME.slice(0, 70)}\n${String(dev.browser ?? '浏览器未知')} · ${power} · ${dev.cores ?? '?'} 线程 · 内存 ${dev.memGB ?? '?'}GB\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}${gpuT.ok ? '' : ' · 浏览器不给显卡计时'}\n`;
+    const colHead = `${padW('项', 24)}${padW('帧率', 6, true)}${padW('每帧毫秒', 9, true)}${padW('比现状', 7, true)}${padW('显卡毫秒', 9, true)}${padW('比现状', 7, true)}${padW('万面', 5, true)}${padW('绘制', 5, true)}`;
+    type Meas = { fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number };
+    type Row = { name: string; fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number; dAvg?: number; dGpu?: number | null; base?: { avg: number; gpu: number | null } };
     const rows: string[] = [];
-    const out: Array<{ name: string; fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number }> = [];
+    const out: Row[] = [];
+    const bases: Meas[] = [];
     const dv = (): { numTris?: number; numDrawCalls?: number } => ((director.root as unknown as { device?: { numTris?: number; numDrawCalls?: number } })?.device ?? {});
+    const r1 = (v: number): number => +v.toFixed(1);
+    let done = 0;
+    const measure = async (label: string): Promise<Meas> => {
+      done += 1;
+      el.textContent = `${head}${colHead}\n${rows.join('\n')}\n▶ 正在测 ${done}/${total}:${label}`;
+      const r = await this.measureFrames(SETTLE, MEASURE, gpuT.ok ? gpuT : undefined);
+      return { fps: r.fps, avg: r.avg, worst: r.worst, gpu: r.gpu, tris: dv().numTris ?? 0, draws: dv().numDrawCalls ?? 0 };
+    };
+    const pct = (v: number | null | undefined): string => (v === null || v === undefined ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(0)}%`);
+    const line = (name: string, m: Meas, dA?: number, dG?: number | null): string => `${padW(name, 24)}${padW(m.fps.toFixed(1), 6, true)}${padW(m.avg.toFixed(1), 9, true)}${padW(dA === undefined ? '' : pct(dA), 7, true)}${padW(m.gpu === null ? '-' : m.gpu.toFixed(1), 9, true)}${padW(dA === undefined ? '' : pct(dG), 7, true)}${padW((m.tris / 10000).toFixed(0), 5, true)}${padW(String(m.draws), 5, true)}`;
+    bases.push(await measure('现状'));
     for (let i = 0; i < steps.length; i += 1) {
       const s = steps[i];
-      el.textContent = `${head}${colHead}\n${rows.join('\n')}\n▶ 正在测 ${i + 1}/${steps.length}:${s.name}`;
       try {
         s.on();
       } catch (error) {
         void error;
       }
-      const r = await this.measureFrames(1500, 3000, gpuT.ok ? gpuT : undefined);
-      const tris = dv().numTris ?? 0;
-      const draws = dv().numDrawCalls ?? 0;
+      const m = await measure(s.name);
       try {
         s.off();
       } catch (error) {
         void error;
       }
-      out.push({ name: s.name, fps: +r.fps.toFixed(1), avg: +r.avg.toFixed(1), worst: +r.worst.toFixed(0), gpu: r.gpu === null ? null : +r.gpu.toFixed(1), tris, draws });
-      rows.push(`${padW(s.name, 26)}${padW(r.fps.toFixed(1), 7, true)}${padW(r.avg.toFixed(1), 10, true)}${padW(r.gpu === null ? '-' : r.gpu.toFixed(1), 10, true)}${padW(r.worst.toFixed(0), 6, true)}${padW((tris / 10000).toFixed(0), 6, true)}${padW(String(draws), 6, true)}`);
+      const prev = bases[bases.length - 1];
+      const next = await measure('现状(对照)');
+      bases.push(next);
+      const bAvg = (prev.avg + next.avg) / 2;
+      const bGpu = prev.gpu !== null && next.gpu !== null ? (prev.gpu + next.gpu) / 2 : null;
+      const dAvg = ((m.avg - bAvg) / bAvg) * 100;
+      const dGpu = bGpu !== null && m.gpu !== null ? ((m.gpu - bGpu) / bGpu) * 100 : null;
+      out.push({ name: s.name, fps: r1(m.fps), avg: r1(m.avg), worst: +m.worst.toFixed(0), gpu: m.gpu === null ? null : r1(m.gpu), tris: m.tris, draws: m.draws,
+        dAvg: r1(dAvg), dGpu: dGpu === null ? null : r1(dGpu), base: { avg: r1(bAvg), gpu: bGpu === null ? null : r1(bGpu) } });
+      rows.length = 0;
+      const b0 = bases[0];
+      rows.push(line('现状(第一次)', b0));
+      for (const o of out) {
+        rows.push(line(o.name, { fps: o.fps, avg: o.avg, worst: o.worst, gpu: o.gpu, tris: o.tris, draws: o.draws }, o.dAvg, o.dGpu));
+      }
     }
+    // 第一行 = 所有现状的平均(兼容旧的读法:out[0] 是现状),另附漂移范围
+    const mean = (f: (b: Meas) => number): number => bases.reduce((t, b) => t + f(b), 0) / bases.length;
+    const gpus = bases.map((b) => b.gpu).filter((g): g is number => g !== null);
+    const baseRow: Row = { name: '现状', fps: r1(mean((b) => b.fps)), avg: r1(mean((b) => b.avg)), worst: Math.max(...bases.map((b) => b.worst)), gpu: gpus.length ? r1(gpus.reduce((t, g) => t + g, 0) / gpus.length) : null,
+      tris: Math.round(mean((b) => b.tris)), draws: Math.round(mean((b) => b.draws)) };
+    out.unshift(baseRow);
+    const avgs = bases.map((b) => b.avg);
+    const drift = `现状测了 ${bases.length} 次:每帧 ${Math.min(...avgs).toFixed(1)}~${Math.max(...avgs).toFixed(1)} 毫秒${gpus.length ? `,显卡 ${Math.min(...gpus).toFixed(1)}~${Math.max(...gpus).toFixed(1)}` : ''}(第一次 ${avgs[0].toFixed(1)} → 最后 ${avgs[avgs.length - 1].toFixed(1)})`;
+    rows[0] = line(`现状(${bases.length} 次平均)`, { fps: baseRow.fps, avg: baseRow.avg, worst: baseRow.worst, gpu: baseRow.gpu, tris: baseRow.tris, draws: baseRow.draws });
+    rows.push(drift);
     gpuT.stop();
-    const result = { when: new Date().toISOString(), url: typeof location !== 'undefined' ? location.href : '', gpu: GPU_NAME, tier: DUNGEON.tier, canvas: cv ? [cv.width, cv.height] : null, scale: scale0, gpuTimer: gpuT.ok, dev, out };
+    const result = { when: new Date().toISOString(), url: typeof location !== 'undefined' ? location.href : '', gpu: GPU_NAME, tier: DUNGEON.tier, canvas: cv ? [cv.width, cv.height] : null, scale: scale0, gpuTimer: gpuT.ok, dev, out,
+      bases: bases.map((b) => ({ avg: r1(b.avg), gpu: b.gpu === null ? null : r1(b.gpu) })) };
     const text = `${head}${colHead}\n${rows.join('\n')}\n\n${JSON.stringify(result)}`;
     el.textContent = `${head}${colHead}\n${rows.join('\n')}\n✔ 测完了:点下面的按钮复制结果发给我(或截这张表)`;
     const btn = document.createElement('button');
@@ -4464,7 +4528,7 @@ class Dungeon {
     return { opened: this.opened, error: this.lastError, stats: this.stats, time: +this.time.toFixed(2), leader: this.leader ? [+this.lx.toFixed(2), +this.lz.toFixed(2), Math.round(this.lyaw)] : null,
       mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, act: this.act ? `${this.act.kind}:${this.act.move ? this.act.move.name : '跃空重劈'}:${(this.act.t / this.act.dur).toFixed(2)}` : '', combo: this.comboI, cd: { ...this.cd }, tier: DUNGEON.tier, fps: +this.fps.toFixed(1), fpsLow: +this.fpsLow.toFixed(1), hud: this.hudEl ? this.hudEl.textContent : '', mobile: sys.isMobile,
       real: this.fixtures.filter((f) => f.on).length, fixtures: this.fixtures.length, lightsOn: this.recs.filter((r) => r.L.node.active).length, stick: { ...this.stick }, view: { ...this.view }, free: !!this.free,
-      post: this.post?.info(), autoQ: this.qSteps.slice(), gpu: GPU_NAME.slice(0, 90), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
+      post: this.post?.info(), ml: this.ml ? { on: this.ml.enabled, ...this.ml.stat } : null, autoQ: this.qSteps.slice(), gpu: GPU_NAME.slice(0, 90), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
       canvas: game.canvas ? [game.canvas.width, game.canvas.height] : null };
   }
 

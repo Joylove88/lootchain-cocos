@@ -944,6 +944,7 @@ class Stage {
       moon.shadowBias = 0.0003;
       moon.shadowNormalBias = 0.02;
       moon.shadowFixedArea = true;
+      moon.csmLevel = renderer.scene.CSMLevel.LEVEL_1;          // 固定范围用不上分级;默认 4 级会把投影的东西白画 3 遍(结果一样)
       moon.shadowNear = 1;
       moon.shadowFar = 110;
       moon.shadowOrthoSize = 21;

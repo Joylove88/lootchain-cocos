@@ -59,6 +59,8 @@ export interface PostCfg {
   shoulder: number;
   shadowTint: [number, number, number];
   highlightTint: [number, number, number];
+  /** 遮蔽并进泛光提取 / 调色(11-20,低端兼容第 1 期):不再单独一遍满分辨率乘回画面。false = 旧做法(对照用,地址 &aomerge=0)。 */
+  aoMerge?: boolean;
   splitAt: number;
   // 输出:暗角(力度 / 起点 / 终点 / 往正圆靠多少)、锐化、抖动、调试(1 只看遮蔽 / 2 只看泛光 / 3 不调色直出 / 4 看深度)
   vignette: number;
@@ -128,6 +130,19 @@ export function postLevel(): number {
     levelFromPage = Math.max(0, Math.min(3, Math.round(v)));
   }
   return levelFromPage;
+}
+
+let aoMergeParam: boolean | null = null;
+/** 地址带 &aomerge=0:遮蔽退回单独一遍(对照用)。 */
+function aoMergeOff(): boolean {
+  if (aoMergeParam === null) {
+    try {
+      aoMergeParam = /[?&]aomerge=0(&|$)/.test(location.search);
+    } catch (error) {
+      aoMergeParam = false;
+    }
+  }
+  return aoMergeParam;
 }
 
 /** 现在有几台相机真的挂着后期(= 场景是离屏画的)。 */
@@ -264,6 +279,7 @@ class PostBuilder {
   private v1 = new Vec4();
   private v2 = new Vec4();
   private v3 = new Vec4();
+  private v9 = new Vec4();
 
   constructor(private cfg: PostCfg) {}
 
@@ -368,6 +384,10 @@ class PostBuilder {
     const ao0 = `LcAo0_${id}`;
     const ao1 = `LcAo1_${id}`;
     const aoOn = !!cc.lcAo && !!depth && cfg.aoStrength > 0;
+    const aoMerge = cfg.aoMerge !== false && !aoMergeOff();
+    // 并进去的做法:泛光提取和调色各自按同一个式子乘遮蔽(力度 0 = 不乘)
+    const aoK = aoOn && aoMerge && cfg.debug !== 1 ? cfg.aoStrength : 0;
+    const v9 = this.v9.set(cfg.aoTint[0], cfg.aoTint[1], cfg.aoTint[2], aoK);
     if (aoOn) {
       const aw = Math.max(1, w >> 1);
       const ah = Math.max(1, h >> 1);
@@ -392,7 +412,7 @@ class PostBuilder {
       p.addTexture(ao1, 'lcTexA', point);
       p.setVec4('lcP0', v0.set(0, 1 / ah, sharp, 0));
       p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 1);
-      if (cfg.debug !== 1) {
+      if (cfg.debug !== 1 && !aoMerge) {
         p = ppl.addRenderPass(w, h, 'lc-post-ao-apply');
         p.addRenderTarget(scene, LoadOp.LOAD, StoreOp.STORE);
         p.addTexture(ao0, 'lcTexA', linear);
@@ -416,8 +436,10 @@ class PostBuilder {
       p = ppl.addRenderPass(bw[0], bh[0], 'lc-post-bloom-pre');
       p.addRenderTarget(b0, LoadOp.CLEAR, StoreOp.STORE, BLACK);
       p.addTexture(scene, 'lcTexA', linear);
+      p.addTexture(aoOn ? ao0 : scene, 'lcTexC', linear);
       p.setVec4('lcP0', v0.set(1 / w, 1 / h, ldr ? Math.min(cfg.bloomThreshold, 0.86) : cfg.bloomThreshold, cfg.bloomKnee));
       p.setVec4('lcP1', v1.set(cfg.bloomMax, ldr, 0, 0));
+      p.setVec4('lcP9', v9);
       p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 3);
       for (let i = 1; i < n; i += 1) {
         p = ppl.addRenderPass(bw[i], bh[i], 'lc-post-bloom-down');
@@ -458,6 +480,7 @@ class PostBuilder {
     p.setVec4('lcP1', v1.set(cfg.saturation, cfg.shoulder, ldr, (cfg.debug === 1 || cfg.debug === 4) && !aoOn ? 0 : cfg.debug));
     p.setVec4('lcP2', v2.set(cfg.shadowTint[0], cfg.shadowTint[1], cfg.shadowTint[2], cfg.splitAt));
     p.setVec4('lcP3', v3.set(cfg.highlightTint[0], cfg.highlightTint[1], cfg.highlightTint[2], cfg.toe));
+    p.setVec4('lcP9', v9);
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 6);
 
     // ── 边缘抗锯齿(引擎自带的那张材质;只在没放大渲染的档位用)──
@@ -482,7 +505,7 @@ class PostBuilder {
     p.setVec4('lcP1', v1.set(plain ? 0 : cfg.vignette, cfg.vignetteStart, cfg.vignetteEnd, cfg.vignetteRound));
     p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, 0));
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 7);
-    this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
+    this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, aoMerge: aoOn && aoMerge, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
     return p;
   }
 }

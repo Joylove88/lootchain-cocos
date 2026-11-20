@@ -156,6 +156,7 @@ export class G3DStudio {
       light.shadowBias = 0.0004;
       light.shadowNormalBias = 0.02;
       light.shadowFixedArea = true;          // 就这么大一块底片:固定一块正交范围
+      light.csmLevel = renderer.scene.CSMLevel.LEVEL_1;          // 固定范围用不上分级;默认 4 级会把投影的东西白画 3 遍(结果一样)
       light.shadowNear = 1;
       light.shadowFar = 200;
       light.shadowOrthoSize = Math.max(this.cfg.cols, this.cfg.rows) * CELL_M * 0.62;

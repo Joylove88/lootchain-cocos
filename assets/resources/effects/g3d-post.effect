@@ -102,6 +102,7 @@ CCProgram post-ubo %{
     vec4 lcP6;
     vec4 lcP7;
     vec4 lcP8;
+    vec4 lcP9;          // 遮蔽并进泛光提取 / 调色时用(11-20):暗处染色(rgb)、遮蔽力度(0 = 不乘遮蔽)
   };
 }%
 
@@ -253,12 +254,20 @@ CCProgram bloom-pre-fs %{
 
   #pragma rate lcTexA pass
   uniform sampler2D lcTexA;
+  #pragma rate lcTexC pass
+  uniform sampler2D lcTexC;
 
   layout(location = 0) out vec4 fragColor;
 
   vec3 tap (float x, float y) {
-    vec3 c = texture(lcTexA, v_uv + vec2(x, y) * lcP0.xy).rgb;
+    vec2 uv = v_uv + vec2(x, y) * lcP0.xy;
+    vec3 c = texture(lcTexA, uv).rgb;
     c = lcP1.y > 0.5 ? c * c : c;
+    // 遮蔽不再单独一遍乘回画面(11-20):在这里和调色里各乘一次,结果和原来先乘进画面再取一样
+    if (lcP9.w > 0.0) {
+      float ao = mix(1.0, texture(lcTexC, uv).r, lcP9.w);
+      c *= mix(lcP9.rgb, vec3(1.0), ao);
+    }
     return min(c, vec3(lcP1.x));
   }
 
@@ -347,7 +356,7 @@ CCProgram bloom-up-fs %{
 }%
 
 // ───────────────────────── 调色 ─────────────────────────
-// lcTexA = 画面(线性高动态;低动态时是显示用的颜色)、lcTexB = 泛光、lcTexC = 遮蔽(只在调试时看)、lcDepth = 深度(雾用)
+// lcTexA = 画面(线性高动态;低动态时是显示用的颜色)、lcTexB = 泛光、lcTexC = 遮蔽(lcP9.w > 0 时乘进画面;调试 1 时直接看)、lcDepth = 深度(雾用)
 // lcP0 = 曝光、泛光强度、对比、对比的轴心(线性亮度)
 // lcP1 = 饱和度、肩部从多亮开始(线性值)、低动态标记、调试(0 正常 / 1 只看遮蔽 / 2 只看泛光 / 3 不调色直出)
 // lcP2 = 暗部染色(rgb)、分色的分界亮度
@@ -380,6 +389,11 @@ CCProgram grade-fs %{
   void main () {
     vec3 c = texture(lcTexA, v_uv).rgb;
     c = lcP1.z > 0.5 ? c * c : c;
+    // 遮蔽(11-20 从单独一遍并进来:原来是先乘进画面再进调色,数学上一样,省一遍满分辨率的读写)
+    if (lcP9.w > 0.0) {
+      float ao = mix(1.0, texture(lcTexC, v_uv).r, lcP9.w);
+      c *= mix(lcP9.rgb, vec3(1.0), ao);
+    }
     if (lcP4.w > 0.001) {
       float d = texture(lcDepth, v_uv).r;
       if (d < 0.99999) {                  // 深度到头的是天空,不加
