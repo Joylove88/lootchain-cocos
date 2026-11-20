@@ -5,6 +5,7 @@ import { charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { barkPbr, canvasPbr, endGrainPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
+import { deviceInfo, GpuTimer } from './G3DGpuTimer';
 import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
@@ -3112,15 +3113,20 @@ class Dungeon {
   }
 
   /** 量 ms 毫秒内的平均帧时长和最慢一帧(先空等 settle 毫秒,让上一项的改动生效、着色器编译完)。 */
-  private measureFrames(settle: number, ms: number): Promise<{ fps: number; avg: number; worst: number }> {
+  private measureFrames(settle: number, ms: number, gpu?: GpuTimer): Promise<{ fps: number; avg: number; worst: number; gpu: number | null }> {
     return new Promise((resolve) => {
       const t0 = performance.now() + settle;
+      let started = false;
       let last = 0;
       let n = 0;
       let sum = 0;
       let worst = 0;
       const tick = (now: number): void => {
         if (now >= t0) {
+          if (!started) {
+            started = true;
+            gpu?.take();          // 丢掉等待期的样本
+          }
           if (last) {
             const d = now - last;
             sum += d;
@@ -3133,7 +3139,8 @@ class Dungeon {
           requestAnimationFrame(tick);
         } else {
           const avg = sum / Math.max(1, n);
-          resolve({ fps: 1000 / avg, avg, worst });
+          const g = gpu ? gpu.take() : null;
+          resolve({ fps: 1000 / avg, avg, worst, gpu: g ? g.median : null });
         }
       };
       requestAnimationFrame(tick);
@@ -3179,29 +3186,64 @@ class Dungeon {
       { name: '全关(后期 / 阴影 / 灯)', on: () => { this.set({ post: 0, realLights: 0 }); if (moon) { moon.shadowEnabled = false; } },
         off: () => { this.set({ post: 2, realLights: lights0 }); post.set({ scale: scale0, ao: cfg0.ao, bloom: cfg0.bloom }); if (moon) { moon.shadowEnabled = shadow0; } } },
     ];
-    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil(steps.length * 4.5)} 秒)\n${GPU_NAME.slice(0, 70)}\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}\n`;
+    // 11-20 第 0 期:加显卡实际耗时(GPU 计时查询)、每项的面数 / 绘制次数、设备 / 浏览器 / 电源信息,测完可一键复制
+    const gpuT = new GpuTimer();
+    gpuT.start();
+    const dev = await deviceInfo();
+    const bat = dev.battery as { charging: boolean; level: number } | null;
+    const power = bat ? (bat.charging ? `插电 ${bat.level}%` : `用电池 ${bat.level}%`) : '电源未知';
+    const head = `自动测速(请别动鼠标键盘,约 ${Math.ceil(steps.length * 4.5)} 秒)\n${GPU_NAME.slice(0, 70)}\n${String(dev.browser ?? '浏览器未知')} · ${power} · ${dev.cores ?? '?'} 线程 · 内存 ${dev.memGB ?? '?'}GB\n画布 ${cv ? `${cv.width}×${cv.height}` : '?'} · 设备像素比 ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'} · 渲染 ${res(scale0)} · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · 真灯 ${lights0}${gpuT.ok ? '' : ' · 浏览器不给显卡计时'}\n`;
+    const colHead = `${padW('项', 26)}${padW('帧率', 7, true)}${padW('每帧毫秒', 10, true)}${padW('显卡毫秒', 10, true)}${padW('最慢', 6, true)}${padW('万面', 6, true)}${padW('绘制', 6, true)}`;
     const rows: string[] = [];
-    const out: Array<{ name: string; fps: number; avg: number; worst: number }> = [];
+    const out: Array<{ name: string; fps: number; avg: number; worst: number; gpu: number | null; tris: number; draws: number }> = [];
+    const dv = (): { numTris?: number; numDrawCalls?: number } => ((director.root as unknown as { device?: { numTris?: number; numDrawCalls?: number } })?.device ?? {});
     for (let i = 0; i < steps.length; i += 1) {
       const s = steps[i];
-      el.textContent = `${head}${rows.join('\n')}\n▶ 正在测 ${i + 1}/${steps.length}:${s.name}`;
+      el.textContent = `${head}${colHead}\n${rows.join('\n')}\n▶ 正在测 ${i + 1}/${steps.length}:${s.name}`;
       try {
         s.on();
       } catch (error) {
         void error;
       }
-      const r = await this.measureFrames(1500, 3000);
+      const r = await this.measureFrames(1500, 3000, gpuT.ok ? gpuT : undefined);
+      const tris = dv().numTris ?? 0;
+      const draws = dv().numDrawCalls ?? 0;
       try {
         s.off();
       } catch (error) {
         void error;
       }
-      out.push({ name: s.name, fps: +r.fps.toFixed(1), avg: +r.avg.toFixed(1), worst: +r.worst.toFixed(0) });
-      rows.push(`${s.name.padEnd(22, ' ')} ${r.fps.toFixed(1).padStart(5)} 帧   每帧 ${r.avg.toFixed(1).padStart(5)} 毫秒   最慢 ${r.worst.toFixed(0)}`);
+      out.push({ name: s.name, fps: +r.fps.toFixed(1), avg: +r.avg.toFixed(1), worst: +r.worst.toFixed(0), gpu: r.gpu === null ? null : +r.gpu.toFixed(1), tris, draws });
+      rows.push(`${padW(s.name, 26)}${padW(r.fps.toFixed(1), 7, true)}${padW(r.avg.toFixed(1), 10, true)}${padW(r.gpu === null ? '-' : r.gpu.toFixed(1), 10, true)}${padW(r.worst.toFixed(0), 6, true)}${padW((tris / 10000).toFixed(0), 6, true)}${padW(String(draws), 6, true)}`);
     }
-    el.textContent = `${head}${rows.join('\n')}\n✔ 测完了,请截这张表`;
-    console.log('[g3dd] 自动测速', JSON.stringify({ gpu: GPU_NAME, canvas: cv ? [cv.width, cv.height] : null, dpr: window.devicePixelRatio, scale: scale0, out }));
-    (window as unknown as { __g3dBench?: unknown }).__g3dBench = out;
+    gpuT.stop();
+    const result = { when: new Date().toISOString(), url: typeof location !== 'undefined' ? location.href : '', gpu: GPU_NAME, tier: DUNGEON.tier, canvas: cv ? [cv.width, cv.height] : null, scale: scale0, gpuTimer: gpuT.ok, dev, out };
+    const text = `${head}${colHead}\n${rows.join('\n')}\n\n${JSON.stringify(result)}`;
+    el.textContent = `${head}${colHead}\n${rows.join('\n')}\n✔ 测完了:点下面的按钮复制结果发给我(或截这张表)`;
+    const btn = document.createElement('button');
+    btn.textContent = '复制结果';
+    btn.style.cssText = 'display:block;margin-top:8px;pointer-events:auto;cursor:pointer;font:14px sans-serif;padding:6px 14px;border-radius:4px;border:1px solid #8fb0e6;background:#1f2a40;color:#e8f0ff';
+    btn.onclick = (): void => {
+      const fallback = (): void => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'display:block;width:520px;max-width:80vw;height:120px;margin-top:8px;pointer-events:auto;font:12px monospace';
+        el.appendChild(ta);
+        ta.focus();
+        ta.select();
+        btn.textContent = '已选中,按 Ctrl+C 复制';
+      };
+      try {
+        void navigator.clipboard.writeText(text).then(() => { btn.textContent = '已复制'; }, fallback);
+      } catch (error) {
+        void error;
+        fallback();
+      }
+    };
+    el.appendChild(btn);
+    console.log('[g3dd] 自动测速', JSON.stringify(result));
+    (window as unknown as { __g3dBench?: unknown; __g3dBenchFull?: unknown }).__g3dBench = out;
+    (window as unknown as { __g3dBenchFull?: unknown }).__g3dBenchFull = result;
     this.benchState = 'done';
   }
 
@@ -4485,6 +4527,17 @@ function param(name: string): string | null {
   } catch (error) {
     return null;
   }
+}
+
+/** 按等宽字体的显示宽度补空格(中文 / 全角占两格),测速表对列用;right = 右对齐。 */
+function padW(str: string, w: number, right = false): string {
+  let n = 0;
+  for (const ch of str) {
+    const c = ch.codePointAt(0) ?? 0;
+    n += c === 0xd7 || (c >= 0x1100 && !(c >= 0xff61 && c <= 0xff9f)) ? 2 : 1;          // × 在中文等宽字体里也占两格
+  }
+  const pad = ' '.repeat(Math.max(1, w - n));
+  return right ? pad + str : str + pad;
 }
 
 /** 显卡型号(WebGL 调试扩展);拿不到返回空串。 */
