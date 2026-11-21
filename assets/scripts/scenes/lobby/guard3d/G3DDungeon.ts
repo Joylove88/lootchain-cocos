@@ -4735,8 +4735,6 @@ class Dungeon {
     }
     this.ultMist(x, z);
     this.ultInk(x, z);
-    this.ultRays(x, z);
-    this.timers.push({ at: this.time + 0.95, run: () => this.ultFinale(x, z) });
     this.timers.push({ at: this.time + 0.32, run: () => this.flash(x, 1.4, z, 1.5, 1.5, [150, 196, 255]) });
     this.timers.push({ at: this.time + 0.7, run: () => { this.heroAuraTo = 0; } });
     this.beginGrade();
@@ -4847,61 +4845,6 @@ class Dungeon {
       fx.emit({ x: x + Math.cos(a) * r, y: fx.rand(0.3, 2.8), z: z + Math.sin(a) * r, vx: Math.cos(a) * fx.rand(0.4, 1.6), vy: fx.rand(0.2, 1.1), vz: Math.sin(a) * fx.rand(0.4, 1.6),
         life: fx.rand(1.0, 2.2), s0: fx.rand(0.05, 0.1), s1: 0.02, c0: k % 5 === 0 ? [1, 0.82, 0.9] : [0.95, 0.98, 1], a: 0.9, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), drag: 1.2, fadeIn: 0.15 });
     }
-  }
-
-  /**
-   * 落地瞬间的放射光线(参考视频「虎啸」那一下):一圈贴地往外射的长光线(冰蓝 / 白 / 金),再加几道往上射的。
-   * 用高清图集的长火星格,速度很快 + 沿速度拉长,0.2 秒内射出去。
-   */
-  private ultRays(x: number, z: number): void {
-    const fx = this.fx!;
-    const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
-    const n = Math.round(36 * q);
-    for (let k = 0; k < n; k += 1) {
-      const a = (k / n) * Math.PI * 2 + fx.rand(-0.06, 0.06);
-      const sp = fx.rand(28, 46);
-      const up = fx.rand(0.02, 0.18);
-      const col: [number, number, number] = k % 3 === 0 ? [1, 1, 1] : k % 3 === 1 ? [0.72, 0.9, 1.0] : [1.0, 0.8, 0.45];
-      fx.emit({ x: x + Math.cos(a) * 0.3, y: fx.rand(0.12, 0.5), z: z + Math.sin(a) * 0.3, vx: Math.cos(a) * sp, vy: sp * up, vz: Math.sin(a) * sp, life: fx.rand(0.14, 0.22),
-        s0: fx.rand(0.1, 0.16), s1: 0.03, c0: [1, 1, 1], c1: col, a: 1, cell: FX2_CELL.spark, t2: true, stretch: 3, drag: 2.5, fadeIn: 0.01 });
-    }
-    for (let k = 0; k < Math.round(10 * q); k += 1) {
-      const a = fx.rand(0, Math.PI * 2);
-      const sp = fx.rand(22, 34);
-      fx.emit({ x: x + Math.cos(a) * 0.2, y: 0.3, z: z + Math.sin(a) * 0.2, vx: Math.cos(a) * sp * 0.25, vy: sp, vz: Math.sin(a) * sp * 0.25, life: fx.rand(0.16, 0.24),
-        s0: 0.12, s1: 0.03, c0: [1, 1, 1], c1: [0.72, 0.9, 1.0], a: 1, cell: FX2_CELL.spark, t2: true, stretch: 3, drag: 2.5, fadeIn: 0.01 });
-    }
-  }
-
-  /**
-   * 收势:旋涡快散的时候,四周的光点往中心收拢,中心随后往上喷出一股光点、闪一下,再带一圈小气浪 —— 给整招一个干脆的结尾。
-   */
-  private ultFinale(x: number, z: number): void {
-    const fx = this.fx!;
-    const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
-    const T = 0.3;
-    for (let k = 0; k < Math.round(28 * q); k += 1) {
-      const a = (k / 28) * Math.PI * 2 + fx.rand(-0.1, 0.1);
-      const r = fx.rand(3.2, 4.8);
-      const px = x + Math.cos(a) * r;
-      const pz = z + Math.sin(a) * r;
-      const py = fx.rand(0.15, 0.9);
-      fx.emit({ x: px, y: py, z: pz, vx: (x - px) / T, vy: (0.6 - py) / T, vz: (z - pz) / T, life: T, s0: 0.07, s1: 0.03, c0: k % 3 ? [0.75, 0.9, 1.0] : [1, 0.82, 0.5], a: 0.95,
-        cell: FX2_CELL.spark, t2: true, stretch: 2.2, fadeIn: 0.25 });
-    }
-    this.timers.push({ at: this.time + T, run: () => {
-      for (let k = 0; k < Math.round(26 * q); k += 1) {
-        const a = fx.rand(0, Math.PI * 2);
-        const sp = fx.rand(1.5, 3.5);
-        fx.emit({ x, y: 0.4, z, vx: Math.cos(a) * sp, vy: fx.rand(5, 9.5), vz: Math.sin(a) * sp, life: fx.rand(0.7, 1.2), s0: fx.rand(0.05, 0.1), s1: 0.02,
-          c0: k % 3 ? [0.85, 0.95, 1.0] : [1, 0.85, 0.55], a: 1, cell: FX2_CELL.glow, t2: true, grav: 0.45, drag: 0.6, fadeIn: 0.02 });
-      }
-      fx.emit({ x, y: 0.7, z, life: 0.2, s0: 0.5, s1: 1.4, c0: [1, 1, 1], c1: [0.7, 0.88, 1.0], a: 0.75, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
-      fx.pillar({ x, z, h: 3.2, w0: 0.12, w1: 0.04, life: 0.3, color: [0.85, 0.95, 1.0], a: 0.7 });
-      fx.decal('fx2', FX2_CELL.groundRing, x, z, 0.3, 2.6, 0.45, [0.75, 0.88, 1.0], 0.4, 0.02, 0.05, 0, 0.04);
-      this.addShock(x, 0.6, z, 0.5, 0.42, 0.02);
-      this.shake = Math.max(this.shake, 0.12);
-    } });
   }
 
   /** 大招调色开始(记下原值;已经在调就不重记)。 */
