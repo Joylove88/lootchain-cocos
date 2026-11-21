@@ -1,7 +1,7 @@
 import { Material, Node, Texture2D, Vec3 } from 'cc';
 import { DynMesh, material, tex } from './G3DKit';
 import { FX_CELL, fxUv, paintFxAtlas, paintRune, paintScorch } from './G3DSkins';
-import { FX2_CELL, fx2Uv, paintBrushStreak, paintFx2Atlas } from './G3DFxTex';
+import { FX2_CELL, fx2Uv, paintBrushStreak, paintFx2Atlas, paintInkWhirl } from './G3DFxTex';
 import { mulberry32 } from './G3DTextures';
 
 /**
@@ -38,6 +38,9 @@ interface Band { x: number; y: number; z: number; r0: number; r1: number; h: num
  */
 interface Streak { kind: 'spiral' | 'drop'; x: number; z: number; a0: number; turns: number; r0: number; r1: number; y0: number; y1: number; w0: number; w1: number;
   age: number; life: number; grow: number; len: number; scroll: number; rep: number; color: [number, number, number]; a: number }
+/** 墨盘旋涡:贴地的一整片黑墨 + 白色笔触,半径 r0 → r1(grow 秒内铺开),一边转一边在 hold 之后淡掉。 */
+interface Whirl { x: number; y: number; z: number; r0: number; r1: number; grow: number; hold: number; age: number; life: number; rot: number; spin: number;
+  ink: [number, number, number]; hi: [number, number, number]; a: number }
 /** 光柱:从 (x,y0,z) 往上 h 米,宽 w(始终正对镜头的竖片)。 */
 interface Pillar { x: number; y0: number; z: number; h: number; w0: number; w1: number; age: number; life: number; color: [number, number, number]; a: number }
 
@@ -58,6 +61,8 @@ export class FxWorld {
   private readonly pillars: Pillar[] = [];
   private readonly streaks: Streak[] = [];
   private readonly flowMesh: DynMesh;
+  private readonly whirls: Whirl[] = [];
+  private readonly inkMesh: DynMesh;
   /**
    * 预热(11-22 线上实测:第一次放旋风斩卡到 0 帧):空的动态网格不画,材质的着色器要等第一次真有东西时才编译,
    * 弱显卡上一编就是零点几秒 → 建好后头几帧往每张网格里塞一片看不见的小面片(透明度 0),让编译发生在载入阶段。
@@ -97,6 +102,7 @@ export class FxWorld {
     this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6, false, false, bounds);
     this.add2Mesh = new DynMesh(parent, 'ShowFxAdd2', mk(2, this.atlas2, 5), 2400 * 4, 2400 * 6, false, false, bounds);
     this.flowMesh = new DynMesh(parent, 'ShowFxFlow', mk(2, tex(paintBrushStreak(), true, 4), 4), 3200, 4800, false, false, bounds);
+    this.inkMesh = new DynMesh(parent, 'ShowFxInk', mk(3, tex(paintInkWhirl(), false, 8), 1), 64, 96, false, false, bounds);
   }
 
   rand(a = 0, b = 1): number {
@@ -125,6 +131,11 @@ export class FxWorld {
   /** 旋风带(见 Band)。follow 给了就每帧跟着它的位置走(绕着主角转)。 */
   band(o: { x: number; y: number; z: number; r0: number; r1?: number; h: number; life: number; spin: number; color: [number, number, number]; a?: number; follow?: () => [number, number] }): void {
     this.bands.push({ x: o.x, y: o.y, z: o.z, r0: o.r0, r1: o.r1 ?? o.r0, h: o.h, age: 0, life: o.life, rot: this.rnd() * 6.28, spin: o.spin, color: o.color, a: o.a ?? 1, follow: o.follow });
+  }
+
+  /** 墨盘旋涡(见 Whirl)。spin = 每秒转多少弧度(负 = 顺时针,俯视)。 */
+  whirl(o: { x: number; y?: number; z: number; r0: number; r1: number; grow: number; hold: number; life: number; spin: number; ink: [number, number, number]; hi: [number, number, number]; a?: number }): void {
+    this.whirls.push({ x: o.x, y: o.y ?? 0.045, z: o.z, r0: o.r0, r1: o.r1, grow: o.grow, hold: o.hold, age: 0, life: o.life, rot: this.rnd() * 6.28, spin: o.spin, ink: o.ink, hi: o.hi, a: o.a ?? 1 });
   }
 
   /** 流线(见 Streak)。 */
@@ -192,6 +203,7 @@ export class FxWorld {
     this.bands.length = 0;
     this.pillars.length = 0;
     this.streaks.length = 0;
+    this.whirls.length = 0;
   }
 
   update(dt: number, cam: Node): void {
@@ -304,6 +316,7 @@ export class FxWorld {
     this.drawBands(dt, add2);
     this.drawPillars(dt, add2);
     this.drawStreaks(dt);
+    this.drawWhirls(dt);
 
     // ── 闪电 ──
     const buv = fxUv(FX_CELL.bolt);
@@ -585,6 +598,38 @@ export class FxWorld {
         }
         prev = i0;
       }
+    }
+    m.end();
+  }
+
+  private drawWhirls(dt: number): void {
+    const m = this.inkMesh;
+    m.begin();
+    if (this.warm > 0) {
+      m.quad(0, -50, 0, 0.01, -50, 0, 0.01, -49.99, 0, 0, -49.99, 0, 0, 0, 0.01, 0.01, 0, 0, 0, 0);
+    }
+    for (let i = this.whirls.length - 1; i >= 0; i -= 1) {
+      const w = this.whirls[i];
+      w.age += dt;
+      if (w.age >= w.life) {
+        this.whirls.splice(i, 1);
+        continue;
+      }
+      w.rot += w.spin * dt;
+      const g = Math.min(1, w.age / Math.max(0.001, w.grow));
+      const r = w.r0 + (w.r1 - w.r0) * (1 - Math.pow(1 - g, 3));
+      const fade = w.age <= w.hold ? 1 : Math.max(0, 1 - (w.age - w.hold) / Math.max(0.001, w.life - w.hold));
+      const al = w.a * Math.min(1, w.age / 0.04) * fade;
+      // 三层:墨(慢)、白色笔触(同速)、再一层笔触转得快一点 —— 叠出湍流感
+      const layer = (rot: number, rr: number, u0: number, u1: number, c: [number, number, number], a: number, y: number): void => {
+        const cs = Math.cos(rot) * rr;
+        const sn = Math.sin(rot) * rr;
+        m.quad(w.x - cs + sn, y, w.z + sn + cs, w.x + cs + sn, y, w.z - sn + cs, w.x + cs - sn, y, w.z - sn - cs, w.x - cs - sn, y, w.z + sn - cs,
+          u0, 0.004, u1, 0.996, c[0], c[1], c[2], a);
+      };
+      layer(w.rot, r, 0.002, 0.498, w.ink, al * 0.92, w.y);
+      layer(w.rot, r, 0.502, 0.998, w.hi, al, w.y + 0.004);
+      layer(w.rot * 1.35 + 0.9, r * 0.93, 0.502, 0.998, w.hi, al * 0.55, w.y + 0.008);
     }
     m.end();
   }

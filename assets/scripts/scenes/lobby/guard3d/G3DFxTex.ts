@@ -6,7 +6,7 @@ import { ctxOf, Cv, fbm, makeCanvas } from './G3DTextures';
  * 星芒闪光、冲击波环、烟尘、刀痕、光柱、旋风带、长火星、碎石、柔光、剑气月牙、地面冲击环、能量团。
  * 全部白色 + 透明度,颜色由顶点色给(同一格能染成紫 / 金 / 冰蓝)。
  */
-export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11, fog: 12, wisp: 13 };
+export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11, fog: 12, wisp: 13, cumulus: 14 };
 export const FX2_N = 4;
 
 /** 第二张图集里某一格的贴图坐标(往里收两个多像素,免得相邻格渗过来)。 */
@@ -174,19 +174,47 @@ export function paintFx2Atlas(): Cv {
     const n = fbm(u * 2.2 + 4.1, v * 9 + 0.7, 4, 303);
     return sat(band * (0.35 + 0.95 * n));
   };
+  // 14 积云(11-22 用户「更像视频」:参考里的白色气雾是一团团有轮廓的积云,顶上亮、底下灰):
+  //    几个圆叠出的云朵 + 噪声破边;这一格带明暗(其余格都是纯白,只靠透明度),画的时候不要转(rot = 0),不然亮面会转到下面
+  const puffs: Array<[number, number, number]> = [[0, 0.12, 0.52], [-0.42, 0.22, 0.4], [0.42, 0.24, 0.42], [-0.2, -0.22, 0.42], [0.22, -0.26, 0.38], [-0.62, 0.38, 0.27], [0.64, 0.38, 0.27], [0, -0.5, 0.3]];
+  const cumDensity = (x: number, y: number): number => {
+    let dd = 0;
+    for (const [px, py, pr] of puffs) {
+      dd = Math.max(dd, 1 - Math.hypot(x - px, y - py) / pr);
+    }
+    return dd;
+  };
+  cells[FX2_CELL.cumulus] = (u, v) => {
+    const x = u * 2 - 1;
+    const y = v * 2 - 1;
+    const n = fbm(u * 5 + 1.3, v * 5 + 4.4, 4, 909);
+    const dd = cumDensity(x, y) + (n - 0.5) * 0.28;
+    return sat(sstep(0.0, 0.28, dd) * sat((1 - Math.hypot(x, y)) * 3));
+  };
+  const lum: Array<((u: number, v: number) => number) | undefined> = [];
+  lum[FX2_CELL.cumulus] = (u, v) => {
+    const x = u * 2 - 1;
+    const y = v * 2 - 1;
+    const n = fbm(u * 7 + 8.1, v * 7 + 2.2, 3, 707);
+    // 越往上越亮;每个小云团自己的上沿再亮一点(用往上挪一点的密度差当法线)
+    const up = cumDensity(x, y - 0.08) - cumDensity(x, y + 0.08);
+    return sat(0.6 + 0.3 * (1 - v) + up * 1.4 + (n - 0.5) * 0.18);
+  };
   for (let cy = 0; cy < FX2_N; cy += 1) {
     for (let cx = 0; cx < FX2_N; cx += 1) {
       const f = cells[cy * FX2_N + cx];
       if (!f) {
         continue;
       }
+      const fl = lum[cy * FX2_N + cx];
       for (let y = 0; y < C; y += 1) {
         for (let x = 0; x < C; x += 1) {
           const a = f((x + 0.5) / C, (y + 0.5) / C);
           const p = ((cy * C + y) * S + cx * C + x) * 4;
-          d[p] = 255;
-          d[p + 1] = 255;
-          d[p + 2] = 255;
+          const l = fl ? Math.round(255 * fl((x + 0.5) / C, (y + 0.5) / C)) : 255;
+          d[p] = l;
+          d[p + 1] = l;
+          d[p + 2] = l;
           d[p + 3] = Math.round(255 * sat(a));
         }
       }
@@ -245,6 +273,51 @@ export function paintBrushStreak(): Cv {
       d[p + 1] = 255;
       d[p + 2] = 255;
       d[p + 3] = Math.round(255 * Math.min(1, a * env * 1.25));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+/**
+ * 墨盘旋涡(11-22,参考视频里的「360° 半月」:地上一整片黑墨里夹着白色笔触的大漩涡):
+ * 768 × 384,左半 = 墨(半透明画、顶点色给深色),右半 = 白色笔触(同一个漩涡的高光)。
+ * 对数螺旋(臂数取整,绕一圈接得上)+ 噪声扭曲;中间留一个小亮眼,外沿渐隐。
+ */
+export function paintInkWhirl(): Cv {
+  const N = 384;
+  const cv = makeCanvas(N * 2, N);
+  const ctx = ctxOf(cv);
+  const img = ctx.createImageData(N * 2, N);
+  const d = img.data;
+  for (let y = 0; y < N; y += 1) {
+    for (let x = 0; x < N; x += 1) {
+      const px = ((x + 0.5) / N) * 2 - 1;
+      const py = ((y + 0.5) / N) * 2 - 1;
+      const r = Math.hypot(px, py);
+      if (r >= 1) {
+        continue;
+      }
+      const ang = Math.atan2(py, px);
+      const warp = fbm(px * 2.2 + 3.1, py * 2.2 + 7.3, 3, 11) * 2.4;
+      const phase = ang * 3 + Math.log(r + 0.03) * 3.4 + warp;          // 3 条臂、卷得开一点(7.5 时看着像同心圆)
+      const env = sstep(1.0, 0.8, r) * sstep(0.03, 0.14, r);
+      const arms = 0.5 + 0.5 * Math.sin(phase);
+      const fine = 0.5 + 0.5 * Math.sin(phase * 7 + fbm(px * 9 + 1, py * 9 + 5, 3, 23) * 3);
+      const dry = sstep(0.25, 0.55, fbm(px * 16 + 2, py * 16 + 9, 3, 31));
+      const ink = env * (0.5 + 0.45 * sstep(0.3, 0.75, fine)) * (0.78 + 0.22 * arms) * (0.75 + 0.25 * dry);
+      const hiBand = 0.5 + 0.5 * Math.sin(phase * 5 + 1.7 + fbm(px * 6 + 4, py * 6 + 2, 3, 41) * 4);
+      const hi = env * sstep(0.8, 0.96, hiBand) * dry * (0.55 + 0.45 * r) + Math.exp(-r * r * 300) * 0.9;
+      const pi = (y * N * 2 + x) * 4;
+      d[pi] = 255;
+      d[pi + 1] = 255;
+      d[pi + 2] = 255;
+      d[pi + 3] = Math.round(255 * sat(ink));
+      const ph = (y * N * 2 + N + x) * 4;
+      d[ph] = 255;
+      d[ph + 1] = 255;
+      d[ph + 2] = 255;
+      d[ph + 3] = Math.round(255 * sat(hi));
     }
   }
   ctx.putImageData(img, 0, 0);

@@ -445,6 +445,11 @@ class Dungeon {
   private shocks: Array<{ x: number; y: number; z: number; t0: number; life: number; rMax: number; amp: number }> = [];
   private readonly shockV = new Vec3();
   private shockOn = false;
+  /** 大招调色:慢镜时背景压暗、降饱和(dim 0~1),落地一下整屏白闪(flashT 剩余秒数);base = 调色前的原值(结束时还原)。 */
+  private gradeBase: { exposure: number; saturation: number } | null = null;
+  private dim = 0;
+  private dimTo = 0;
+  private flashT = 0;
   private readonly shockS = new Vec3();
   private shake = 0;
   private lastDt = 0;
@@ -4606,14 +4611,14 @@ class Dungeon {
     if (u < fireU && dt > 0 && this.time >= this.ultSparkAt) {
       // 身上缠的金白闪电:身边随机两点之间的短闪电,每 0.05 秒换一批
       this.ultSparkAt = this.time + 0.05;
-      for (let k = 0; k < 2; k += 1) {
+      for (let k = 0; k < 3; k += 1) {
         const a0 = fx.rand(0, Math.PI * 2);
         const a1 = a0 + fx.rand(1.2, 2.6);
         const r0 = fx.rand(0.25, 0.5);
         const r1 = fx.rand(0.3, 0.7);
         const A = new Vec3(this.lx + Math.cos(a0) * r0, hy + fx.rand(0.3, 1.6), this.lz + Math.sin(a0) * r0);
         const B = new Vec3(this.lx + Math.cos(a1) * r1, hy + fx.rand(0.4, 2.0), this.lz + Math.sin(a1) * r1);
-        fx.bolt(A, B, 0.028, 0.09, [1.0, 0.86, 0.55], 0.28, 1);
+        fx.bolt(A, B, 0.045, 0.09, [1.0, 0.86, 0.55], 0.3, 2);
       }
       // 往剑上聚的光点(从四周吸进来)
       for (let k = 0; k < 3; k += 1) {
@@ -4638,6 +4643,8 @@ class Dungeon {
       this.radialT = 0.5;
       this.radialPeak = 0.016;
       this.addShock(this.lx, hy + 1.6, this.lz, 0.45, 0.32, 0.016);
+      this.beginGrade();
+      this.dimTo = 1;
       fx.emit({ x: this.lx, y: hy + 2.0, z: this.lz, life: 0.7, s0: 0.8, s1: 2.0, c0: [0.75, 0.88, 1.0], a: 0.06, cell: FX2_CELL.fog, t2: true, rot: fx.rand(0, 6), spin: 0.3, fadeIn: 0.1 });
       this.flash(this.lx, hy + 2.6, this.lz, 1.0, 0.25);
     }
@@ -4677,6 +4684,10 @@ class Dungeon {
         c0: [1, 0.7, 0.3], c1: [1, 0.3, 0.08], a: 0.9, cell: FX_CELL.ember, drag: 0.8, fadeIn: 0.1 });
     }
     this.ultMist(x, z);
+    this.ultInk(x, z);
+    this.beginGrade();
+    this.flashT = 0.2;
+    this.timers.push({ at: this.time + 0.12, run: () => { this.dimTo = 0; } });
     this.radialT = 0.55;
     this.radialPeak = 0.04;
     // 气浪:落点往外扩的两圈冲击波(第二圈晚一点、更大更缓);最高点那一小圈不再跟着挪过来
@@ -4712,8 +4723,8 @@ class Dungeon {
         c0: [0.85, 0.94, 1.0], c1: [0.5, 0.7, 1.0], a: 0.05, cell: FX2_CELL.fog, t2: true, rot: fx.rand(0, 6), spin: fx.rand(-0.4, 0.4), drag: 1.5, fadeIn: 0.05 });
     }
     // 气雾:一圈往外翻滚的白色水汽(先快后慢,边走边胀大)
-    for (let k = 0; k < n(22); k += 1) {
-      const a = (k / n(22)) * Math.PI * 2 + fx.rand(-0.12, 0.12);
+    for (let k = 0; k < n(12); k += 1) {
+      const a = (k / n(12)) * Math.PI * 2 + fx.rand(-0.12, 0.12);
       const sp = fx.rand(5.5, 9);
       fx.emit({ x: x + Math.cos(a) * 0.9, y: fx.rand(0.15, 0.45), z: z + Math.sin(a) * 0.9, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp,
         life: fx.rand(1.5, 2.3), s0: fx.rand(0.5, 0.8), s1: fx.rand(2.0, 2.7), c0: [0.86, 0.9, 0.97], c1: [0.62, 0.68, 0.78], a: 0.2, cell: FX2_CELL.fog, t2: true, add: false,
@@ -4732,6 +4743,48 @@ class Dungeon {
       fx.emit({ x: x + Math.cos(a) * 0.5, y: fx.rand(0.1, 0.5), z: z + Math.sin(a) * 0.5, vx: Math.cos(a) * sp, vy: fx.rand(0, 0.4), vz: Math.sin(a) * sp,
         life: fx.rand(0.4, 0.75), s0: fx.rand(0.25, 0.4), s1: fx.rand(0.5, 0.8), c0: [0.85, 0.94, 1.0], c1: [0.5, 0.7, 1.0], a: 0.3, cell: FX2_CELL.wisp, t2: true,
         drag: 2.6, stretch: 1.6, fadeIn: 0.05 });
+    }
+  }
+
+  /**
+   * 跃空重劈落地 · 参考视频的几样招牌(11-22 用户「先再调调效果」):
+   * 地上铺开一整片转着的墨盘旋涡(黑墨 + 白色笔触)、一团团有明暗的积云(开天斩落下来的那道风 + 往外滚的云浪)、
+   * 落点一个透明的气泡冲击环、空中飘散的白色闪点。手机档数量减半。
+   */
+  private ultInk(x: number, z: number): void {
+    const fx = this.fx!;
+    const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
+    const n = (k: number): number => Math.max(1, Math.round(k * q));
+    fx.whirl({ x, z, r0: 0.6, r1: 5.8, grow: 0.32, hold: 1.0, life: 1.9, spin: 2.2, ink: [0.03, 0.04, 0.07], hi: [0.86, 0.92, 1.0], a: 0.95 });
+    // 开天斩落下来的风:一串积云从高处砸下来、到地面散开
+    for (let k = 0; k < n(9); k += 1) {
+      const y = 1.2 + k * 1.25;
+      fx.emit({ x: x + fx.rand(-0.35, 0.35), y, z: z + fx.rand(-0.35, 0.35), vx: fx.rand(-0.8, 0.8), vy: -fx.rand(4, 7), vz: fx.rand(-0.8, 0.8), life: fx.rand(0.7, 1.1),
+        s0: 0.8 + k * 0.05, s1: fx.rand(2.0, 2.8), c0: [0.95, 0.97, 1.0], c1: [0.78, 0.82, 0.9], a: 0.42, cell: FX2_CELL.cumulus, t2: true, add: false, drag: 3, fadeIn: 0.03 });
+    }
+    // 往外滚的云浪:贴地一圈积云,先快后慢、边走边胀
+    for (let k = 0; k < n(16); k += 1) {
+      const a = (k / n(16)) * Math.PI * 2 + fx.rand(-0.15, 0.15);
+      const sp = fx.rand(4.5, 7.5);
+      fx.emit({ x: x + Math.cos(a) * 1.0, y: fx.rand(0.35, 0.7), z: z + Math.sin(a) * 1.0, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp, life: fx.rand(1.4, 2.0),
+        s0: fx.rand(0.7, 1.0), s1: fx.rand(2.3, 3.0), c0: [0.97, 0.98, 1.0], c1: [0.76, 0.8, 0.88], a: 0.5, cell: FX2_CELL.cumulus, t2: true, add: false, drag: 2.6, fadeIn: 0.04 });
+    }
+    // 气泡冲击环(透明的一圈,配合屏幕扭曲)
+    fx.emit({ x, y: 1.0, z, life: 0.32, s0: 0.4, s1: 3.4, c0: [0.85, 0.92, 1.0], c1: [0.6, 0.75, 1.0], a: 0.16, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    // 空中飘散的白色闪点
+    for (let k = 0; k < n(34); k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const r = fx.rand(0.5, 3.5);
+      fx.emit({ x: x + Math.cos(a) * r, y: fx.rand(0.3, 2.8), z: z + Math.sin(a) * r, vx: Math.cos(a) * fx.rand(0.4, 1.6), vy: fx.rand(0.2, 1.1), vz: Math.sin(a) * fx.rand(0.4, 1.6),
+        life: fx.rand(1.0, 2.2), s0: fx.rand(0.05, 0.1), s1: 0.02, c0: k % 5 === 0 ? [1, 0.82, 0.9] : [0.95, 0.98, 1], a: 0.9, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), drag: 1.2, fadeIn: 0.15 });
+    }
+  }
+
+  /** 大招调色开始(记下原值;已经在调就不重记)。 */
+  private beginGrade(): void {
+    if (!this.gradeBase && this.post) {
+      const c = this.post.info().cfg as { exposure: number; saturation: number };
+      this.gradeBase = { exposure: c.exposure, saturation: c.saturation };
     }
   }
 
@@ -4760,6 +4813,20 @@ class Dungeon {
         this.radialPeak = 0;
       }
       this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.04).toFixed(5), radialC: [0.5, 0.55] });
+    }
+    // 大招调色:压暗 / 降饱和(慢镜里)+ 落地白闪,结束后还原
+    if (this.gradeBase && this.post) {
+      this.dim += (this.dimTo - this.dim) * (1 - Math.exp(-rdt * (this.dimTo > this.dim ? 6 : 4)));
+      this.flashT = Math.max(0, this.flashT - rdt);
+      const fl = this.flashT / 0.2;
+      const b = this.gradeBase;
+      if (this.dimTo === 0 && this.dim < 0.01 && this.flashT <= 0) {
+        this.post.set({ exposure: b.exposure, saturation: b.saturation });
+        this.gradeBase = null;
+        this.dim = 0;
+      } else {
+        this.post.set({ exposure: +(b.exposure * (1 - 0.28 * this.dim) * (1 + 1.5 * fl * fl)).toFixed(4), saturation: +(b.saturation * (1 - 0.4 * this.dim)).toFixed(4) });
+      }
     }
     // 气浪:按游戏时间推进(慢镜里也跟着慢),中心每帧投到画面上
     if (this.shocks.length || this.shockOn) {
