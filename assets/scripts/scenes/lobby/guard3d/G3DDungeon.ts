@@ -3041,35 +3041,131 @@ class Dungeon {
     const px = cv ? Math.max(1, cv.width * cv.height) : 2073600;
     return Math.min(1, Math.max(0.35, Math.sqrt(900000 / px)));
   }
-  // ── 11-21 自动选档(低端兼容第 3 期):开场用显卡计时实测,超预算就按「最不显眼的先让」一步步调,结果按显卡 + 场景记在本机 ──
-  // 只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。运行中的 autoQuality 照旧当兜底。
+  // ── 11-21 自动选档 v2(低端兼容第 3 期):开场实测「每帧毫秒」(玩家感受到的),超预算就逐项试让步 ——
+  //    每试一项都重量一次,真变快了(≥ 5%)才保留,没用的立刻退回(Arc 140V 上卡的不是像素,降分辨率只会变糊不会变快)。
+  //    结果按显卡 + 场景 + 档位记在本机,下次直接套用;选定后不再让运行中的 autoQuality 盲目往下降。
+  //    只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。
   private tuneState: 'off' | 'wait' | 'run' | 'done' = 'off';
   private tuneAt = 0;
   private tuneGpu: GpuTimer | null = null;
-  private tuneStep = 0;
   private tuneEl: HTMLDivElement | null = null;
-  private static readonly TUNE_BUDGET = 16;          // 显卡每帧毫秒(≈ 60 帧还有余量)
+  private tunePhase: 'base' | 'settle' | 'measure' = 'base';
+  private tuneIdx = -1;
+  private tuneBest = 0;
+  private tuneSamples: number[] = [];
+  private tuneKept: string[] = [];
+  private tuneLog: string[] = [];
+  private tuneList: Array<{ name: string; apply: () => boolean; undo: () => void }> | null = null;
+  private static readonly TUNE_TARGET = 25;          // 每帧毫秒(≈ 40 帧;60Hz 屏上显卡 20 毫秒左右时平均就在这附近)
   private tuneKey(): string {
-    return `lcG3dTune:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
+    return `lcG3dTune2:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
   }
-  /** 让步清单:按「看得出的程度 / 实测省下的时间」排,越靠前越不显眼。 */
-  private tuneSteps(): Array<{ name: string; apply: () => void }> {
+  /** 让步清单,按「看得出的程度」从轻到重排;apply 返回 false = 这一项在本机不适用(跳过)。 */
+  private tuneSteps(): Array<{ name: string; apply: () => boolean; undo: () => void }> {
     const post = this.post!;
     const floor = this.minScale();
+    const cfg = (): { bloomLevels: number; ao: boolean; bloom: boolean; scale: number } => post.info().cfg as { bloomLevels: number; ao: boolean; bloom: boolean; scale: number };
+    const scale0 = cfg().scale;
+    const keep: Record<string, number> = {};
+    const setScale = (k: number): void => {
+      this.qScale = k;
+      post.set({ scale: +k.toFixed(3) });
+    };
     return [
-      { name: '泛光 4 级', apply: () => post.set({ bloomLevels: Math.min(4, (post.info().cfg as { bloomLevels: number }).bloomLevels) }) },
-      { name: '关遮蔽', apply: () => post.set({ ao: false }) },
-      { name: '分辨率×0.85', apply: () => { const k = Math.max(floor, (post.info().cfg as { scale: number }).scale * 0.85); this.qScale = k; post.set({ scale: +k.toFixed(3) }); } },
-      { name: '灯 2 盏', apply: () => { if (DUNGEON.realLights > 2) { this.set({ realLights: 2 }); } } },
-      { name: '小物件不投影', apply: () => { if (!this.qCastCut) { this.qCastCut = true; this.cutSmallCasters(); } } },
-      { name: '分辨率降到下限', apply: () => { this.qScale = floor; post.set({ scale: +floor.toFixed(3) }); } },
+      {
+        name: '泛光 4 级',
+        apply: () => {
+          keep.bl = cfg().bloomLevels;
+          if (cfg().bloomLevels <= 4) {
+            return false;
+          }
+          post.set({ bloomLevels: 4 });
+          return true;
+        },
+        undo: () => post.set({ bloomLevels: keep.bl }),
+      },
+      {
+        name: '关遮蔽',
+        apply: () => {
+          if (!cfg().ao) {
+            return false;
+          }
+          post.set({ ao: false });
+          return true;
+        },
+        undo: () => post.set({ ao: true }),
+      },
+      {
+        name: '分辨率×0.85',
+        apply: () => {
+          keep.s1 = cfg().scale;
+          const k = Math.max(floor, scale0 * 0.85);
+          if (k >= cfg().scale - 0.01) {
+            return false;
+          }
+          setScale(k);
+          return true;
+        },
+        undo: () => setScale(keep.s1),
+      },
+      {
+        name: '关泛光',
+        apply: () => {
+          if (!cfg().bloom) {
+            return false;
+          }
+          post.set({ bloom: false });
+          return true;
+        },
+        undo: () => post.set({ bloom: true }),
+      },
+      {
+        name: '灯 2 盏',
+        apply: () => {
+          keep.rl = DUNGEON.realLights;
+          if (DUNGEON.realLights <= 2) {
+            return false;
+          }
+          this.set({ realLights: 2 });
+          return true;
+        },
+        undo: () => this.set({ realLights: keep.rl }),
+      },
+      {
+        name: '关月光阴影',
+        apply: () => {
+          if (!this.moon || !this.moon.shadowEnabled) {
+            return false;
+          }
+          this.moon.shadowEnabled = false;
+          return true;
+        },
+        undo: () => {
+          if (this.moon) {
+            this.moon.shadowEnabled = true;
+          }
+        },
+      },
+      {
+        name: '分辨率×0.7',
+        apply: () => {
+          keep.s2 = cfg().scale;
+          const k = Math.max(floor, scale0 * 0.7);
+          if (k >= cfg().scale - 0.01) {
+            return false;
+          }
+          setScale(k);
+          return true;
+        },
+        undo: () => setScale(keep.s2),
+      },
     ];
   }
   private tuneStart(): void {
     if (param('dq') || param('bench') === '1' || param('autotier') === '0' || this.fixedDt > 0) {
       return;
     }
-    let saved: { steps: number } | null = null;
+    let saved: { kept: string[] } | null = null;
     try {
       if (param('autotier') === 'reset') {
         localStorage.removeItem(this.tuneKey());
@@ -3079,15 +3175,16 @@ class Dungeon {
     } catch (error) {
       saved = null;
     }
-    if (saved && typeof saved.steps === 'number') {
-      const steps = this.tuneSteps();
-      for (let i = 0; i < Math.min(saved.steps, steps.length); i += 1) {
-        steps[i].apply();
-        this.qSteps.push(`(本机记录)${steps[i].name}`);
+    if (saved && Array.isArray(saved.kept)) {
+      for (const st of this.tuneSteps()) {
+        if (saved.kept.indexOf(st.name) >= 0 && st.apply()) {
+          this.qSteps.push(`(本机记录)${st.name}`);
+        }
       }
-      this.tuneStep = saved.steps;
+      this.tuneKept = saved.kept.slice();
       this.tuneState = 'done';
-      console.log('[g3dd] 自动选档:用本机记录', saved.steps, '步');
+      DUNGEON.autoQ = false;          // 本机已经调好:不再让 autoQuality 按帧率盲目往下降
+      console.log('[g3dd] 自动选档:用本机记录', JSON.stringify(saved.kept));
       return;
     }
     this.tuneState = 'wait';
@@ -3109,7 +3206,20 @@ class Dungeon {
     }
     this.tuneEl.textContent = text;
   }
-  /** 帧率统计那里每半秒调一次。 */
+  private tuneFinish(): void {
+    this.tuneGpu?.stop();
+    this.tuneGpu = null;
+    this.tuneState = 'done';
+    this.tuneToast(null);
+    DUNGEON.autoQ = false;
+    try {
+      localStorage.setItem(this.tuneKey(), JSON.stringify({ kept: this.tuneKept, frameMs: +this.tuneBest.toFixed(1), log: this.tuneLog, when: new Date().toISOString() }));
+    } catch (error) {
+      void error;
+    }
+    console.log('[g3dd] 自动选档完成', JSON.stringify({ kept: this.tuneKept, frameMs: +this.tuneBest.toFixed(1), log: this.tuneLog }));
+  }
+  /** 帧率统计那里每半秒调一次(this.fps = 最近半秒的平均帧率)。 */
   private tuneTick(): void {
     if (this.tuneState === 'off' || this.tuneState === 'done' || !this.opened || !this.post) {
       return;
@@ -3129,38 +3239,63 @@ class Dungeon {
       this.tuneGpu = new GpuTimer();
       this.tuneGpu.start();
       this.tuneState = 'run';
-      this.tuneAt = now + 2000;
-      this.tuneToast('正在按本机性能调整画质(只在第一次)…');
-      this.tuneGpu.take();
+      this.tunePhase = 'base';
+      this.tuneSamples = [];
+      this.tuneAt = now + 2500;
+      this.tuneList = this.tuneSteps();
+      this.tuneToast('正在按本机性能调整画质(只在第一次,约 20 秒)…');
       return;
     }
-    // run:每段量 1.5~2 秒
+    // run
+    if (this.tunePhase === 'settle') {
+      if (now >= this.tuneAt) {
+        this.tunePhase = 'measure';
+        this.tuneSamples = [];
+        this.tuneAt = now + 2000;
+      }
+      return;
+    }
+    if (this.fps > 0) {
+      this.tuneSamples.push(1000 / this.fps);
+    }
     if (now < this.tuneAt) {
       return;
     }
-    const g = this.tuneGpu!;
-    const r = g.take();
-    const ms = g.ok && r && r.n >= 5 ? r.median : 1000 / Math.max(1, this.fps);
-    const steps = this.tuneSteps();
-    if (ms <= Dungeon.TUNE_BUDGET || this.tuneStep >= steps.length) {
-      g.stop();
-      this.tuneGpu = null;
-      this.tuneState = 'done';
-      this.tuneToast(null);
-      try {
-        localStorage.setItem(this.tuneKey(), JSON.stringify({ steps: this.tuneStep, gpu: +ms.toFixed(1), when: new Date().toISOString() }));
-      } catch (error) {
-        void error;
+    const xs = this.tuneSamples.slice().sort((a, b) => a - b);
+    const ms = xs.length ? xs[Math.floor(xs.length / 2)] : 1000;
+    const list = this.tuneList!;
+    if (this.tunePhase === 'base') {
+      this.tuneBest = ms;
+      this.tuneLog.push(`现状 ${ms.toFixed(1)}ms`);
+    } else {
+      const st = list[this.tuneIdx];
+      if (ms <= this.tuneBest * 0.95) {
+        this.tuneKept.push(st.name);
+        this.qSteps.push(`(自动选档)${st.name} ${this.tuneBest.toFixed(1)}→${ms.toFixed(1)}ms`);
+        this.tuneLog.push(`保留 ${st.name} ${ms.toFixed(1)}ms`);
+        this.tuneBest = ms;
+      } else {
+        st.undo();
+        this.tuneLog.push(`退回 ${st.name} ${ms.toFixed(1)}ms(没变快)`);
       }
-      console.log('[g3dd] 自动选档完成:让步', this.tuneStep, '项,显卡', ms.toFixed(1), '毫秒');
+    }
+    if (this.tuneBest <= Dungeon.TUNE_TARGET) {
+      this.tuneFinish();
       return;
     }
-    steps[this.tuneStep].apply();
-    this.qSteps.push(`(自动选档)${steps[this.tuneStep].name} @${ms.toFixed(1)}ms`);
-    this.tuneStep += 1;
-    // 前 1.3 秒等改动生效(丢掉这段的读数),之后 1.7 秒再量
-    window.setTimeout(() => g.take(), 1300);
-    this.tuneAt = now + 3000;
+    // 下一项(不适用的直接跳过)
+    for (;;) {
+      this.tuneIdx += 1;
+      if (this.tuneIdx >= list.length) {
+        this.tuneFinish();
+        return;
+      }
+      if (list[this.tuneIdx].apply()) {
+        break;
+      }
+    }
+    this.tunePhase = 'settle';
+    this.tuneAt = now + 1300;
   }
 
   private qSlow = 0;
