@@ -11,6 +11,7 @@ import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
 import { MeshBatch, Tint } from './G3DMesh';
 import { installMultiLightEffect, MultiLight } from './G3DMultiLight';
 import { installShadowPingPong, shadowPP } from './G3DShadowPP';
+import { installKeepManagedPatch } from './G3DPipeFix';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -3045,6 +3046,7 @@ class Dungeon {
   //    每试一项都重量一次,真变快了(≥ 5%)才保留,没用的立刻退回(Arc 140V 上卡的不是像素,降分辨率只会变糊不会变快)。
   //    结果按显卡 + 场景 + 档位记在本机,下次直接套用;选定后不再让运行中的 autoQuality 盲目往下降。
   //    只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。
+  private pipeFixed = false;
   private tuneState: 'off' | 'wait' | 'run' | 'done' = 'off';
   private tuneAt = 0;
   private tuneGpu: GpuTimer | null = null;
@@ -3058,7 +3060,7 @@ class Dungeon {
   private tuneList: Array<{ name: string; apply: () => boolean; undo: () => void }> | null = null;
   private static readonly TUNE_TARGET = 25;          // 每帧毫秒(≈ 40 帧;60Hz 屏上显卡 20 毫秒左右时平均就在这附近)
   private tuneKey(): string {
-    return `lcG3dTune2:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
+    return `lcG3dTune3:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
   }
   /** 让步清单,按「看得出的程度」从轻到重排;apply 返回 false = 这一项在本机不适用(跳过)。 */
   private tuneSteps(): Array<{ name: string; apply: () => boolean; undo: () => void }> {
@@ -3859,6 +3861,10 @@ class Dungeon {
       this.fpsLow = 1000 / Math.max(1, Math.max(...this.lows));
       this.fpsAcc.t = 0;
       this.fpsAcc.n = 0;
+      // 11-21:修引擎每帧释放重建托管渲染贴图(→ 每帧 16 次同步 checkFramebufferStatus);&pipefix=0 关
+      if (!this.pipeFixed && param('pipefix') !== '0') {
+        this.pipeFixed = installKeepManagedPatch();
+      }
       this.maybeBench();
       this.tuneTick();
       if (this.benchState !== 'run') {
