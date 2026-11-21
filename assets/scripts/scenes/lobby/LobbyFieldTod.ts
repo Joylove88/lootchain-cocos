@@ -1,6 +1,6 @@
 import { builtinResMgr, Color, gfx, Material, Node, Size, Sprite, SpriteFrame, Texture2D, UIOpacity, UITransform } from 'cc';
 import { applyAdditive } from './LobbyWorldShaders';
-import { ASSET_GLOWS } from './LobbyFieldGlowData';
+import { ASSET_GLOWS, MAP_LIGHTS } from './LobbyFieldGlowData';
 import type { WorldMapDef } from './LobbyWorldMaps';
 
 /**
@@ -58,6 +58,20 @@ const TOD_DEFS: Record<string, TodDef> = {
 const CYCLE = 24 * 60;
 const WARM: [number, number, number] = [255, 168, 86];
 
+/**
+ * 整图重绘里画死的光源(MAP_LIGHTS,11-21 用户「加光源」)按种类点亮:
+ * core = 亮芯直径;pool = 地上光圈宽(高 = 宽的一半);poolY = 光圈相对光源往下挪多少;amp = 闪烁幅度(0 = 不闪)。
+ */
+const LIGHT_KINDS: Record<string, { color: [number, number, number]; core: number; pool: number; poolA: number; poolY: number; amp: number }> = {
+  fire: { color: [255, 146, 60], core: 70, pool: 560, poolA: 0.6, poolY: 0, amp: 0.2 },
+  torch: { color: [255, 166, 78], core: 44, pool: 400, poolA: 0.58, poolY: 70, amp: 0.16 },
+  lantern: { color: [255, 186, 106], core: 34, pool: 300, poolA: 0.5, poolY: 60, amp: 0.12 },
+  window: { color: [255, 176, 96], core: 36, pool: 260, poolA: 0.4, poolY: 50, amp: 0.1 },
+  crystal: { color: [110, 160, 255], core: 56, pool: 420, poolA: 0.5, poolY: 10, amp: 0.08 },
+  wisp: { color: [140, 255, 200], core: 44, pool: 380, poolA: 0.42, poolY: 0, amp: 0.22 },
+  ghost: { color: [150, 200, 255], core: 70, pool: 420, poolA: 0.4, poolY: 40, amp: 0.1 },
+};
+
 interface Glow {
   node: Node;
   x: number;
@@ -66,6 +80,8 @@ interface Glow {
   reach: number;
   /** 闪烁相位(炉火 / 灯笼轻微跳动);-1 = 不闪(光圈)。 */
   phase: number;
+  /** 闪烁幅度(0~1)。 */
+  amp: number;
   op: UIOpacity;
   base: number;
 }
@@ -309,7 +325,7 @@ export class FieldTod {
       return;
     }
     const frame = glowTex();
-    const add = (x: number, y: number, w: number, h: number, color: [number, number, number], alpha: number, flicker: boolean): void => {
+    const add = (x: number, y: number, w: number, h: number, color: [number, number, number], alpha: number, flicker: boolean | number): void => {
       const node = new Node('G');
       node.layer = root.layer;
       node.addComponent(UITransform).setContentSize(new Size(w, h));
@@ -324,7 +340,8 @@ export class FieldTod {
       node.setPosition(x, y, 0);
       root.addChild(node);
       node.active = false;
-      this.glows.push({ node, x, y, reach: Math.max(w, h) / 2, phase: flicker ? Math.random() * 100 : -1, op, base });
+      const amp = flicker === true ? 0.14 : flicker || 0;
+      this.glows.push({ node, x, y, reach: Math.max(w, h) / 2, phase: amp > 0 ? Math.random() * 100 : -1, amp, op, base });
     };
     const place = (asset: string, x: number, y: number, w: number, flip: boolean, lamp: boolean): void => {
       const g = ASSET_GLOWS[asset];
@@ -368,6 +385,20 @@ export class FieldTod {
       if (ASSET_GLOWS[p.asset]) {
         place(p.asset, p.x, p.y, p.width, !!p.flipX, /lamp/.test(p.asset));
       }
+    }
+    for (const l of MAP_LIGHTS[def.code] ?? []) {
+      const kind = LIGHT_KINDS[l[2] as string];
+      if (!kind) {
+        continue;
+      }
+      const x = l[0] as number;
+      const y = l[1] as number;
+      const k = l[3] as number;
+      const c = (l[4] as number[] | undefined) ?? kind.color;
+      const color: [number, number, number] = [c[0], c[1], c[2]];
+      add(x, y - kind.poolY, kind.pool, kind.pool * 0.5, color, kind.poolA * k, kind.amp * 0.5);
+      add(x, y, kind.core * 3.4, kind.core * 3.4, color, 0.34 * k, kind.amp);
+      add(x, y, kind.core, kind.core, color, 0.8 * k, kind.amp);
     }
     // 队伍身上一圈光(黄昏里人物不被压暗吞掉)
     const party = new Node('TodParty');
@@ -450,7 +481,7 @@ export class FieldTod {
             g.node.active = vis;
           }
           if (vis && g.phase >= 0) {
-            const f = 0.86 + 0.14 * Math.sin(t * 7.3 + g.phase) * Math.sin(t * 3.1 + g.phase * 1.7);
+            const f = 1 - g.amp + g.amp * Math.sin(t * 7.3 + g.phase) * Math.sin(t * 3.1 + g.phase * 1.7);
             g.op.opacity = Math.round(g.base * f);
           }
         }

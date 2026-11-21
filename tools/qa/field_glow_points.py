@@ -32,6 +32,47 @@ GLOWS = {
     'ui/world/vil2/vil2_lamp': [[0.76, 0.83, 0.12, 1.2]],
 }
 
+# 整图重绘里画死的光源(11-21 用户「加光源」):荒原 / 枯木林原来黄昏只有队伍身上一圈光。
+# 坐标 = 重绘成品大图(field_repaint 的 mosaic)像素,生成时按 FIELD_PAINT 的 px / mapW / mapH 换成世界坐标。
+# 种类见 LobbyFieldTod 的 LIGHT_KINDS;k = 亮度;c = 颜色(不填用种类默认色)。画面里没画火焰的火堆圈 = 黄昏点上余烬。
+BLUE = [90, 150, 255]
+PURPLE = [190, 110, 255]
+GHOST = [150, 200, 255]
+WISP = [140, 255, 200]
+MAP_LIGHTS = {
+    'WOODS': [
+        [13514, 1000, 'torch', 1.1], [14073, 1117, 'torch', 1.1], [13903, 1057, 'torch', 0.5],   # 熊洞门口两支火把 + 洞里一点
+        [11917, 3712, 'fire', 1.1],                                                              # 猎人营地火堆
+        [8887, 5773, 'crystal', 1, BLUE], [11350, 5472, 'crystal', 1, BLUE],                     # 遗迹两盏蓝晶灯
+        [726, 5821, 'lantern', 0.7], [366, 6710, 'lantern', 0.7],                                # 西南营地帐篷门口
+    ],
+    'GRAY': [
+        [1610, 3070, 'fire', 1.1],                                                               # 西边车队营地火堆圈
+        [6510, 1350, 'lantern', 0.9],                                                            # 北边瞭望塔
+        [7900, 4354, 'torch', 0.9], [9180, 4470, 'torch', 0.9], [9160, 4930, 'lantern', 0.8],    # 南营地寨门两塔 + 角塔
+        [8090, 4800, 'lantern', 0.7],                                                            # 南营地帐篷门口
+        [12400, 3940, 'lantern', 0.9],                                                           # 矿坑井架
+        [10330, 3920, 'crystal', 0.9, PURPLE], [12180, 3810, 'crystal', 0.9, PURPLE], [11010, 5200, 'crystal', 0.9, PURPLE],  # 矿坑紫晶
+    ],
+    'DEADWOOD': [
+        [1950, 3695, 'fire', 1.1],                                                               # 西边营地火堆圈
+        [1160, 2460, 'lantern', 0.8],                                                            # 营地瞭望塔
+        [7000, 3890, 'ghost', 1.0], [6550, 4850, 'ghost', 0.8],                  # 废教堂尖窗 / 门洞里的冷光
+        [10370, 4360, 'window', 1.0], [12410, 2320, 'window', 0.8],                              # 木屋 / 林边小屋窗
+        [7280, 5320, 'wisp', 0.9, WISP],                                                         # 墓地鬼火
+    ],
+}
+
+
+def map_lights():
+    src = open(os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyFieldPaintData.ts'), encoding='utf-8').read()
+    paint = json.loads(src.split('FIELD_PAINT: Record<string, FieldPaintDef> = ', 1)[1].rsplit(';', 1)[0])
+    out = {}
+    for code, pts in MAP_LIGHTS.items():
+        d = paint[code]
+        out[code] = [[round(p[0] / d['px'] - d['mapW'] / 2), round(d['mapH'] / 2 - p[1] / d['px'])] + p[2:] for p in pts]
+    return out
+
 
 def main():
     data = {}
@@ -60,7 +101,10 @@ def main():
         f.write('// 由 tools/qa/field_glow_points.py 生成:立物 / 建筑贴图里的窗户 / 灯笼 / 炉火,昼夜循环傍晚点亮。\n')
         f.write('// a = 贴图高 / 宽;p = [u(左 0~1), v(底 0~1), 半径(占宽), 亮度, 颜色?]。\n')
         f.write('export const ASSET_GLOWS: Record<string, { a: number; p: Array<Array<number | number[]>> }> = ' + body + ';\n')
-    print('wrote', OUT_TS, len(data))
+        f.write('// 整图重绘里画死的光源(世界坐标):[x, y, 种类, 亮度, 颜色?]。\n')
+        f.write('export const MAP_LIGHTS: Record<string, Array<Array<number | string | number[]>>> = '
+                + json.dumps(map_lights(), ensure_ascii=False, separators=(',', ':')) + ';\n')
+    print('wrote', OUT_TS, len(data), {k: len(v) for k, v in MAP_LIGHTS.items()})
 
 
 if __name__ == '__main__':
