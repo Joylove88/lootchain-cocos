@@ -191,6 +191,13 @@ function clipMove(name: string, clip: string, from: number, to: number, speed: n
   };
 }
 
+/** 给片段招式加「整个人原地转多少度」(旋风斩:定住一个双手平举的姿势再转)。 */
+function spinMove(m: Move, deg: number, at: [number, number]): Move {
+  m.spin = deg;
+  m.spinAt = at;
+  return m;
+}
+
 /** 待机 / 跑(双手持剑的架势)。 */
 export const GS_STAND = 'gs_stand';
 export const GS_RUN = 'gs_jog2';
@@ -210,10 +217,11 @@ export const GS_COMBO: Move[] = [
 export const GS_SKILLS: Record<string, Move> = {
   // 突进斩:举剑跪滑出去(沿路碰到的都算),滑到头一记贴地横扫
   dash: clipMove('突进斩', 'gs_slide', 0.15, 1.7, 1.9, { hits: [{ at: 1.2, reach: 3.0, arc: 220, dmg: 2, heavy: true }], trail: [0.9, 1.55], cancel: 1.5, color: VIOLET, rootK: 1.3, fx: [0.25, 0.95], fire: 1.25 }),
-  // 连环斩:一路往前四刀(劈、撩、扫、回身扫)
-  whirl: clipMove('连环斩', 'gs_cut2', 0.4, 2.95, 1.9, {
-    hits: [{ at: 0.88, reach: 2.8, arc: 170, dmg: 1 }, { at: 1.45, reach: 2.8, arc: 200, dmg: 1 }, { at: 1.75, reach: 3.0, arc: 220, dmg: 2 }, { at: 2.55, reach: 3.1, arc: 360, dmg: 3, heavy: true }],
-    trail: [0.7, 2.75], cancel: 2.7, fx: [0.8, 2.7] }),
+  // 旋风斩(11-22 用户「人物双手握着剑然后旋转,旋转带着旋风的光圈包围人物」;原来这一格是往前连劈四刀的连环斩):
+  // 定在「旋身重劈」0.45 秒附近那一帧(站直、双手平举、剑身水平),整个人原地转三圈;每转一圈判定一次 360°,最后一圈是重击
+  whirl: spinMove(clipMove('旋风斩', 'gs_spin', 0.42, 0.48, 0.06 / 1.15, {
+    hits: [{ at: 0.428, reach: 2.9, arc: 360, dmg: 1 }, { at: 0.442, reach: 2.9, arc: 360, dmg: 1 }, { at: 0.458, reach: 2.9, arc: 360, dmg: 1 }, { at: 0.474, reach: 3.1, arc: 360, dmg: 2, heavy: true }],
+    trail: [0.421, 0.479], cancel: 0.479, color: [0.6, 0.84, 1.0], fx: [0.423, 0.477] }), 1080, [0.04, 0.96]),
   // 跃空重劈:助跑起跳,举剑过顶,落地劈下
   smash: clipMove('跃空重劈', 'gs_leap', 0.35, 1.7, 1.6, { trail: [0.85, 1.3], cancel: 1.5, color: VIOLET, fire: 1.08 }),
   // 剑气斩:蹲身一记横扫,扫出去的那一下放出剑气

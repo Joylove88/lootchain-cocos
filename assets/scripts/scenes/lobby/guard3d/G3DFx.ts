@@ -36,8 +36,12 @@ interface Band { x: number; y: number; z: number; r0: number; r1: number; h: num
  * spiral = 绕 (x,z) 的螺旋(从 r0 转到 r1,共 turns 弧度,带子平躺在地上 / 随高度斜起来);drop = 从 (x, y0, z) 竖直劈到地面(正对镜头)。
  * 头部在 grow 秒内从起点走到终点,尾巴随后跟上(len = 同时可见的长度占比)。
  */
-interface Streak { kind: 'spiral' | 'drop'; x: number; z: number; a0: number; turns: number; r0: number; r1: number; y0: number; y1: number; w0: number; w1: number;
-  age: number; life: number; grow: number; len: number; scroll: number; rep: number; color: [number, number, number]; a: number }
+interface Streak { kind: 'spiral' | 'drop' | 'line'; x: number; z: number; a0: number; turns: number; r0: number; r1: number; y0: number; y1: number; w0: number; w1: number;
+  age: number; life: number; grow: number; len: number; scroll: number; rep: number; color: [number, number, number]; a: number;
+  /** line:终点(平躺在地上的一条带子,从 (x,z) 铺到 (x2,z2))。 */
+  x2: number; z2: number;
+  /** 每帧跟着这个位置走(绕着主角转的气流)。 */
+  follow?: () => [number, number] }
 /** 墨盘旋涡:贴地的一整片黑墨 + 白色笔触,半径 r0 → r1(grow 秒内铺开),一边转一边在 hold 之后淡掉。 */
 interface Whirl { x: number; y: number; z: number; r0: number; r1: number; grow: number; hold: number; age: number; life: number; rot: number; spin: number;
   ink: [number, number, number]; hi: [number, number, number]; a: number }
@@ -142,10 +146,16 @@ export class FxWorld {
   }
 
   /** 流线(见 Streak)。 */
-  streak(o: { kind: 'spiral' | 'drop'; x: number; z: number; a0?: number; turns?: number; r0?: number; r1?: number; y0?: number; y1?: number; w0: number; w1?: number;
-    life: number; grow?: number; len?: number; scroll?: number; rep?: number; color: [number, number, number]; a?: number }): void {
-    this.streaks.push({ kind: o.kind, x: o.x, z: o.z, a0: o.a0 ?? 0, turns: o.turns ?? 0, r0: o.r0 ?? 0, r1: o.r1 ?? 0, y0: o.y0 ?? 0, y1: o.y1 ?? 0, w0: o.w0, w1: o.w1 ?? o.w0,
-      age: 0, life: o.life, grow: o.grow ?? o.life * 0.4, len: o.len ?? 0.7, scroll: o.scroll ?? 2.5, rep: o.rep ?? 3, color: o.color, a: o.a ?? 1 });
+  streak(o: { kind: 'spiral' | 'drop' | 'line'; x: number; z: number; a0?: number; turns?: number; r0?: number; r1?: number; y0?: number; y1?: number; w0: number; w1?: number;
+    life: number; grow?: number; len?: number; scroll?: number; rep?: number; color: [number, number, number]; a?: number; x2?: number; z2?: number; follow?: () => [number, number] }): { x2: number; z2: number } {
+    return this.pushStreak({ kind: o.kind, x: o.x, z: o.z, a0: o.a0 ?? 0, turns: o.turns ?? 0, r0: o.r0 ?? 0, r1: o.r1 ?? 0, y0: o.y0 ?? 0, y1: o.y1 ?? 0, w0: o.w0, w1: o.w1 ?? o.w0,
+      age: 0, life: o.life, grow: o.grow ?? o.life * 0.4, len: o.len ?? 0.7, scroll: o.scroll ?? 2.5, rep: o.rep ?? 3, color: o.color, a: o.a ?? 1, x2: o.x2 ?? o.x, z2: o.z2 ?? o.z, follow: o.follow });
+  }
+
+  /** 加进列表并把对象交回去(调用方可以每帧改 line 的终点,让痕迹跟着飞行物铺)。 */
+  private pushStreak(st: Streak): Streak {
+    this.streaks.push(st);
+    return st;
   }
 
   /** 竖直巨刀光(见 Blade)。cell 默认弯刀痕;flip = 弯的方向左右翻。 */
@@ -561,6 +571,11 @@ export class FxWorld {
         this.streaks.splice(i, 1);
         continue;
       }
+      if (st.follow) {
+        const p = st.follow();
+        st.x = p[0];
+        st.z = p[1];
+      }
       const head = Math.min(1, st.age / Math.max(0.001, st.grow));
       // 尾巴:头走到底之前保持 len 的长度,之后在剩下的时间里收到头上
       const after = Math.max(0, st.age - st.grow) / Math.max(0.001, st.life - st.grow);
@@ -592,6 +607,17 @@ export class FxWorld {
           ox = ca * w * (1 - lift * 0.6);
           oz = sa * w * (1 - lift * 0.6);
           oy = w * lift * 0.8;
+        } else if (st.kind === 'line') {
+          // 平躺在地上的一条带子:宽度方向 = 走向的水平法线
+          const ddx = st.x2 - st.x;
+          const ddz = st.z2 - st.z;
+          const dl = Math.hypot(ddx, ddz) || 1;
+          px = st.x + ddx * s;
+          pz = st.z + ddz * s;
+          py = st.y0;
+          ox = (-ddz / dl) * w;
+          oz = (ddx / dl) * w;
+          oy = 0;
         } else {
           px = st.x;
           pz = st.z;
