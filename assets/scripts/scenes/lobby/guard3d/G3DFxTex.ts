@@ -280,46 +280,99 @@ export function paintBrushStreak(): Cv {
 }
 
 /**
- * 墨盘旋涡(11-22,参考视频里的「360° 半月」:地上一整片黑墨里夹着白色笔触的大漩涡):
- * 768 × 384,左半 = 墨(半透明画、顶点色给深色),右半 = 白色笔触(同一个漩涡的高光)。
- * 对数螺旋(臂数取整,绕一圈接得上)+ 噪声扭曲;中间留一个小亮眼,外沿渐隐。
+ * 墨盘旋涡(11-22,参考视频里的「360° 半月」):1024 × 512,左半 = 墨(半透明画、顶点色给深色),右半 = 白色笔触。
+ * 11-22 用户「旋转的不是很好,太密集了」:原来用正弦条纹铺满整盘,像斑马纹 / 唱片 → 改成十几道随机分布的长笔触:
+ * 每道是一段对数螺旋,两头收尖、中间最粗,由几根「刷毛」细线叠成,刷毛各自有断笔(干笔飞白);白色高光只有几道。
+ * 旋转由 FxWorld 按「内快外慢」把圆盘拆成一圈圈的环来转,笔触会自然卷进中心。
  */
 export function paintInkWhirl(): Cv {
-  const N = 384;
+  const N = 512;
+  const R = N * 0.5;
   const cv = makeCanvas(N * 2, N);
   const ctx = ctxOf(cv);
-  const img = ctx.createImageData(N * 2, N);
-  const d = img.data;
-  for (let y = 0; y < N; y += 1) {
-    for (let x = 0; x < N; x += 1) {
-      const px = ((x + 0.5) / N) * 2 - 1;
-      const py = ((y + 0.5) / N) * 2 - 1;
-      const r = Math.hypot(px, py);
-      if (r >= 1) {
-        continue;
-      }
-      const ang = Math.atan2(py, px);
-      const warp = fbm(px * 2.2 + 3.1, py * 2.2 + 7.3, 3, 11) * 2.4;
-      const phase = ang * 3 + Math.log(r + 0.03) * 3.4 + warp;          // 3 条臂、卷得开一点(7.5 时看着像同心圆)
-      const env = sstep(1.0, 0.8, r) * sstep(0.03, 0.14, r);
-      const arms = 0.5 + 0.5 * Math.sin(phase);
-      const fine = 0.5 + 0.5 * Math.sin(phase * 7 + fbm(px * 9 + 1, py * 9 + 5, 3, 23) * 3);
-      const dry = sstep(0.25, 0.55, fbm(px * 16 + 2, py * 16 + 9, 3, 31));
-      const ink = env * (0.5 + 0.45 * sstep(0.3, 0.75, fine)) * (0.78 + 0.22 * arms) * (0.75 + 0.25 * dry);
-      const hiBand = 0.5 + 0.5 * Math.sin(phase * 5 + 1.7 + fbm(px * 6 + 4, py * 6 + 2, 3, 41) * 4);
-      const hi = env * sstep(0.8, 0.96, hiBand) * dry * (0.55 + 0.45 * r) + Math.exp(-r * r * 300) * 0.9;
-      const pi = (y * N * 2 + x) * 4;
-      d[pi] = 255;
-      d[pi + 1] = 255;
-      d[pi + 2] = 255;
-      d[pi + 3] = Math.round(255 * sat(ink));
-      const ph = (y * N * 2 + N + x) * 4;
-      d[ph] = 255;
-      d[ph + 1] = 255;
-      d[ph + 2] = 255;
-      d[ph + 3] = Math.round(255 * sat(hi));
+  let seed = 4242;
+  const rnd = (): number => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  // 一段对数螺旋(角度从 a0 往前转 len 弧度,半径从 rs 按 exp(b·Δθ) 往外长)
+  const path = (cx: number, a0: number, rs: number, len: number, b: number): Array<[number, number, number]> => {
+    const pts: Array<[number, number, number]> = [];
+    const n = 56;
+    for (let k = 0; k <= n; k += 1) {
+      const t = k / n;
+      const ang = a0 + len * t;
+      const r = Math.min(R * 0.97, rs * Math.exp(b * len * t));
+      pts.push([cx + Math.cos(ang) * r, R + Math.sin(ang) * r, t]);
     }
+    return pts;
+  };
+  // 一笔:几根刷毛,各自偏一点、粗细 / 浓淡不同、有断笔;两头收尖
+  const brush = (pts: Array<[number, number, number]>, wMax: number, alpha: number, bristles: number): void => {
+    ctx.lineCap = 'butt';
+    for (let bi = 0; bi < bristles; bi += 1) {
+      const off = (rnd() - 0.5) * wMax * 0.9;
+      const wb = wMax * (0.22 + 0.4 * rnd());
+      const ab = alpha * (0.4 + 0.6 * rnd());
+      const gf = 2 + Math.floor(rnd() * 4);
+      const gp = rnd() * 6.28;
+      for (let k = 1; k < pts.length; k += 1) {
+        const [x0, y0, t0] = pts[k - 1];
+        const [x1, y1, t1] = pts[k];
+        const tm = (t0 + t1) / 2;
+        const taper = Math.pow(Math.sin(Math.PI * tm), 0.75);
+        if (bi > 0 && 0.5 + 0.5 * Math.sin(tm * gf * 6.28 + gp) < 0.2) {
+          continue;          // 干笔断开的地方
+        }
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const L = Math.hypot(dx, dy) || 1;
+        const o = off * taper;
+        const nx = (-dy / L) * o;
+        const ny = (dx / L) * o;
+        ctx.strokeStyle = `rgba(255,255,255,${(ab * Math.min(1, taper * 1.7)).toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.7, wb * taper);
+        ctx.beginPath();
+        ctx.moveTo(x0 + nx, y0 + ny);
+        ctx.lineTo(x1 + nx, y1 + ny);
+        ctx.stroke();
+      }
+    }
+  };
+  const B = 0.3;          // 螺旋松紧(越小越接近圆)
+  // ── 左半:墨 ──
+  const wash = ctx.createRadialGradient(R, R, 0, R, R, R);
+  wash.addColorStop(0, 'rgba(255,255,255,0.6)');
+  wash.addColorStop(0.55, 'rgba(255,255,255,0.4)');
+  wash.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, N, N);
+  for (let k = 0; k < 16; k += 1) {
+    brush(path(R, rnd() * Math.PI * 2, R * (0.05 + 0.3 * rnd()), 1.6 + 1.8 * rnd(), B), R * (0.035 + 0.06 * rnd()), 0.6 + 0.3 * rnd(), 7);
   }
-  ctx.putImageData(img, 0, 0);
-  return cv;
+  // ── 右半:白色笔触(少、细、长)+ 中间一个亮眼 ──
+  for (let k = 0; k < 10; k += 1) {
+    brush(path(N + R, rnd() * Math.PI * 2, R * (0.1 + 0.4 * rnd()), 1.3 + 1.4 * rnd(), B), R * (0.016 + 0.03 * rnd()), 0.65 + 0.3 * rnd(), 5);
+  }
+  const eye = ctx.createRadialGradient(N + R, R, 0, N + R, R, R * 0.055);
+  eye.addColorStop(0, 'rgba(255,255,255,0.5)');
+  eye.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = eye;
+  ctx.fillRect(N, 0, N, N);
+  // 外沿渐隐:两半各拷到自己的小画布上做(destination-in 会把画的范围以外整张清空,不能在大画布上分两次做)
+  const out = makeCanvas(N * 2, N);
+  const octx = ctxOf(out);
+  for (const x0 of [0, N]) {
+    const half = makeCanvas(N, N);
+    const hc = ctxOf(half);
+    hc.drawImage(cv, x0, 0, N, N, 0, 0, N, N);
+    hc.globalCompositeOperation = 'destination-in';
+    const edge = hc.createRadialGradient(R, R, R * 0.7, R, R, R * 0.99);
+    edge.addColorStop(0, 'rgba(255,255,255,1)');
+    edge.addColorStop(1, 'rgba(255,255,255,0)');
+    hc.fillStyle = edge;
+    hc.fillRect(0, 0, N, N);
+    octx.drawImage(half, x0, 0);
+  }
+  return out;
 }

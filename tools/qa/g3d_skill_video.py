@@ -36,9 +36,16 @@ FFMPEG = shutil.which('ffmpeg') or 'ffmpeg'
 JS_READY = r"""(() => { const d = window.__g3dd; if (!d) return 'nodbg'; const i = d.info(); const g = d.dungeon || {};
   if (i.error) return 'error ' + i.error; if (!i.opened || !g.leader) return 'wait'; if (g.bldTotal && g.bldDone < g.bldTotal) return 'bld'; return 'ok'; })()"""
 JS_SETUP = r"""(() => { const g = __g3dd.dungeon; Object.keys(g.cd).forEach((k) => { g.cd[k] = 0; });
-  const ms = g.mobs.filter((m) => m.hp > 0); ms.forEach((m) => { m.hp = 999; });
-  const m = ms.find((x) => x.c.name === 'wolf' || x.c.name === 'rat') || ms[0]; if (m) { const p = m.c.node.worldPosition; __g3dd.tp(p.x - 2.4, p.z, 90); }
+  // 主角原地(出生点一般是空地),转到和镜头同一个朝向(镜头在背后);前方两米多摆三只怪,都锁血
   if (__g3dd.view) { __g3dd.view({ dist: 6.6, pitch: 16 }); }
+  const a = (g.view.yaw * Math.PI) / 180; const fx = -Math.sin(a); const fz = -Math.cos(a);
+  const yaw = (Math.atan2(-fz, fx) * 180) / Math.PI; __g3dd.tp(g.lx, g.lz, yaw);
+  // 小怪优先(熊站在落点上会把特效挡住),摆在前方三米多
+  const small = (m) => ['rat', 'wolf', 'spider2'].indexOf(m.c.name) >= 0;
+  const ms = g.mobs.filter((m) => m.hp > 0 && small(m)).concat(g.mobs.filter((m) => m.hp > 0 && !small(m))).slice(0, 3);
+  g.mobs.forEach((m) => { if (ms.indexOf(m) < 0) { m.x += 30; m.z += 30; m.home = { x: m.x, z: m.z }; } });
+  ms.forEach((m, i) => { m.hp = 999; const side = (i - 1) * 1.6; m.x = g.lx + fx * 3.4 - fz * side; m.z = g.lz + fz * 3.4 + fx * side; m.home = { x: m.x, z: m.z }; });
+  g.mobs.forEach((m) => { m.hp = 999; });
   __g3dd.pause(true); return ms.length; })()"""
 
 

@@ -102,7 +102,7 @@ export class FxWorld {
     this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6, false, false, bounds);
     this.add2Mesh = new DynMesh(parent, 'ShowFxAdd2', mk(2, this.atlas2, 5), 2400 * 4, 2400 * 6, false, false, bounds);
     this.flowMesh = new DynMesh(parent, 'ShowFxFlow', mk(2, tex(paintBrushStreak(), true, 4), 4), 3200, 4800, false, false, bounds);
-    this.inkMesh = new DynMesh(parent, 'ShowFxInk', mk(3, tex(paintInkWhirl(), false, 8), 1), 64, 96, false, false, bounds);
+    this.inkMesh = new DynMesh(parent, 'ShowFxInk', mk(3, tex(paintInkWhirl(), false, 8), 1), 2600, 13000, false, false, bounds);
   }
 
   rand(a = 0, b = 1): number {
@@ -608,6 +608,9 @@ export class FxWorld {
     if (this.warm > 0) {
       m.quad(0, -50, 0, 0.01, -50, 0, 0.01, -49.99, 0, 0, -49.99, 0, 0, 0, 0.01, 0.01, 0, 0, 0, 0);
     }
+    // 圆盘拆成一圈圈的环,每圈转速不同(内快外慢,像真的漩涡):贴图上的笔触会被越卷越紧
+    const RINGS = [0, 0.08, 0.18, 0.3, 0.43, 0.56, 0.69, 0.81, 0.91, 1.0];
+    const SEG = 40;
     for (let i = this.whirls.length - 1; i >= 0; i -= 1) {
       const w = this.whirls[i];
       w.age += dt;
@@ -615,22 +618,43 @@ export class FxWorld {
         this.whirls.splice(i, 1);
         continue;
       }
-      w.rot += w.spin * dt;
       const g = Math.min(1, w.age / Math.max(0.001, w.grow));
-      const r = w.r0 + (w.r1 - w.r0) * (1 - Math.pow(1 - g, 3));
+      const R = w.r0 + (w.r1 - w.r0) * (1 - Math.pow(1 - g, 3));
       const fade = w.age <= w.hold ? 1 : Math.max(0, 1 - (w.age - w.hold) / Math.max(0.001, w.life - w.hold));
       const al = w.a * Math.min(1, w.age / 0.04) * fade;
-      // 三层:墨(慢)、白色笔触(同速)、再一层笔触转得快一点 —— 叠出湍流感
-      const layer = (rot: number, rr: number, u0: number, u1: number, c: [number, number, number], a: number, y: number): void => {
-        const cs = Math.cos(rot) * rr;
-        const sn = Math.sin(rot) * rr;
-        m.quad(w.x - cs + sn, y, w.z + sn + cs, w.x + cs + sn, y, w.z - sn + cs, w.x + cs - sn, y, w.z - sn - cs, w.x - cs - sn, y, w.z + sn - cs,
-          u0, 0.004, u1, 0.996, c[0], c[1], c[2], a);
+      const layer = (u0: number, u1: number, c: [number, number, number], a: number, y: number, speedK: number, phase: number): void => {
+        if (!m.room(RINGS.length * (SEG + 1), (RINGS.length - 1) * SEG * 6)) {
+          return;
+        }
+        let first = -1;
+        for (const rf of RINGS) {
+          const omega = speedK * (0.6 + 0.75 * Math.pow(1 - rf, 1.5));          // 内圈约快一倍(差太多一秒就扭成同心圈)
+          const rot = w.rot + w.spin * omega * w.age + phase;
+          // 外沿一圈透明度渐隐(贴图本身也淡出,这里再压一点,边缘不留硬圈)
+          const ea = a * (rf > 0.9 ? Math.max(0, (1 - rf) / 0.1) * 0.8 + 0.2 : 1);
+          for (let j = 0; j <= SEG; j += 1) {
+            const th = (j / SEG) * Math.PI * 2;
+            const k = m.vert(w.x + Math.cos(th + rot) * rf * R, y, w.z + Math.sin(th + rot) * rf * R,
+              u0 + (u1 - u0) * (0.5 + 0.5 * rf * Math.cos(th)), 0.5 + 0.5 * rf * Math.sin(th), c[0], c[1], c[2], ea);
+            if (first < 0) {
+              first = k;
+            }
+          }
+        }
+        for (let ri = 0; ri < RINGS.length - 1; ri += 1) {
+          for (let j = 0; j < SEG; j += 1) {
+            const a0 = first + ri * (SEG + 1) + j;
+            const b0 = a0 + SEG + 1;
+            m.tri(a0, b0 + 1, b0);          // 从上往下看是逆时针(正面朝上)
+            m.tri(a0, a0 + 1, b0 + 1);
+          }
+        }
       };
-      layer(w.rot, r, 0.002, 0.498, w.ink, al * 0.92, w.y);
-      layer(w.rot, r, 0.502, 0.998, w.hi, al, w.y + 0.004);
-      layer(w.rot * 1.35 + 0.9, r * 0.93, 0.502, 0.998, w.hi, al * 0.55, w.y + 0.008);
+      layer(0.002, 0.498, w.ink, al * 0.85, w.y, 1, 0);
+      layer(0.502, 0.998, w.hi, al * 0.9, w.y + 0.004, 1, 0);
+      layer(0.502, 0.998, w.hi, al * 0.4, w.y + 0.008, 1.3, 2.1);
     }
     m.end();
   }
+
 }

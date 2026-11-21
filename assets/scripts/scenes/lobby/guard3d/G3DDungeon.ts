@@ -408,7 +408,7 @@ class Dungeon {
    * 正在出的这一招:move = 代码摆的招式(跃空重劈用片段,move 是空的);t = 出到第几秒;done = 每次判定做过没有;
    * yaw0 = 出手时面朝哪;adv = 已经往前挪了多少;hit = 这一招里已经打中过的怪(突进沿路每只只算一次)。
    */
-  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean; fxOnce?: boolean } | null = null;
+  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean; fxOnce?: boolean; fxLeap?: boolean } | null = null;
   /** 主角有没有动作库转套过来的那批招式(有 = 用片段出招、双手大剑;没有 = 代码摆的招式、单手长剑)。 */
   private gs = false;
   private swordLen = BLADE_LEN;
@@ -438,6 +438,9 @@ class Dungeon {
   private slowK = 1;
   private camK = 1;
   private camTo = 1;
+  /** 大招镜头的俯仰偏移(度):最高点压低一点,落地后升高亮出地上的旋涡。 */
+  private pitchOff = 0;
+  private pitchTo = 0;
   private radialT = 0;
   private radialPeak = 0;
   private ultSparkAt = 0;
@@ -3761,14 +3764,16 @@ class Dungeon {
     this.lift = ease(this.lift, needLift);
     this.swing = ease(this.swing, needYaw);
     const a = ((this.view.yaw + this.swing) * Math.PI) / 180;
-    const p = ((this.view.pitch + this.lift) * Math.PI) / 180;
+    const p = ((Math.min(78, this.view.pitch + this.lift + this.pitchOff)) * Math.PI) / 180;
     const dx = Math.sin(a) * Math.cos(p);
     const dy = Math.sin(p);
     const dz = Math.cos(a) * Math.cos(p);
-    const can = this.reach(this.look.x, this.look.y, this.look.z, dx, dy, dz, this.view.dist);
-    const want = Math.max(Math.min(1.2, this.view.dist), can - 0.15);
+    // 大招镜头:camK > 1 = 往后拉(碰撞按拉远后的距离算),< 1 = 推近
+    const dist = this.view.dist * Math.max(1, this.camK);
+    const can = this.reach(this.look.x, this.look.y, this.look.z, dx, dy, dz, dist);
+    const want = Math.max(Math.min(1.2, dist), can - 0.15);
     this.pull = want < this.pull || dt <= 0 ? want : Math.min(want, this.pull + (want - this.pull) * (1 - Math.exp(-4 * dt)) + 0.001);
-    const d = Math.min(this.view.dist, this.pull) * this.camK;
+    const d = Math.min(dist, this.pull) * Math.min(1, this.camK);
     // 震屏:几个不同频率的正弦叠起来,幅度很快衰减
     const sk = this.shake;
     const st = this.time * 60;
@@ -4605,10 +4610,23 @@ class Dungeon {
    * 跃空重劈的大招演出 · 腾空段(11-22,参考用户给的两段视频:身上缠闪电、最高点白光爆闪 + 慢镜 + 推镜)。
    * u = 招式进度,fireU = 落地砸下的那一刻。
    */
-  private ultLeap(act: { fxOnce?: boolean }, u: number, fireU: number, dt: number): void {
+  private ultLeap(act: { fxOnce?: boolean; fxLeap?: boolean }, u: number, fireU: number, dt: number): void {
     const fx = this.fx!;
     const hy = this.leaderY + this.floorY(this.lx, this.lz);
+    if (!act.fxLeap) {
+      act.fxLeap = true;
+      // 缠身气旋:三条绕身体螺旋往上窜的气流线(原来用圆柱风带,侧面看轮廓是个长方形,像罩了个发光箱子)
+      for (let k = 0; k < 3; k += 1) {
+        fx.streak({ kind: 'spiral', x: this.lx, z: this.lz, a0: (k / 3) * Math.PI * 2, turns: Math.PI * 2.4, r0: 0.95, r1: 0.55, y0: hy + 0.05, y1: hy + 2.6,
+          w0: 0.07, w1: 0.12, life: 0.5, grow: 0.22, len: 0.6, scroll: 4, rep: 2, color: k === 1 ? [1.0, 0.8, 0.5] : [0.65, 0.86, 1.0], a: 0.75 });
+      }
+    }
     if (u < fireU && dt > 0 && this.time >= this.ultSparkAt) {
+      for (let k = 0; k < 2; k += 1) {
+        const a = fx.rand(0, Math.PI * 2);
+        fx.emit({ x: this.lx + Math.cos(a) * 0.6, y: hy + 0.2, z: this.lz + Math.sin(a) * 0.6, vx: -Math.sin(a) * 3, vy: fx.rand(6, 10), vz: Math.cos(a) * 3, life: 0.22, s0: 0.05, s1: 0.015,
+          c0: k ? [1, 0.85, 0.55] : [0.75, 0.9, 1], a: 0.85, cell: FX2_CELL.spark, t2: true, stretch: 3, fadeIn: 0.05 });
+      }
       // 身上缠的金白闪电:身边随机两点之间的短闪电,每 0.05 秒换一批
       this.ultSparkAt = this.time + 0.05;
       for (let k = 0; k < 3; k += 1) {
@@ -4638,6 +4656,7 @@ class Dungeon {
       this.slowT = 0.55;
       this.slowK = 0.28;
       this.camTo = 0.8;
+      this.pitchTo = -5;
       fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.3, s0: 0.4, s1: 1.6, c0: [1, 1, 1], c1: [0.75, 0.9, 1], a: 0.5, cell: FX2_CELL.flare, t2: true, rot: 0.2, fadeIn: 0.02 });
       fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.4, s0: 0.3, s1: 1.0, c0: [1, 0.95, 0.8], a: 0.3, cell: FX2_CELL.glow, t2: true, fadeIn: 0.02 });
       this.radialT = 0.5;
@@ -4660,20 +4679,20 @@ class Dungeon {
     fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.9, w1: 1.6, life: 0.7, grow: 0.09, len: 1, scroll: -4, rep: 1.5, color: ice, a: 0.55 });
     // 地面笔触旋涡:一圈平躺的螺旋流线往外卷(半月),再加几道卷起来的浪
     const base = Math.atan2(fzn, fxn);
-    for (let k = 0; k < 9; k += 1) {
-      const a0 = base + (k / 9) * Math.PI * 2 + fx.rand(-0.15, 0.15);
+    for (let k = 0; k < 5; k += 1) {
+      const a0 = base + (k / 5) * Math.PI * 2 + fx.rand(-0.35, 0.35);
       fx.streak({ kind: 'spiral', x, z, a0, turns: 2.6 + fx.rand(-0.3, 0.3), r0: 0.35, r1: 4.6 + fx.rand(-0.5, 0.6), y0: 0.05, y1: 0.08, w0: 0.18, w1: 0.62,
-        life: 1.15, grow: 0.32, len: 0.75, scroll: 3.2, rep: 3, color: k % 3 === 0 ? [1, 1, 1] : ice, a: k % 3 === 0 ? 0.9 : 0.7 });
+        life: 1.15, grow: 0.32, len: 0.75, scroll: 3.2, rep: 3, color: k % 3 === 0 ? [1, 1, 1] : k % 3 === 1 ? [1.0, 0.74, 0.38] : ice, a: k % 3 === 0 ? 0.9 : 0.72 });
     }
-    for (let k = 0; k < 4; k += 1) {
-      const a0 = base + (k / 4) * Math.PI * 2 + 0.4;
+    for (let k = 0; k < 2; k += 1) {
+      const a0 = base + (k / 2) * Math.PI * 2 + 0.4;
       fx.streak({ kind: 'spiral', x, z, a0, turns: 2.0, r0: 0.6, r1: 3.2, y0: 0.15, y1: 1.6, w0: 0.14, w1: 0.4, life: 0.9, grow: 0.3, len: 0.7, scroll: 3.6, rep: 2.5, color: ice, a: 0.55 });
     }
     // 地面四散的闪电
     for (let k = 0; k < 7; k += 1) {
       const a = base + (k / 7) * Math.PI * 2 + fx.rand(-0.2, 0.2);
       const L = fx.rand(2.6, 4.2);
-      fx.bolt(new Vec3(x, 0.08, z), new Vec3(x + Math.cos(a) * L, 0.06, z + Math.sin(a) * L), 0.045, 0.32, [0.7, 0.85, 1.0], 0.18, 2);
+      fx.bolt(new Vec3(x, 0.08, z), new Vec3(x + Math.cos(a) * L, 0.06, z + Math.sin(a) * L), 0.045, 0.32, k % 2 ? [1.0, 0.82, 0.5] : [0.7, 0.85, 1.0], 0.18, 2);
     }
     // 地缝里的余火(橙红,停得久一点)+ 往上飘的火星
     fx.decal('fx2', FX2_CELL.glow, x, z, 1.4, 1.8, 2.4, [1.0, 0.42, 0.12], 0.4, 0.05, 1.2, 0, 0.033);
@@ -4695,7 +4714,8 @@ class Dungeon {
     this.addShock(x, 0.6, z, 0.75, 0.78, 0.05);
     this.timers.push({ at: this.time + 0.05, run: () => this.addShock(x, 0.6, z, 1.15, 1.05, 0.03) });
     this.camTo = 0.86;
-    this.timers.push({ at: this.time + 0.25, run: () => { this.camTo = 1; } });
+    this.timers.push({ at: this.time + 0.1, run: () => { this.camTo = 1.32; this.pitchTo = 17; } });
+    this.timers.push({ at: this.time + 1.25, run: () => { this.camTo = 1; this.pitchTo = 0; } });
     this.shake = Math.max(this.shake, 0.42);
   }
 
@@ -4755,7 +4775,21 @@ class Dungeon {
     const fx = this.fx!;
     const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
     const n = (k: number): number => Math.max(1, Math.round(k * q));
-    fx.whirl({ x, z, r0: 0.6, r1: 5.8, grow: 0.32, hold: 1.0, life: 1.9, spin: 2.2, ink: [0.03, 0.04, 0.07], hi: [0.86, 0.92, 1.0], a: 0.95 });
+    fx.whirl({ x, z, r0: 0.6, r1: 5.8, grow: 0.32, hold: 1.0, life: 1.9, spin: 1.8, ink: [0.03, 0.04, 0.07], hi: [0.86, 0.92, 1.0], a: 0.95 });
+    // 剑气往前冲出去的一道云浪(参考视频开天斩之后沿地面拖出的一长条白云)
+    const fxn = this.leader ? Math.cos((this.lyaw * Math.PI) / 180) : 1;
+    const fzn = this.leader ? -Math.sin((this.lyaw * Math.PI) / 180) : 0;
+    for (let k = 0; k < n(11); k += 1) {
+      const dd = 0.9 + k * 0.62;
+      this.timers.push({ at: this.time + k * 0.028, run: () => {
+        const px = x + fxn * dd + fx.rand(-0.25, 0.25);
+        const pz = z + fzn * dd + fx.rand(-0.25, 0.25);
+        fx.emit({ x: px, y: fx.rand(0.35, 0.65), z: pz, vx: fxn * fx.rand(1, 2.5) + fx.rand(-0.8, 0.8), vy: fx.rand(0.3, 0.9), vz: fzn * fx.rand(1, 2.5) + fx.rand(-0.8, 0.8),
+          life: fx.rand(1.4, 2.0), s0: 0.7, s1: 2.0 + k * 0.08, c0: [0.97, 0.98, 1.0], c1: [0.74, 0.78, 0.86], a: 0.52, cell: FX2_CELL.cumulus, t2: true, add: false, drag: 2.2, fadeIn: 0.04 });
+        fx.emit({ x: px, y: 0.35, z: pz, vx: fxn * 3, vz: fzn * 3, life: 0.5, s0: 0.5, s1: 1.4, c0: [0.7, 0.88, 1.0], a: 0.12, cell: FX2_CELL.fog, t2: true, drag: 2, fadeIn: 0.03 });
+      } });
+    }
+    fx.decal('fx2', FX2_CELL.glow, x + fxn * 3.6, z + fzn * 3.6, 0.6, 1.4, 0.9, [0.55, 0.75, 1.0], 0.25, 0.05, 0.2, 0, 0.032);
     // 开天斩落下来的风:一串积云从高处砸下来、到地面散开
     for (let k = 0; k < n(9); k += 1) {
       const y = 1.2 + k * 1.25;
@@ -4805,6 +4839,7 @@ class Dungeon {
       this.camTo = Math.min(1, this.camTo + rdt * 0.6);
     }
     this.camK += (this.camTo - this.camK) * (1 - Math.exp(-rdt * (this.camTo < this.camK ? 7 : 2.5)));
+    this.pitchOff += (this.pitchTo - this.pitchOff) * (1 - Math.exp(-rdt * 3.2));
     if (this.radialT > 0 || this.radialPeak > 0) {
       this.radialT = Math.max(0, this.radialT - rdt);
       const k = this.radialT > 0 ? Math.min(1, this.radialT / 0.35) : 0;
