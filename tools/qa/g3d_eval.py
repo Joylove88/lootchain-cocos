@@ -82,6 +82,16 @@ async def main():
             with open(os.path.join(OUT, f'eval_{TAG}.json'), 'w', encoding='utf-8') as f:
                 json.dump(val, f, ensure_ascii=False, indent=1)
             print('RESULT', json.dumps(val, ensure_ascii=False)[:3000], flush=True)
+            # --shots=<json 文件>:[{"name": "...", "js": "..."}, …] 逐个执行后等 --shotwait 秒截一张(ab 对比画面用)
+            if 'shots' in OPT:
+                import base64
+                for s in json.load(open(OPT['shots'], encoding='utf-8')):
+                    r = await ev(s['js'], 120)
+                    await asyncio.sleep(float(OPT.get('shotwait', '2')))
+                    m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
+                    p = os.path.join(OUT, f'shot_{TAG}_{s["name"]}.png')
+                    open(p, 'wb').write(base64.b64decode(m['result']['data']))
+                    print('SHOT', s['name'], r, p, flush=True)
     finally:
         proc.terminate()
         try:

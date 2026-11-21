@@ -337,13 +337,47 @@ if (!skipBuild) {
   if (!fs.existsSync(CREATOR_EXE)) {
     fail(`找不到 Creator:${CREATOR_EXE}(可用环境变量 COCOS_CREATOR_EXE 指定)`);
   }
-  const code = run(CREATOR_EXE, [
-    '--project', ROOT,
-    // 构建参数放在 build-config/web-mobile.json(扁平 key=value 写不了 packages.web-mobile.orientation=landscape)
-    '--build', `configPath=${path.join(ROOT, 'build-config', 'web-mobile.json')}`,
-  ]);
+  // 3D 小样的模型(g3d_*,带 .meta)平时不放进工程(太大、不进 git),出包时才临时拷进 assets/resources、出完删掉。
+  // 11-21 有一版出包漏了这一步,线上三个 3D 小样全部取不到模型 → 改成这里自动做。本机没有备好的目录就跳过(包里不带 3D 模型)。
+  const g3dStaged = process.env.G3D_STAGED_DIR || 'D:/project/lootchain-3d-ref/staged_release_lite';
+  const g3dCopied = [];
+  if (fs.existsSync(g3dStaged)) {
+    for (const name of fs.readdirSync(g3dStaged)) {
+      if (!name.startsWith('g3d_')) {
+        continue;
+      }
+      const dst = path.join(ROOT, 'assets', 'resources', name);
+      if (fs.existsSync(dst)) {
+        continue;          // 已经手动拷进来的不动,也不替它删
+      }
+      fs.cpSync(path.join(g3dStaged, name), dst, { recursive: true });
+      g3dCopied.push(dst);
+    }
+    console.log(`[release] 3D 小样模型:临时拷入 ${g3dCopied.length} 项(${g3dStaged})`);
+  } else {
+    console.warn(`[release] 注意:没有 3D 小样模型目录 ${g3dStaged},包里不带 3D 模型(线上 3D 小样会取不到模型)`);
+  }
+  let code;
+  try {
+    code = run(CREATOR_EXE, [
+      '--project', ROOT,
+      // 构建参数放在 build-config/web-mobile.json(扁平 key=value 写不了 packages.web-mobile.orientation=landscape)
+      '--build', `configPath=${path.join(ROOT, 'build-config', 'web-mobile.json')}`,
+    ]);
+  } finally {
+    for (const p of g3dCopied) {
+      fs.rmSync(p, { recursive: true, force: true });
+    }
+  }
   if (code !== CREATOR_BUILD_OK) {
     fail(`构建退出码 ${code}(成功应为 ${CREATOR_BUILD_OK}),看上面的构建日志`);
+  }
+  if (fs.existsSync(g3dStaged)) {
+    const cfg = fs.readdirSync(path.join(BUILD_DIR, 'assets', 'resources')).find((f) => /^config\..*\.json$/.test(f));
+    const text = cfg ? fs.readFileSync(path.join(BUILD_DIR, 'assets', 'resources', cfg), 'utf8') : '';
+    if (!text.includes('g3d_char/')) {
+      fail('构建结果里没有 3D 小样模型(g3d_char/),线上 3D 小样会取不到模型 —— 看上面 Creator 导入日志');
+    }
   }
 } else {
   step('2/5 跳过构建(--skip-build)');
