@@ -656,6 +656,22 @@ const packHolds = new Set<string>();
  * 某个模块要独占网络的一段时间里叫停后台整包下载(和按界面暂停叠加,任何一方要停就停)。
  * 11-21:3D 小样载入模型时,后台同时在下 130~220MB 的 2D 素材,两边抢带宽 → 模型到齐前先停。
  */
+/**
+ * 后台「读进内存」(解码 + 传显卡)的预读也叫停(和上面的整包下载是两回事):11-22 剖析 3D 小样「第一次放跃空重劈卡 5 秒」,
+ * 真凶是底下 2D 大厅在后台预读战斗界面图,大图上传显卡把主线程堵住 —— 3D 小样开着时这些图用不上,整段停掉。
+ */
+const warmHolds = new Set<string>();
+export function holdBackgroundWarm(key: string, on: boolean): void {
+  if (on) {
+    warmHolds.add(key);
+  } else {
+    warmHolds.delete(key);
+  }
+}
+export function backgroundWarmHeld(): boolean {
+  return warmHolds.size > 0;
+}
+
 export function holdBackgroundPack(key: string, on: boolean): void {
   if (on) {
     packHolds.add(key);

@@ -6,7 +6,7 @@ import { ctxOf, Cv, fbm, makeCanvas } from './G3DTextures';
  * 星芒闪光、冲击波环、烟尘、刀痕、光柱、旋风带、长火星、碎石、柔光、剑气月牙、地面冲击环、能量团。
  * 全部白色 + 透明度,颜色由顶点色给(同一格能染成紫 / 金 / 冰蓝)。
  */
-export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11 };
+export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11, fog: 12, wisp: 13 };
 export const FX2_N = 4;
 
 /** 第二张图集里某一格的贴图坐标(往里收两个多像素,免得相邻格渗过来)。 */
@@ -155,6 +155,24 @@ export function paintFx2Atlas(): Cv {
     const n = fbm(u * 7 + 1.7, v * 7 + 9.1, 4, 63);
     const tendrils = sat(1 - Math.abs(n - 0.5) * 7) * 0.8;
     return sat((Math.exp(-r * r * 6) * 0.7 + tendrils * sat(1 - r) ** 1.5) * sat((1 - r) * 4));
+  };
+  // 12 雾团(11-22 用户「光雾、气雾」):大尺度、低反差的柔软云团,边缘高斯式淡出(加色画 = 发光的雾,半透明画 = 白色水汽)
+  cells[FX2_CELL.fog] = (u, v) => {
+    const x = u * 2 - 1;
+    const y = v * 2 - 1;
+    const r = Math.hypot(x, y);
+    const n = fbm(u * 2.6 + 5.3, v * 2.6 + 1.7, 5, 101);
+    const n2 = fbm(u * 6.5 + 2.2, v * 6.5 + 8.4, 3, 202);
+    const shape = Math.exp(-r * r * 2.4) * (0.45 + 0.75 * n) * (0.8 + 0.35 * n2);
+    return sat(shape * 1.15) * sat((1 - r) * 2.2);
+  };
+  // 13 水汽丝:横向拉长的一缕(贴地往外冲的气流,沿速度方向拉长用)
+  cells[FX2_CELL.wisp] = (u, v) => {
+    const x = u * 2 - 1;
+    const y = v * 2 - 1;
+    const band = Math.exp(-((y * 2.6) ** 2)) * sat(1 - Math.abs(x)) ** 1.3;
+    const n = fbm(u * 2.2 + 4.1, v * 9 + 0.7, 4, 303);
+    return sat(band * (0.35 + 0.95 * n));
   };
   for (let cy = 0; cy < FX2_N; cy += 1) {
     for (let cx = 0; cx < FX2_N; cx += 1) {

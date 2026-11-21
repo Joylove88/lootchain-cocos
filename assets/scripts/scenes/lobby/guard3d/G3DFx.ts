@@ -58,6 +58,11 @@ export class FxWorld {
   private readonly pillars: Pillar[] = [];
   private readonly streaks: Streak[] = [];
   private readonly flowMesh: DynMesh;
+  /**
+   * 预热(11-22 线上实测:第一次放旋风斩卡到 0 帧):空的动态网格不画,材质的着色器要等第一次真有东西时才编译,
+   * 弱显卡上一编就是零点几秒 → 建好后头几帧往每张网格里塞一片看不见的小面片(透明度 0),让编译发生在载入阶段。
+   */
+  private warm = 4;
   /** 第二张(高清)图集。 */
   readonly atlas2: Texture2D;
   private readonly scorchMesh: DynMesh;
@@ -204,6 +209,11 @@ export class FxWorld {
     alp.begin();
     add2.begin();
     alp2.begin();
+    if (this.warm > 0) {
+      for (const m of [add, alp, add2, alp2]) {
+        m.quad(cp.x, cp.y - 50, cp.z, cp.x + 0.01, cp.y - 50, cp.z, cp.x + 0.01, cp.y - 49.99, cp.z, cp.x, cp.y - 49.99, cp.z, 0, 0, 0.01, 0.01, 0, 0, 0, 0);
+      }
+    }
     const guv = fxUv(FX_CELL.glow);
     for (let i = 0; i < this.blobs.length; i += 5) {
       const bx = this.blobs[i];
@@ -346,6 +356,11 @@ export class FxWorld {
     const ru = this.runeMesh;
     sc.begin();
     ru.begin();
+    if (this.warm > 0) {
+      for (const m of [sc, ru]) {
+        m.quad(cp.x, cp.y - 50, cp.z, cp.x + 0.01, cp.y - 50, cp.z, cp.x + 0.01, cp.y - 49.99, cp.z, cp.x, cp.y - 49.99, cp.z, 0, 0, 0.01, 0.01, 0, 0, 0, 0);
+      }
+    }
     for (let i = this.decals.length - 1; i >= 0; i -= 1) {
       const d = this.decals[i];
       d.age += dt;
@@ -505,6 +520,11 @@ export class FxWorld {
   private drawStreaks(dt: number): void {
     const m = this.flowMesh;
     m.begin();
+    if (this.warm > 0) {
+      this.warm -= 1;
+      const cp = _c;
+      m.quad(cp.x, -50, cp.z, cp.x + 0.01, -50, cp.z, cp.x + 0.01, -49.99, cp.z, cp.x, -49.99, cp.z, 0, 0, 0.01, 0.01, 0, 0, 0, 0);
+    }
     const SEG = 28;
     let hx = _rt.x;
     let hz = _rt.z;

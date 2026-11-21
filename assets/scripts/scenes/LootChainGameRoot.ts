@@ -44,6 +44,7 @@ import {
   prioritizeBackgroundPack,
   packResourcesReady,
   setBackgroundPackPaused,
+  backgroundWarmHeld,
   startBackgroundPack,
   fetchAssetManifest,
   hasStorageRoomFor,
@@ -1158,7 +1159,8 @@ export class LootChainGameRoot extends Component {
     }
     // 网页分层下载没下完时先不预读:这里的图大多不在开局包,现在读会绕过下载顺序抢带宽(还会把战斗图组整块提成紧急下载);
     // 后台下完再从本地读进内存
-    if (packDownloadPending()) {
+    // 3D 小样开着时也先不预读(见 holdBackgroundWarm)
+    if (packDownloadPending() || backgroundWarmHeld()) {
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 10);
       return;
     }
@@ -1185,7 +1187,7 @@ export class LootChainGameRoot extends Component {
         return;
       }
       // 战斗中暂停后台预读(2026-10-05 剖析:大图解码后上传显卡一次 0.1~0.3 秒,正是战斗里的周期性卡顿),回大厅后继续
-      if (this.currentView === 'battle') {
+      if (this.currentView === 'battle' || backgroundWarmHeld()) {
         this.scheduleOnce(worker, 1);
         return;
       }

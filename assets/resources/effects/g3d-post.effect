@@ -498,38 +498,53 @@ CCProgram final-fs %{
 
   void main () {
     vec2 o = lcP0.xy * lcP0.z;
+    // 11-22 气浪:往外扩的两圈冲击波把画面往外推(高斯的导数:波前往外挤、波后往回吸),波上略提亮;平时振幅 0 整段跳过
+    // lcP4 = 中心 xy、第一圈半径、振幅;lcP5 = 画面宽高比、波宽、第二圈半径、振幅(半径 / 波宽按画面高度算)
+    vec2 uv = v_uv;
+    float wave = 0.0;
+    if (lcP4.w > 0.00001 || lcP5.w > 0.00001) {
+      vec2 dv = (v_uv - lcP4.xy) * vec2(lcP5.x, 1.0);
+      float dd = length(dv);
+      vec2 nd = dv / max(dd, 0.0001);
+      float f1 = (dd - lcP4.z) / lcP5.y;
+      float f2 = (dd - lcP5.z) / lcP5.y;
+      float off = lcP4.w * f1 * exp(-f1 * f1) + lcP5.w * f2 * exp(-f2 * f2);
+      uv -= nd * off / vec2(lcP5.x, 1.0);
+      wave = lcP4.w * exp(-f1 * f1) + lcP5.w * exp(-f2 * f2);
+    }
     vec3 c;
     if (lcP2.w > 0.5) {
-      c = catmullRom(v_uv);
+      c = catmullRom(uv);
     } else {
-      c = (texture(lcTexA, v_uv + vec2(-o.x, -o.y)).rgb + texture(lcTexA, v_uv + vec2(o.x, -o.y)).rgb
-        + texture(lcTexA, v_uv + vec2(-o.x, o.y)).rgb + texture(lcTexA, v_uv + vec2(o.x, o.y)).rgb) * 0.25;
+      c = (texture(lcTexA, uv + vec2(-o.x, -o.y)).rgb + texture(lcTexA, uv + vec2(o.x, -o.y)).rgb
+        + texture(lcTexA, uv + vec2(-o.x, o.y)).rgb + texture(lcTexA, uv + vec2(o.x, o.y)).rgb) * 0.25;
     }
+    c *= 1.0 + wave * 5.0;
     // 11-22 大招演出:径向模糊(往 lcP3.xy 那一点冲过去的速度感)+ 色散(红 / 蓝通道沿半径错开);平时 lcP3.zw = 0 整段跳过
     if (lcP3.z > 0.001 || lcP3.w > 0.001) {
-      vec2 dir = v_uv - lcP3.xy;
+      vec2 dir = uv - lcP3.xy;
       vec3 acc = c;
       float ws = 1.0;
       if (lcP3.z > 0.001) {
         for (int i = 1; i <= 10; i++) {
           float k = float(i) / 10.0;
           float w = 1.0 - k * 0.6;
-          acc += texture(lcTexA, v_uv - dir * k * lcP3.z).rgb * w;
+          acc += texture(lcTexA, uv - dir * k * lcP3.z).rgb * w;
           ws += w;
         }
       }
       c = acc / ws;
       if (lcP3.w > 0.001) {
         vec2 o2 = dir * lcP3.w;
-        c.r = mix(c.r, texture(lcTexA, v_uv + o2).r, 0.85);
-        c.b = mix(c.b, texture(lcTexA, v_uv - o2).b, 0.85);
+        c.r = mix(c.r, texture(lcTexA, uv + o2).r, 0.85);
+        c.b = mix(c.b, texture(lcTexA, uv - o2).b, 0.85);
       }
     }
     if (lcP0.w > 0.001) {
       // 锐化:和上下左右的平均比,把差值加回去一部分;差值限幅,硬边不出白边
       vec2 q = lcP2.yz;
-      vec3 n = (texture(lcTexA, v_uv + vec2(q.x, 0.0)).rgb + texture(lcTexA, v_uv - vec2(q.x, 0.0)).rgb
-        + texture(lcTexA, v_uv + vec2(0.0, q.y)).rgb + texture(lcTexA, v_uv - vec2(0.0, q.y)).rgb) * 0.25;
+      vec3 n = (texture(lcTexA, uv + vec2(q.x, 0.0)).rgb + texture(lcTexA, uv - vec2(q.x, 0.0)).rgb
+        + texture(lcTexA, uv + vec2(0.0, q.y)).rgb + texture(lcTexA, uv - vec2(0.0, q.y)).rgb) * 0.25;
       c += clamp((c - n) * lcP0.w, -0.06, 0.06);
     }
     // 暗角:椭圆跟着画面的形状走(四个角 = 1,左右边的中点 ≈ 0.71),lcP1.w = 往正圆靠多少

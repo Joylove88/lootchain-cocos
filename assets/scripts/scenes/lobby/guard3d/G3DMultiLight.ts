@@ -13,7 +13,9 @@ import { Camera, director, Director, EffectAsset, geometry, renderer, rendering,
  * 关掉(enabled = false)= 灯数写 0、不再拦,完全回到原来的做法(对照用;地址 &ml=0 一开始就不开)。
  */
 
-const MAX = 8;
+// 11-22:8 → 16。超过上限的灯以前退回引擎逐灯加画 —— 那条路要另一套着色器变体,第一次用到时现场编译 5 个(每个都含整份多灯代码),
+// 独显卡 1.3 秒、核显卡 2~5 秒(主角走进灯多的地方 / 跃空重劈跳过去就触发)。现在上限放到 16,超出的远处灯直接不画(dropRest)。
+const MAX = 16;
 const TYPE_SPHERE = 1;
 const TYPE_SPOT = 2;
 const TYPE_POINT = 3;
@@ -97,6 +99,8 @@ export class MultiLight {
   enabled = true;
   /** 最多几盏走单遍(≤ 8;对照 / 排查用)。 */
   max = MAX;
+  /** 超出上限的灯:true = 直接不画(不再退回逐灯加画,免得现场编译着色器卡顿);&mlrest=1 退回旧做法。 */
+  dropRest = true;
   /** 最近一帧写进去几盏、还剩几盏走引擎(给 info 看)。 */
   stat = { single: 0, rest: 0, passes: 0 };
   private flagged: AnyLight[] = [];
@@ -201,6 +205,13 @@ export class MultiLight {
       l.__lcOne = true;
       this.flagged.push(l);
       fillLight(l, hdr, exposure, this.pos[i], this.col[i], this.sra[i], this.dir[i]);
+    }
+    if (this.dropRest) {
+      for (let i = n; i < cand.length; i += 1) {
+        const l = cand[i].l;
+        l.__lcOne = true;
+        this.flagged.push(l);
+      }
     }
     this.stat.single = n;
     this.stat.rest = cand.length - n;

@@ -448,12 +448,12 @@ CCProgram standard-fs %{
   // 5.5 单遍多灯的灯光参数(每帧由 G3DMultiLight 写入;排布同引擎的 CCForwardLight)
   #include <common/color/gamma>
   #include <common/color/tone-mapping>
-  #define LC_MAX_LIGHTS 8
+  #define LC_MAX_LIGHTS 16
   uniform LcLights {
-    highp vec4 lcLightPos[8];     // xyz 位置、w 灯的类型(2 聚光 / 3 点光 / 1 球面光)
-    vec4 lcLightColor[8];         // rgb 颜色、w 亮度(已乘曝光,同引擎)
-    vec4 lcLightSRA[8];           // 尺寸、范围、聚光外角余弦、-
-    vec4 lcLightDir[8];           // 聚光朝向(xyz)、聚光角度衰减力度(w)
+    highp vec4 lcLightPos[16];     // xyz 位置、w 灯的类型(2 聚光 / 3 点光 / 1 球面光)(11-22 8 → 16,见 G3DMultiLight)
+    vec4 lcLightColor[16];         // rgb 颜色、w 亮度(已乘曝光,同引擎)
+    vec4 lcLightSRA[16];           // 尺寸、范围、聚光外角余弦、-
+    vec4 lcLightDir[16];           // 聚光朝向(xyz)、聚光角度衰减力度(w)
     vec4 lcLightCount;                        // x = 灯数
     // 11-22 角色专属打光(只有角色材质写这两项,其余材质保持 0 = 不生效):
     vec4 lcRim;                               // 轮廓光:rgb 颜色 × 强度(线性)、w 边缘收窄指数

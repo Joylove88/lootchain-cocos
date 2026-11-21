@@ -13,7 +13,7 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { installMultiLightEffect, MultiLight } from './G3DMultiLight';
 import { installShadowPingPong, shadowPP } from './G3DShadowPP';
 import { installKeepManagedPatch } from './G3DPipeFix';
-import { holdBackgroundPack } from '../../../app/AssetOfflineCache';
+import { holdBackgroundPack, holdBackgroundWarm } from '../../../app/AssetOfflineCache';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -441,6 +441,11 @@ class Dungeon {
   private radialT = 0;
   private radialPeak = 0;
   private ultSparkAt = 0;
+  /** 气浪(屏幕空间冲击波):世界里的中心、开始时间、时长、最大半径(画面高度的几成)、振幅。最多同时两圈。 */
+  private shocks: Array<{ x: number; y: number; z: number; t0: number; life: number; rMax: number; amp: number }> = [];
+  private readonly shockV = new Vec3();
+  private shockOn = false;
+  private readonly shockS = new Vec3();
   private shake = 0;
   private lastDt = 0;
   private realDt = 0;
@@ -521,6 +526,7 @@ class Dungeon {
   open(done?: () => void): void {
     // 11-21 低端兼容第 2 期:模型到齐前叫停后台 2D 整包下载(两边抢带宽);到齐后在帧率统计那里放开,最多停 2 分钟
     holdBackgroundPack('g3d', true);
+    holdBackgroundWarm('g3d', true);          // 2D 大厅的后台预读(解码 + 传显卡)整段停掉:3D 小样里用不上,还会把主线程堵住几秒
     this.packHoldUntil = performance.now() + 120000;
     loadKit(['g3d-standard', 'g3d-fxaa'], (missing) => {
       if (missing.indexOf('g3d-standard') >= 0) {
@@ -537,6 +543,7 @@ class Dungeon {
           }
           if (useMl && this.cam && !this.ml) {
             this.ml = new MultiLight(this.cam);
+            this.ml.dropRest = param('mlrest') !== '1';
             if (!this.ml.start()) {
               this.ml = null;
             }
@@ -4630,6 +4637,8 @@ class Dungeon {
       fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.4, s0: 0.3, s1: 1.0, c0: [1, 0.95, 0.8], a: 0.3, cell: FX2_CELL.glow, t2: true, fadeIn: 0.02 });
       this.radialT = 0.5;
       this.radialPeak = 0.016;
+      this.addShock(this.lx, hy + 1.6, this.lz, 0.45, 0.32, 0.016);
+      fx.emit({ x: this.lx, y: hy + 2.0, z: this.lz, life: 0.7, s0: 0.8, s1: 2.0, c0: [0.75, 0.88, 1.0], a: 0.06, cell: FX2_CELL.fog, t2: true, rot: fx.rand(0, 6), spin: 0.3, fadeIn: 0.1 });
       this.flash(this.lx, hy + 2.6, this.lz, 1.0, 0.25);
     }
   }
@@ -4667,18 +4676,71 @@ class Dungeon {
       fx.emit({ x: x + Math.cos(a) * r, y: 0.1, z: z + Math.sin(a) * r, vx: fx.rand(-0.3, 0.3), vy: fx.rand(0.8, 2.2), vz: fx.rand(-0.3, 0.3), life: fx.rand(1.0, 2.2), s0: fx.rand(0.02, 0.04), s1: 0.008,
         c0: [1, 0.7, 0.3], c1: [1, 0.3, 0.08], a: 0.9, cell: FX_CELL.ember, drag: 0.8, fadeIn: 0.1 });
     }
-    // 白雾往外滚
-    for (let k = 0; k < 12; k += 1) {
-      const a = (k / 12) * Math.PI * 2 + fx.rand(-0.2, 0.2);
-      const sp = fx.rand(3, 5);
-      fx.emit({ x: x + Math.cos(a) * 0.6, y: fx.rand(0.2, 0.5), z: z + Math.sin(a) * 0.6, vx: Math.cos(a) * sp, vy: fx.rand(0.2, 0.8), vz: Math.sin(a) * sp, life: fx.rand(1.0, 1.7), s0: 0.7, s1: 2.4,
-        c0: [0.72, 0.78, 0.86], c1: [0.4, 0.44, 0.5], a: 0.22, cell: FX2_CELL.dust, t2: true, add: false, rot: fx.rand(0, 6), spin: fx.rand(-0.5, 0.5), drag: 2.2, fadeIn: 0.05 });
-    }
+    this.ultMist(x, z);
     this.radialT = 0.55;
     this.radialPeak = 0.04;
+    // 气浪:落点往外扩的两圈冲击波(第二圈晚一点、更大更缓);最高点那一小圈不再跟着挪过来
+    this.shocks.length = 0;
+    this.addShock(x, 0.6, z, 0.75, 0.78, 0.05);
+    this.timers.push({ at: this.time + 0.05, run: () => this.addShock(x, 0.6, z, 1.15, 1.05, 0.03) });
     this.camTo = 0.86;
     this.timers.push({ at: this.time + 0.25, run: () => { this.camTo = 1; } });
     this.shake = Math.max(this.shake, 0.42);
+  }
+
+  /**
+   * 跃空重劈落地的光雾 / 气雾 / 气浪(11-22 用户「可以做的更像视频中的吧,光雾,气雾,气浪」):
+   * 光雾 = 加色的大团柔光雾(冰蓝,交给泛光晕开),罩在落点和开天斩的光柱周围;
+   * 气雾 = 半透明的白色水汽,一圈往外翻滚 + 中间往上冒一股;水汽丝 = 贴地往外冲、沿速度拉长的气流。手机档数量减半。
+   */
+  private ultMist(x: number, z: number): void {
+    const fx = this.fx!;
+    const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
+    const n = (k: number): number => Math.max(1, Math.round(k * q));
+    // 光雾:落点周围一圈
+    for (let k = 0; k < n(6); k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const r = fx.rand(0.6, 2.0);
+      fx.emit({ x: x + Math.cos(a) * r, y: fx.rand(0.3, 1.0), z: z + Math.sin(a) * r, vx: Math.cos(a) * fx.rand(1.0, 2.2), vy: fx.rand(0.1, 0.4), vz: Math.sin(a) * fx.rand(1.0, 2.2),
+        life: fx.rand(1.2, 1.9), s0: fx.rand(0.7, 1.0), s1: fx.rand(1.9, 2.5), c0: [0.62, 0.84, 1.0], c1: [0.4, 0.6, 1.0], a: 0.055, cell: FX2_CELL.fog, t2: true,
+        rot: fx.rand(0, 6), spin: fx.rand(-0.3, 0.3), drag: 1.2, fadeIn: 0.08 });
+    }
+    // 光雾:沿开天斩的光柱从上往下一串(像劈下来时带的一道亮风)
+    for (let k = 0; k < n(6); k += 1) {
+      const y = 1.5 + k * 1.7;
+      fx.emit({ x: x + fx.rand(-0.3, 0.3), y, z: z + fx.rand(-0.3, 0.3), vx: fx.rand(-0.4, 0.4), vy: -fx.rand(1.5, 3), vz: fx.rand(-0.4, 0.4), life: fx.rand(0.6, 0.9), s0: 0.7, s1: 1.8,
+        c0: [0.85, 0.94, 1.0], c1: [0.5, 0.7, 1.0], a: 0.05, cell: FX2_CELL.fog, t2: true, rot: fx.rand(0, 6), spin: fx.rand(-0.4, 0.4), drag: 1.5, fadeIn: 0.05 });
+    }
+    // 气雾:一圈往外翻滚的白色水汽(先快后慢,边走边胀大)
+    for (let k = 0; k < n(22); k += 1) {
+      const a = (k / n(22)) * Math.PI * 2 + fx.rand(-0.12, 0.12);
+      const sp = fx.rand(5.5, 9);
+      fx.emit({ x: x + Math.cos(a) * 0.9, y: fx.rand(0.15, 0.45), z: z + Math.sin(a) * 0.9, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp,
+        life: fx.rand(1.5, 2.3), s0: fx.rand(0.5, 0.8), s1: fx.rand(2.0, 2.7), c0: [0.86, 0.9, 0.97], c1: [0.62, 0.68, 0.78], a: 0.2, cell: FX2_CELL.fog, t2: true, add: false,
+        rot: fx.rand(0, 6), spin: fx.rand(-0.4, 0.4), drag: 2.3, fadeIn: 0.04 });
+    }
+    // 气雾:中间往上冒的一股
+    for (let k = 0; k < n(6); k += 1) {
+      fx.emit({ x: x + fx.rand(-0.5, 0.5), y: fx.rand(0.3, 1.0), z: z + fx.rand(-0.5, 0.5), vx: fx.rand(-0.6, 0.6), vy: fx.rand(1.4, 2.8), vz: fx.rand(-0.6, 0.6),
+        life: fx.rand(1.4, 2.0), s0: 0.6, s1: fx.rand(1.8, 2.4), c0: [0.88, 0.92, 0.98], c1: [0.6, 0.66, 0.76], a: 0.13, cell: FX2_CELL.fog, t2: true, add: false,
+        rot: fx.rand(0, 6), spin: fx.rand(-0.3, 0.3), drag: 1.6, fadeIn: 0.06 });
+    }
+    // 水汽丝:贴地往外冲的气流(加色、淡,沿速度拉长)
+    for (let k = 0; k < n(18); k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const sp = fx.rand(7, 12);
+      fx.emit({ x: x + Math.cos(a) * 0.5, y: fx.rand(0.1, 0.5), z: z + Math.sin(a) * 0.5, vx: Math.cos(a) * sp, vy: fx.rand(0, 0.4), vz: Math.sin(a) * sp,
+        life: fx.rand(0.4, 0.75), s0: fx.rand(0.25, 0.4), s1: fx.rand(0.5, 0.8), c0: [0.85, 0.94, 1.0], c1: [0.5, 0.7, 1.0], a: 0.3, cell: FX2_CELL.wisp, t2: true,
+        drag: 2.6, stretch: 1.6, fadeIn: 0.05 });
+    }
+  }
+
+  /** 加一圈气浪(最多同时两圈,多了顶掉最老的)。rMax = 最大半径(画面高度的几成),amp = 振幅。 */
+  private addShock(x: number, y: number, z: number, life: number, rMax: number, amp: number): void {
+    this.shocks.push({ x, y, z, t0: this.time, life, rMax, amp });
+    if (this.shocks.length > 2) {
+      this.shocks.shift();
+    }
   }
 
   /** 大招演出的画面部分:镜头推近慢慢回来、径向模糊 / 色散衰减(按真实时间走,慢镜里也照常)。 */
@@ -4697,7 +4759,35 @@ class Dungeon {
       if (this.radialT <= 0) {
         this.radialPeak = 0;
       }
-      this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.06).toFixed(5), radialC: [0.5, 0.55] });
+      this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.04).toFixed(5), radialC: [0.5, 0.55] });
+    }
+    // 气浪:按游戏时间推进(慢镜里也跟着慢),中心每帧投到画面上
+    if (this.shocks.length || this.shockOn) {
+      const post = this.post;
+      const cam = this.cam;
+      const out: Array<[number, number]> = [[0, 0], [0, 0]];
+      let cx = 0.5;
+      let cy = 0.5;
+      for (let i = this.shocks.length - 1; i >= 0; i -= 1) {
+        const s = this.shocks[i];
+        const t = (this.time - s.t0) / s.life;
+        if (t >= 1) {
+          this.shocks.splice(i, 1);
+        }
+      }
+      this.shocks.forEach((s, i) => {
+        const t = Math.max(0, Math.min(1, (this.time - s.t0) / s.life));
+        out[i] = [s.rMax * (1 - Math.pow(1 - t, 2.2)), s.amp * Math.pow(1 - t, 1.4) * Math.min(1, t * 12)];
+      });
+      const last = this.shocks[this.shocks.length - 1];
+      if (last && cam && cam.camera) {
+        this.shockV.set(last.x, last.y, last.z);
+        cam.worldToScreen(this.shockV, this.shockS);
+        cx = this.shockS.x / Math.max(1, cam.camera.width);
+        cy = this.shockS.y / Math.max(1, cam.camera.height);
+      }
+      this.shockOn = this.shocks.length > 0;
+      post?.set({ shockC: [cx, cy], shock1: out[0], shock2: out[1], shockW: 0.045 });
     }
   }
 

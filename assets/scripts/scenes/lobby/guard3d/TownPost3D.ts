@@ -74,6 +74,11 @@ export interface PostCfg {
   radial: number;
   chroma: number;
   radialC: [number, number];
+  /** 气浪(11-22):画面上两圈往外扩的冲击波扭曲。中心(画面坐标)、两圈的 [半径, 振幅](按画面高度算;振幅 0 = 关)、波宽。 */
+  shockC: [number, number];
+  shock1: [number, number];
+  shock2: [number, number];
+  shockW: number;
   dither: number;
   debug: number;
   // 雾(按深度在调色那一步加;镜头放开之后看得远才用得上):颜色(线性)、从多远开始(米)、浓度(每米)、最浓到几成
@@ -104,7 +109,7 @@ export const POST_CFG: PostCfg = {
   exposure: 1, contrast: 1.05, pivot: 0.2, toe: 0.03, saturation: 1.06, shoulder: 0.8,
   shadowTint: [0.97, 1.0, 1.04], highlightTint: [1.03, 1.0, 0.97], splitAt: 0.5,
   vignette: 0.16, vignetteStart: 0.55, vignetteEnd: 1.05, vignetteRound: 0,
-  sharpen: 0.18, bicubic: true, radial: 0, chroma: 0, radialC: [0.5, 0.5], dither: 1, debug: 0,
+  sharpen: 0.18, bicubic: true, radial: 0, chroma: 0, radialC: [0.5, 0.5], shockC: [0.5, 0.5], shock1: [0, 0], shock2: [0, 0], shockW: 0.04, dither: 1, debug: 0,
   fog: false, fogColor: [0.5, 0.58, 0.68], fogStart: 16, fogDensity: 0.024, fogMax: 0.9, fogAway: [0.5, 0.58, 0.68], fogSun: [0, 1, 0], fogLobe: 0,
 };
 
@@ -287,6 +292,8 @@ class PostBuilder {
   private v3 = new Vec4();
   private v9 = new Vec4();
   private v10 = new Vec4();
+  private v11 = new Vec4();
+  private v12 = new Vec4();
 
   constructor(private cfg: PostCfg) {}
 
@@ -515,6 +522,8 @@ class PostBuilder {
     p.setVec4('lcP1', v1.set(plain ? 0 : cfg.vignette, cfg.vignetteStart, cfg.vignetteEnd, cfg.vignetteRound));
     p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, scale < 0.99 && cfg.bicubic ? 1 : 0));
     p.setVec4('lcP3', this.v10.set(cfg.radialC[0], cfg.radialC[1], plain ? 0 : cfg.radial, plain ? 0 : cfg.chroma));
+    p.setVec4('lcP4', this.v11.set(cfg.shockC[0], cfg.shockC[1], cfg.shock1[0], plain ? 0 : cfg.shock1[1]));
+    p.setVec4('lcP5', this.v12.set(nw / Math.max(1, nh), Math.max(0.005, cfg.shockW), cfg.shock2[0], plain ? 0 : cfg.shock2[1]));
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 7);
     this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, aoMerge: aoOn && aoMerge, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
     return p;
