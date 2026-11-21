@@ -4,6 +4,12 @@
 //   G = 白水(瀑布 / 急流的白沫):采样坐标沿竖直方向往下滚 + 亮度条纹往下走,读得出「在往下流」。
 // flowRect = 本图块在遮罩里的区域(xy 起点,zw 尺寸);flowParams = (水波幅度,白水幅度,速度,0)——幅度是图块 uv 单位。
 // 图块边上几个像素不错位(相邻图块各自采样,错位会露缝)。
+// 11-22 用户看守卫战参考图:「地面有光感」「看起来很精细,极致的画质,不是模糊的」→ 所有重绘图的图块都走这里,
+// lookParams = (锐化, 起伏受光, 局部对比, 亮部提亮):
+//   锐化 = 原像素减上下左右 1 像素平均(图块在手机上被放大约 1.4 倍,补回边缘);
+//   起伏受光 = 把亮度当高度,左上方来的光:朝光一侧提亮、背光一侧压暗(石头 / 车辙 / 土坎立起来);
+//   局部对比 = 半径约 5 像素的「清晰度」(大块明暗更分明,不加颗粒);
+//   亮部提亮 = 亮处再抬一点(受光的地面有光感)。
 CCEffect %{
   techniques:
   - passes:
@@ -25,6 +31,7 @@ CCEffect %{
         flowRect: { value: [0.0, 0.0, 1.0, 1.0] }
         flowParams: { value: [0.0012, 0.0022, 1.0, 0.0] }
         tileSize: { value: [2048.0, 1024.0, 0.0, 0.0] }
+        lookParams: { value: [0.0, 0.0, 0.0, 0.0] }
 }%
 
 CCProgram paint-ground-vs %{
@@ -61,12 +68,45 @@ CCProgram paint-ground-fs %{
     vec4 flowRect;
     vec4 flowParams;
     vec4 tileSize;
+    vec4 lookParams;
   };
+
+  float lum (vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+  }
+
+  vec3 look (vec3 base) {
+    vec2 tx = 1.0 / tileSize.xy;
+    // 图块边上几个像素渐弱(相邻图块各自采样,边上算出来的不一样会露缝)
+    vec2 p = uv0 * tileSize.xy;
+    vec2 edge = min(p, tileSize.xy - p);
+    float fade = clamp(min(edge.x, edge.y) / 4.0 - 0.25, 0.0, 1.0);
+    if (fade <= 0.0) {
+      return base;
+    }
+    vec3 n = texture(cc_spriteTexture, uv0 + vec2(0.0, -tx.y)).rgb;
+    vec3 s = texture(cc_spriteTexture, uv0 + vec2(0.0, tx.y)).rgb;
+    vec3 e = texture(cc_spriteTexture, uv0 + vec2(tx.x, 0.0)).rgb;
+    vec3 w = texture(cc_spriteTexture, uv0 + vec2(-tx.x, 0.0)).rgb;
+    vec3 rgb = base + (base - (n + s + e + w) * 0.25) * lookParams.x;
+    // 左上来光:往右下亮度变高 = 朝光坡面(uv.y 向下)
+    float shade = (lum(e) - lum(w)) + (lum(s) - lum(n));
+    rgb *= 1.0 + clamp(shade * lookParams.y, -0.3, 0.3);
+    if (lookParams.z > 0.0) {
+      vec2 r = tx * 5.0;
+      vec3 far = texture(cc_spriteTexture, uv0 + vec2(r.x, r.y)).rgb + texture(cc_spriteTexture, uv0 + vec2(-r.x, r.y)).rgb
+        + texture(cc_spriteTexture, uv0 + vec2(r.x, -r.y)).rgb + texture(cc_spriteTexture, uv0 + vec2(-r.x, -r.y)).rgb;
+      rgb += (base - far * 0.25) * lookParams.z;
+    }
+    rgb += rgb * smoothstep(0.42, 0.85, lum(rgb)) * lookParams.w;
+    return mix(base, clamp(rgb, 0.0, 1.0), fade);
+  }
 
   vec4 frag () {
     vec2 m = texture(flowTex, flowRect.xy + uv0 * flowRect.zw).rg;
     if (m.r + m.g < 0.01) {
-      return texture(cc_spriteTexture, uv0) * color;
+      vec4 b = texture(cc_spriteTexture, uv0);
+      return vec4(look(b.rgb), b.a) * color;
     }
     float t = cc_time.x * flowParams.z;
     // 图块像素坐标(做波纹的空间频率,和图块大小无关)

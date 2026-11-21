@@ -12,7 +12,8 @@ import type { WorldMapDef } from './LobbyWorldMaps';
  *   ③ TodGlow 叠加混合:黄昏时窗户 / 路灯 / 炉火点亮(贴图上的位置见 LobbyFieldGlowData)+ 地上的暖色光圈 + 队伍身上一圈光
  *   ④ TodSun  叠加混合:白天从左上斜照进来的暖光 + 光柱(慢慢飘)
  *   ⑤ 投影(白天):建筑 / 树 / 路灯的长投影由渲染器建(Cast_ 组),这里按时间调整体浓淡;队伍脚下另加一条斜长影子
- * 时间按真实时钟循环(所有玩家同一时刻看到的一样),一圈 CYCLE 秒;?tod=0~1 固定在某个时刻(0 = 白天,1 = 黄昏)。
+ * 11-22 用户看了黄昏实机:「太暗了,不要黄昏版了」→ 固定白天,不再随真实时间切换;?tod=0~1 仍可看黄昏(调试用)。
+ * 白天火堆 / 火把 / 晶石等光源照样亮着(LIGHT_KINDS.day,像守卫战场边的蓝火盆),窗户 / 队伍光只在黄昏。
  */
 interface TodLook {
   /** 薄色层 rgb(0~1) + 不透明度。 */
@@ -26,8 +27,10 @@ interface TodDef {
   dusk: TodLook;
   /** 白天斜照暖光强度(0~1)。 */
   sun: number;
-  /** 黄昏四周压暗:正片叠底图边缘乘到多少(白天固定 0.88)。 */
+  /** 黄昏四周压暗:正片叠底图边缘乘到多少。 */
   duskEdge: number;
+  /** 白天四周压暗(11-22 向守卫战看齐:中间亮、四周暗,地面才有光感)。 */
+  dayEdge: number;
 }
 
 const TOD_DEFS: Record<string, TodDef> = {
@@ -35,41 +38,40 @@ const TOD_DEFS: Record<string, TodDef> = {
   VILLAGE: {
     day: { wash: [0.30, 0.31, 0.36, 0.2], mul: [1.0, 0.95, 0.88] },
     dusk: { wash: [0.10, 0.14, 0.34, 0.12], mul: [0.46, 0.46, 0.74] },
-    sun: 0.55, duskEdge: 0.58,
+    sun: 0.55, duskEdge: 0.58, dayEdge: 0.78,
   },
   WOODS: {
     day: { wash: [0.18, 0.24, 0.26, 0.06], mul: [0.96, 0.92, 0.82] },
     dusk: { wash: [0.10, 0.16, 0.28, 0.16], mul: [0.48, 0.52, 0.66] },
-    sun: 0.32, duskEdge: 0.6,
+    sun: 0.32, duskEdge: 0.6, dayEdge: 0.72,
   },
   GRAY: {
     day: { wash: [0.24, 0.26, 0.30, 0.06], mul: [0.96, 0.91, 0.82] },
     dusk: { wash: [0.14, 0.16, 0.30, 0.16], mul: [0.52, 0.50, 0.64] },
-    sun: 0.26, duskEdge: 0.6,
+    sun: 0.26, duskEdge: 0.6, dayEdge: 0.72,
   },
   DEADWOOD: {
     day: { wash: [0.18, 0.22, 0.24, 0.06], mul: [0.94, 0.94, 0.90] },
     dusk: { wash: [0.08, 0.14, 0.22, 0.16], mul: [0.46, 0.52, 0.60] },
-    sun: 0.16, duskEdge: 0.58,
+    sun: 0.16, duskEdge: 0.58, dayEdge: 0.72,
   },
 };
 
-/** 一圈 24 分钟:白天 → 2 分钟转黄昏 → 黄昏 → 2 分钟转回白天。 */
-const CYCLE = 24 * 60;
 const WARM: [number, number, number] = [255, 168, 86];
 
 /**
  * 整图重绘里画死的光源(MAP_LIGHTS,11-21 用户「加光源」)按种类点亮:
- * core = 亮芯直径;pool = 地上光圈宽(高 = 宽的一半);poolY = 光圈相对光源往下挪多少;amp = 闪烁幅度(0 = 不闪)。
+ * core = 亮芯直径;pool = 地上光圈宽(高 = 宽的一半);poolY = 光圈相对光源往下挪多少;amp = 闪烁幅度(0 = 不闪);
+ * day = 白天亮度(黄昏的几成;0 = 白天不亮)。
  */
-const LIGHT_KINDS: Record<string, { color: [number, number, number]; core: number; pool: number; poolA: number; poolY: number; amp: number }> = {
-  fire: { color: [255, 146, 60], core: 70, pool: 560, poolA: 0.6, poolY: 0, amp: 0.2 },
-  torch: { color: [255, 166, 78], core: 44, pool: 400, poolA: 0.58, poolY: 70, amp: 0.16 },
-  lantern: { color: [255, 186, 106], core: 34, pool: 300, poolA: 0.5, poolY: 60, amp: 0.12 },
-  window: { color: [255, 176, 96], core: 36, pool: 260, poolA: 0.4, poolY: 50, amp: 0.1 },
-  crystal: { color: [110, 160, 255], core: 56, pool: 420, poolA: 0.5, poolY: 10, amp: 0.08 },
-  wisp: { color: [140, 255, 200], core: 44, pool: 380, poolA: 0.42, poolY: 0, amp: 0.22 },
-  ghost: { color: [150, 200, 255], core: 70, pool: 420, poolA: 0.4, poolY: 40, amp: 0.1 },
+const LIGHT_KINDS: Record<string, { color: [number, number, number]; core: number; pool: number; poolA: number; poolY: number; amp: number; day: number }> = {
+  fire: { color: [255, 146, 60], core: 70, pool: 560, poolA: 0.6, poolY: 0, amp: 0.2, day: 0.55 },
+  torch: { color: [255, 166, 78], core: 44, pool: 400, poolA: 0.58, poolY: 70, amp: 0.16, day: 0.5 },
+  lantern: { color: [255, 186, 106], core: 34, pool: 300, poolA: 0.5, poolY: 60, amp: 0.12, day: 0.3 },
+  window: { color: [255, 176, 96], core: 36, pool: 260, poolA: 0.4, poolY: 50, amp: 0.1, day: 0 },
+  crystal: { color: [110, 160, 255], core: 56, pool: 420, poolA: 0.5, poolY: 10, amp: 0.08, day: 0.6 },
+  wisp: { color: [140, 255, 200], core: 44, pool: 380, poolA: 0.42, poolY: 0, amp: 0.22, day: 0.35 },
+  ghost: { color: [150, 200, 255], core: 70, pool: 420, poolA: 0.4, poolY: 40, amp: 0.1, day: 0.35 },
 };
 
 interface Glow {
@@ -82,6 +84,8 @@ interface Glow {
   phase: number;
   /** 闪烁幅度(0~1)。 */
   amp: number;
+  /** 白天亮度(黄昏的几成)。 */
+  day: number;
   op: UIOpacity;
   base: number;
 }
@@ -211,26 +215,15 @@ function applyMultiply(sprite: Sprite): void {
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 
-/** 当前黄昏程度 0(白天)~1(黄昏)。 */
-export function fieldNight(now = Date.now()): number {
+/** 当前黄昏程度 0(白天)~1(黄昏):固定白天,只有 ?tod= 能看黄昏。 */
+export function fieldNight(): number {
   if (typeof location !== 'undefined') {
     const m = /[?&]tod=([0-9.]+)/.exec(location.search);
     if (m) {
       return Math.max(0, Math.min(1, Number(m[1])));
     }
   }
-  const p = (now / 1000 % CYCLE) / CYCLE;
-  // 0~0.42 白天,0.42~0.5 转黄昏,0.5~0.92 黄昏,0.92~1 转回白天
-  if (p < 0.42) {
-    return 0;
-  }
-  if (p < 0.5) {
-    return smooth((p - 0.42) / 0.08);
-  }
-  if (p < 0.92) {
-    return 1;
-  }
-  return 1 - smooth((p - 0.92) / 0.08);
+  return 0;
 }
 
 export class FieldTod {
@@ -325,7 +318,7 @@ export class FieldTod {
       return;
     }
     const frame = glowTex();
-    const add = (x: number, y: number, w: number, h: number, color: [number, number, number], alpha: number, flicker: boolean | number): void => {
+    const add = (x: number, y: number, w: number, h: number, color: [number, number, number], alpha: number, flicker: boolean | number, day = 0): void => {
       const node = new Node('G');
       node.layer = root.layer;
       node.addComponent(UITransform).setContentSize(new Size(w, h));
@@ -341,7 +334,7 @@ export class FieldTod {
       root.addChild(node);
       node.active = false;
       const amp = flicker === true ? 0.14 : flicker || 0;
-      this.glows.push({ node, x, y, reach: Math.max(w, h) / 2, phase: amp > 0 ? Math.random() * 100 : -1, amp, op, base });
+      this.glows.push({ node, x, y, reach: Math.max(w, h) / 2, phase: amp > 0 ? Math.random() * 100 : -1, amp, day, op, base });
     };
     const place = (asset: string, x: number, y: number, w: number, flip: boolean, lamp: boolean): void => {
       const g = ASSET_GLOWS[asset];
@@ -396,9 +389,9 @@ export class FieldTod {
       const k = l[3] as number;
       const c = (l[4] as number[] | undefined) ?? kind.color;
       const color: [number, number, number] = [c[0], c[1], c[2]];
-      add(x, y - kind.poolY, kind.pool, kind.pool * 0.5, color, kind.poolA * k, kind.amp * 0.5);
-      add(x, y, kind.core * 3.4, kind.core * 3.4, color, 0.34 * k, kind.amp);
-      add(x, y, kind.core, kind.core, color, 0.8 * k, kind.amp);
+      add(x, y - kind.poolY, kind.pool, kind.pool * 0.5, color, kind.poolA * k, kind.amp * 0.5, kind.day);
+      add(x, y, kind.core * 3.4, kind.core * 3.4, color, 0.34 * k, kind.amp, kind.day);
+      add(x, y, kind.core, kind.core, color, 0.8 * k, kind.amp, kind.day);
     }
     // 队伍身上一圈光(黄昏里人物不被压暗吞掉)
     const party = new Node('TodParty');
@@ -444,7 +437,7 @@ export class FieldTod {
     const now = Date.now();
     // 时间每 0.25 秒重算一次(过渡期 2 分钟,够顺)
     if (this.night < 0 || now - this.nightAt > 250) {
-      const n = fieldNight(now);
+      const n = fieldNight();
       this.nightAt = now;
       if (Math.abs(n - this.night) > 1e-3) {
         this.night = n;
@@ -470,23 +463,25 @@ export class FieldTod {
     }
     this.sun.node.active = n < 0.999;
     if (this.glowRoot?.isValid) {
-      const on = n > 0.001;
-      this.glowRoot.active = on;
-      if (on) {
-        const hw = viewW / 2;
-        const hh = viewH / 2;
-        for (const g of this.glows) {
-          const vis = Math.abs(g.x - camX) < hw + g.reach && Math.abs(g.y - camY) < hh + g.reach;
-          if (g.node.active !== vis) {
-            g.node.active = vis;
-          }
-          if (vis && g.phase >= 0) {
-            const f = 1 - g.amp + g.amp * Math.sin(t * 7.3 + g.phase) * Math.sin(t * 3.1 + g.phase * 1.7);
-            g.op.opacity = Math.round(g.base * f);
-          }
+      // 黄昏全亮;白天只亮白天也点着的光源(day > 0),按 day 成数
+      const sn = smooth(n);
+      const hw = viewW / 2;
+      const hh = viewH / 2;
+      for (const g of this.glows) {
+        const mult = g.day + (1 - g.day) * sn;
+        const vis = mult > 0.002 && Math.abs(g.x - camX) < hw + g.reach && Math.abs(g.y - camY) < hh + g.reach;
+        if (g.node.active !== vis) {
+          g.node.active = vis;
         }
-        const lead = actors[0];
-        if (this.party?.isValid && lead) {
+        if (vis) {
+          const f = g.phase >= 0 ? 1 - g.amp + g.amp * Math.sin(t * 7.3 + g.phase) * Math.sin(t * 3.1 + g.phase * 1.7) : 1;
+          g.op.opacity = Math.round(g.base * f * mult);
+        }
+      }
+      const lead = actors[0];
+      if (this.party?.isValid) {
+        this.party.active = n > 0.001;
+        if (lead) {
           this.party.setPosition(lead.x, lead.y + 60, 0);
         }
       }
@@ -504,15 +499,15 @@ export class FieldTod {
     const ma = d.day.mul;
     const mb = d.dusk.mul;
     this.mul!.color = new Color(Math.round(lerp(ma[0], mb[0], n) * 255), Math.round(lerp(ma[1], mb[1], n) * 255), Math.round(lerp(ma[2], mb[2], n) * 255), 255);
-    // 四周压暗:白天 0.88 → 黄昏 duskEdge(按 0.05 一档换图,过渡期最多换几次)
-    const edge = Math.round(lerp(0.88, d.duskEdge, n) * 20) / 20;
+    // 四周压暗:白天 dayEdge → 黄昏 duskEdge(按 0.02 一档换图)
+    const edge = Math.round(lerp(d.dayEdge, d.duskEdge, n) * 50) / 50;
     const frame = mulTex(edge);
     if (this.mul!.spriteFrame !== frame) {
       this.mul!.spriteFrame = frame;
     }
     this.sun!.color = new Color(255, 196, 120, Math.round(d.sun * (1 - n) * 255));
     if (this.glowOp) {
-      this.glowOp.opacity = Math.round(smooth(n) * 255);
+      this.glowOp.opacity = 255;
     }
     if (this.shadowRoot?.isValid) {
       this.shadowRoot.getComponent(UIOpacity)!.opacity = Math.round((1 - n) * 255);

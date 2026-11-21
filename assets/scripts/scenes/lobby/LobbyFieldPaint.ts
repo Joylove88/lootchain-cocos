@@ -1,5 +1,5 @@
 import { EffectAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, Texture2D, UITransform, Vec4 } from 'cc';
-import type { FieldPaintDef } from './LobbyFieldPaintData';
+import { FIELD_PAINT, type FieldPaintDef } from './LobbyFieldPaintData';
 // fieldPaintDef 放在不依赖 cc 的 LobbyWorldMaps(node 直接编译地图定义的工具链要用:world_water_blocks / export_world_geometry --node)
 export { fieldPaintDef } from './LobbyWorldMaps';
 
@@ -20,6 +20,12 @@ const SWAY_AMP = 0.012;
 const SWAY_SPEED = 1.5;
 /** 镜头外多留一圈再加载 / 超出这圈再释放(世界单位)。 */
 const LOAD_MARGIN = 700;
+/**
+ * 地面质感(world-paint-ground 的 lookParams:锐化 / 起伏受光 / 局部对比 / 亮部提亮),11-22 用户要守卫战那种
+ * 「地面有光感、精细不糊」。晨风村图精度高(每单位 1.2 像素,不怎么放大),锐化减半。?plook=a,b,c,d 现场调。
+ */
+const LOOK_DEFAULT: [number, number, number, number] = [0.5, 1.6, 0.45, 0.16];
+const LOOK_MAP: Record<string, [number, number, number, number]> = { VILLAGE: [0.25, 1.3, 0.35, 0.14] };
 const DROP_MARGIN = 1800;
 
 interface Tile {
@@ -29,7 +35,7 @@ interface Tile {
   node: Node | null;
   tex: Texture2D | null;
   loading: boolean;
-  /** 套了水流材质(没有遮罩的图 / 遮罩还没到时为 false)。 */
+  /** 套了地面材质(质感 + 有遮罩的图再加水流;着色器 / 遮罩还没到时为 null)。 */
   flowMat: Material | null;
 }
 
@@ -51,6 +57,20 @@ interface Occluder {
   hole: Vec4 | null;
   /** 按图块记的已挂部件。 */
   parts: Map<string, OccluderPart>;
+}
+
+function lookFor(def: FieldPaintDef): [number, number, number, number] {
+  if (typeof location !== 'undefined') {
+    const m = /[?&]plook=([0-9.,]+)/.exec(location.search);
+    if (m) {
+      const v = m[1].split(',').map(Number);
+      if (v.length === 4 && v.every((x) => Number.isFinite(x))) {
+        return [v[0], v[1], v[2], v[3]];
+      }
+    }
+  }
+  const code = Object.keys(FIELD_PAINT).find((k) => FIELD_PAINT[k] === def);
+  return (code && LOOK_MAP[code]) || LOOK_DEFAULT;
 }
 
 export class FieldPaint {
@@ -93,7 +113,7 @@ export class FieldPaint {
         this.dirty = true;
       });
     }
-    if (def.flow && !this.flowLoading && !(this.groundEffect && this.flowTex)) {
+    if (!this.flowLoading && (!this.groundEffect || (def.flow && !this.flowTex))) {
       this.flowLoading = true;
       let left = 2;
       const done = (): void => {
@@ -107,13 +127,17 @@ export class FieldPaint {
         this.groundEffect = error ? null : asset;
         done();
       });
-      resources.load(`${def.dir}/flow/texture`, Texture2D, (error, tex) => {
-        if (!error && tex) {
-          tex.addRef();
-          this.flowTex = tex;
-        }
+      if (def.flow && !this.flowTex) {
+        resources.load(`${def.dir}/flow/texture`, Texture2D, (error, tex) => {
+          if (!error && tex) {
+            tex.addRef();
+            this.flowTex = tex;
+          }
+          done();
+        });
+      } else {
         done();
-      });
+      }
     }
   }
 
@@ -182,17 +206,20 @@ export class FieldPaint {
     }
   }
 
-  /** 图块套水流材质(本图有遮罩且着色器 / 遮罩都到了)。 */
+  /** 图块套地面材质(质感;本图有水流遮罩的等遮罩到了一起套)。 */
   private applyFlow(def: FieldPaintDef, tile: Tile): void {
     const effect = this.groundEffect;
     const flow = this.flowTex;
-    if (!def.flow || !effect || !flow || !tile.node || !tile.node.isValid || tile.flowMat) {
+    if (!effect || (def.flow && !flow) || !tile.node || !tile.node.isValid || tile.flowMat) {
       return;
     }
     const rect = this.tileRect(def, tile.r, tile.c);
     const mat = new Material();
     mat.initialize({ effectAsset: effect });
-    mat.setProperty('flowTex', flow);
+    mat.setProperty('lookParams', new Vec4(...lookFor(def)));
+    if (flow) {
+      mat.setProperty('flowTex', flow);
+    }
     mat.setProperty('flowRect', new Vec4(rect.x0 / def.w, rect.y0 / def.h, rect.w / def.w, rect.h / def.h));
     mat.setProperty('tileSize', new Vec4(rect.w, rect.h, 0, 0));
     // 幅度按图块 uv:水波约 2.2 像素、白水约 3.5 像素
@@ -233,6 +260,8 @@ export class FieldPaint {
         return;
       }
       tex.addRef();
+      // 默认重复寻址会让图块边上一像素和对边混采,拼起来露出细直线(11-22 用户截图里地上的直边)
+      tex.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
       tile.tex = tex;
       const rect = this.tileRect(def, r, c);
       const frame = new SpriteFrame();
