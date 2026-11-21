@@ -3,7 +3,7 @@
  * 坐标系同主城(LobbyTownConfig):世界单位 = 900 高舞台设计像素,y 向上,地图中心为原点;
  * 建筑 (x, y) = 贴图底边中点(脚线),footprint 从脚线往屏幕上方延伸的不可走矩形,door = 交互点(相对脚线)。
  */
-import { fieldPaintDef } from './LobbyFieldPaint';
+import { FIELD_PAINT, type FieldPaintDef } from './LobbyFieldPaintData';
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
@@ -981,6 +981,12 @@ export function worldMapOfStage(stageCode: string): WorldMapDef | null {
  * 某张跑图地图自己用到的素材(地面 / 建筑 / 立物 / NPC / 路灯)。10-29:晨风村 + 林地写实素材各 40MB+,
  * 不再进大厅时整组预载,改由 GameRoot 进图 / 换图前按图加载(preloadWorldMap)。
  */
+/** 这张图的整图重绘图块表(11-20);?fieldpaint=0 关掉(A/B 对比用)。 */
+export function fieldPaintDef(code: string): FieldPaintDef | null {
+  const off = typeof location !== 'undefined' && /[?&]fieldpaint=0(&|$)/.test(location.search);
+  return off ? null : FIELD_PAINT[code] ?? null;
+}
+
 export function worldMapAssetPaths(code: WorldMapCode): string[] {
   const def = WORLD_MAPS[code];
   if (!def) {

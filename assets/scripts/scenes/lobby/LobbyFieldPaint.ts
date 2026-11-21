@@ -1,5 +1,7 @@
 import { EffectAsset, Material, Node, Rect, resources, Size, Sprite, SpriteFrame, Texture2D, UITransform, Vec4 } from 'cc';
-import { FIELD_PAINT, FieldPaintDef } from './LobbyFieldPaintData';
+import type { FieldPaintDef } from './LobbyFieldPaintData';
+// fieldPaintDef 放在不依赖 cc 的 LobbyWorldMaps(node 直接编译地图定义的工具链要用:world_water_blocks / export_world_geometry --node)
+export { fieldPaintDef } from './LobbyWorldMaps';
 
 /**
  * 野外整图重绘(2026-11-20 用户看完「整图重绘」上限原型:「先重绘林地一张」)。
@@ -49,11 +51,6 @@ interface Occluder {
   hole: Vec4 | null;
   /** 按图块记的已挂部件。 */
   parts: Map<string, OccluderPart>;
-}
-
-export function fieldPaintDef(code: string): FieldPaintDef | null {
-  const off = typeof location !== 'undefined' && /[?&]fieldpaint=0(&|$)/.test(location.search);
-  return off ? null : FIELD_PAINT[code] ?? null;
 }
 
 export class FieldPaint {

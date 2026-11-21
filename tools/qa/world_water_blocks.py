@@ -45,8 +45,15 @@ def creek_pixels(a):
     return (a[..., 3] > 140) & (np.abs(xx - w / 2) < w * 0.2)
 
 
+# 11-21 重绘图的贴地件已移到这个备份目录(field_ground_slim.py),生成挡块时从这里读
+SLIM_BACKUP = os.path.join(ROOT, '素材原始备份', 'field-ground-slim-20261121', 'assets', 'resources')
+
+
 def load(asset, flip=False):
-    path = os.path.join(ROOT, 'assets', 'resources', asset.replace('/spriteFrame', '') + '.png')
+    rel = asset.replace('/spriteFrame', '') + '.png'
+    path = os.path.join(ROOT, 'assets', 'resources', rel)
+    if not os.path.exists(path):
+        path = os.path.join(SLIM_BACKUP, rel)
     im = Image.open(path).convert('RGBA')
     if flip:
         im = im.transpose(Image.FLIP_LEFT_RIGHT)
