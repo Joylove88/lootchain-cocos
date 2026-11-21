@@ -12,6 +12,7 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { installMultiLightEffect, MultiLight } from './G3DMultiLight';
 import { installShadowPingPong, shadowPP } from './G3DShadowPP';
 import { installKeepManagedPatch } from './G3DPipeFix';
+import { holdBackgroundPack } from '../../../app/AssetOfflineCache';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
@@ -198,13 +199,13 @@ export interface DungeonCfg {
 export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
-  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 4200000, autoQ: true, bldShadow: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
+  tier: 'pc', realLights: 99, fake: 1, postScale: 0, pixBudget: 9000000, autoQ: true, bldShadow: true, autoQFps: 42, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
   bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', cityFull: false, bldGlow: 1.4, paveFine: true, citySky: 5.6, paveM: 2.4, paveK: 0.84, paveSpec: 0.3, skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
  * 中档:最近 7 处真灯,原尺寸渲染 + 边缘抗锯齿,烛台不点真灯。
- * 手机档:固定的灯烘进顶点颜色,只留最近 2 处真灯(打六折,主要给高光和凹凸);不做倒影和遮蔽,内部分辨率 0.8,投影图 / 贴图减小,最多 5 只怪。
+ * 手机档:固定的灯烘进顶点颜色,只留最近 2 处真灯(打六折,主要给高光和凹凸);不做倒影和遮蔽,原生分辨率(11-21 起;以前 0.8),投影图 / 贴图减小,最多 5 只怪。
  */
 /** 野外场景在默认值上改的几项(月光是直接照下来的,不像地宫只从天井漏一束;泥地比石板糙)。 */
 export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazier: 24, torch: 15, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 1.0, shaft: 0, bake: false };
@@ -242,8 +243,10 @@ export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
   mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },      // 中档还画着真倒影,不用假高光
   // 电脑上的核显(Intel Iris / Arc 1xxV、AMD Radeon Graphics):画质照电脑档,只是不超采样(像素预算 200 万)、逐像素的灯少几盏
-  igpu: { realLights: 3, post: 2, pixBudget: 1600000, shadow: 2048, candleReal: false, reflect: false, bldShadow: false },          // 第十五轮:核显上卡的是几何 —— 倒影默认关(整个场景要多画一遍)、灯 3 盏
-  phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
+  // 11-21(引擎修复后帧耗时减半;用户「角色还是比较糊」):核显不再按 160 万像素预算压到 0.5~0.6 倍,改成原生分辨率 + 边缘抗锯齿,
+  // 真跑不动时由开场自动选档按实测往下让(降分辨率排在最后)
+  igpu: { realLights: 3, post: 1, pixBudget: 9000000, shadow: 2048, candleReal: false, reflect: false, bldShadow: false },          // 第十五轮:核显上卡的是几何 —— 倒影默认关(整个场景要多画一遍)、灯 3 盏
+  phone: { realLights: 2, post: 1, postScale: 0, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
     bake: true, fake: 0, fill: 0.5, moon: 4200000 },
 };
 const TIER_NAME: Record<string, string> = { pc: '电脑档', mid: '中档', phone: '手机档', igpu: '核显档' };
@@ -507,6 +510,9 @@ class Dungeon {
   private rnd = mulberry32(417);
 
   open(done?: () => void): void {
+    // 11-21 低端兼容第 2 期:模型到齐前叫停后台 2D 整包下载(两边抢带宽);到齐后在帧率统计那里放开,最多停 2 分钟
+    holdBackgroundPack('g3d', true);
+    this.packHoldUntil = performance.now() + 120000;
     loadKit(['g3d-standard', 'g3d-fxaa'], (missing) => {
       if (missing.indexOf('g3d-standard') >= 0) {
         this.lastError = `missing ${missing.join(',')}`;
@@ -3047,6 +3053,7 @@ class Dungeon {
   //    结果按显卡 + 场景 + 档位记在本机,下次直接套用;选定后不再让运行中的 autoQuality 盲目往下降。
   //    只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。
   private pipeFixed = false;
+  private packHoldUntil = 0;
   private tuneState: 'off' | 'wait' | 'run' | 'done' = 'off';
   private tuneAt = 0;
   private tuneGpu: GpuTimer | null = null;
@@ -3060,7 +3067,7 @@ class Dungeon {
   private tuneList: Array<{ name: string; apply: () => boolean; undo: () => void }> | null = null;
   private static readonly TUNE_TARGET = 25;          // 每帧毫秒(≈ 40 帧;60Hz 屏上显卡 20 毫秒左右时平均就在这附近)
   private tuneKey(): string {
-    return `lcG3dTune3:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
+    return `lcG3dTune4:${GPU_NAME.slice(0, 120)}:${this.city ? 'city' : this.wild ? 'wild' : 'hall'}:${DUNGEON.tier}`;
   }
   /** 让步清单,按「看得出的程度」从轻到重排;apply 返回 false = 这一项在本机不适用(跳过)。 */
   private tuneSteps(): Array<{ name: string; apply: () => boolean; undo: () => void }> {
@@ -3098,19 +3105,6 @@ class Dungeon {
         undo: () => post.set({ ao: true }),
       },
       {
-        name: '分辨率×0.85',
-        apply: () => {
-          keep.s1 = cfg().scale;
-          const k = Math.max(floor, scale0 * 0.85);
-          if (k >= cfg().scale - 0.01) {
-            return false;
-          }
-          setScale(k);
-          return true;
-        },
-        undo: () => setScale(keep.s1),
-      },
-      {
         name: '关泛光',
         apply: () => {
           if (!cfg().bloom) {
@@ -3132,6 +3126,19 @@ class Dungeon {
           return true;
         },
         undo: () => this.set({ realLights: keep.rl }),
+      },
+      {
+        name: '分辨率×0.85',
+        apply: () => {
+          keep.s1 = cfg().scale;
+          const k = Math.max(floor, scale0 * 0.85);
+          if (k >= cfg().scale - 0.01) {
+            return false;
+          }
+          setScale(k);
+          return true;
+        },
+        undo: () => setScale(keep.s1),
       },
       {
         name: '关月光阴影',
@@ -3161,6 +3168,20 @@ class Dungeon {
         },
         undo: () => setScale(keep.s2),
       },
+      // 11-21:起步改成原生分辨率后,最弱的核显上前面都让完了还是慢 → 继续往下降,最低到以前的固定预算水平(下限 90 万像素)
+      ...[0.6, 0.5].map((f, i) => ({
+        name: `分辨率×${f}`,
+        apply: (): boolean => {
+          keep[`s${3 + i}`] = cfg().scale;
+          const k = Math.max(floor, scale0 * f);
+          if (k >= cfg().scale - 0.01) {
+            return false;
+          }
+          setScale(k);
+          return true;
+        },
+        undo: (): void => setScale(keep[`s${3 + i}`]),
+      })),
     ];
   }
   private tuneStart(): void {
@@ -3864,6 +3885,10 @@ class Dungeon {
       // 11-21:修引擎每帧释放重建托管渲染贴图(→ 每帧 16 次同步 checkFramebufferStatus);&pipefix=0 关
       if (!this.pipeFixed && param('pipefix') !== '0') {
         this.pipeFixed = installKeepManagedPatch();
+      }
+      if (this.packHoldUntil > 0 && ((this.leader && !(this.bldTotal > 0 && this.bldDone < this.bldTotal)) || performance.now() > this.packHoldUntil || !!this.lastError)) {
+        this.packHoldUntil = 0;
+        holdBackgroundPack('g3d', false);
       }
       this.maybeBench();
       this.tuneTick();

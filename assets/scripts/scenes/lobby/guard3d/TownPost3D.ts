@@ -68,6 +68,8 @@ export interface PostCfg {
   vignetteEnd: number;
   vignetteRound: number;
   sharpen: number;
+  /** 低于原生分辨率时用双三次放大(11-21;false = 旧的双线性)。 */
+  bicubic: boolean;
   dither: number;
   debug: number;
   // 雾(按深度在调色那一步加;镜头放开之后看得远才用得上):颜色(线性)、从多远开始(米)、浓度(每米)、最浓到几成
@@ -98,7 +100,7 @@ export const POST_CFG: PostCfg = {
   exposure: 1, contrast: 1.05, pivot: 0.2, toe: 0.03, saturation: 1.06, shoulder: 0.8,
   shadowTint: [0.97, 1.0, 1.04], highlightTint: [1.03, 1.0, 0.97], splitAt: 0.5,
   vignette: 0.16, vignetteStart: 0.55, vignetteEnd: 1.05, vignetteRound: 0,
-  sharpen: 0.18, dither: 1, debug: 0,
+  sharpen: 0.18, bicubic: true, dither: 1, debug: 0,
   fog: false, fogColor: [0.5, 0.58, 0.68], fogStart: 16, fogDensity: 0.024, fogMax: 0.9, fogAway: [0.5, 0.58, 0.68], fogSun: [0, 1, 0], fogLobe: 0,
 };
 
@@ -483,9 +485,10 @@ class PostBuilder {
     p.setVec4('lcP9', v9);
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 6);
 
-    // ── 边缘抗锯齿(引擎自带的那张材质;只在没放大渲染的档位用)──
+    // ── 边缘抗锯齿(引擎自带的那张材质;只在没放大渲染时用)──
+    //    11-21:档位是超采样(2 级)但被像素预算 / 自动选档压到 ≤ 1 倍时也要开,否则边缘一级级锯齿(核显档以前就是这样)
     let out = ldr0;
-    const fxaaOn = cfg.fxaa && !!this.fxaaMat && !cfg.debug;
+    const fxaaOn = (cfg.fxaa || w / nw <= 1.01) && !!this.fxaaMat && !cfg.debug;
     if (fxaaOn) {
       p = ppl.addRenderPass(w, h, 'cc-fxaa');
       p.addRenderTarget(ldr1, LoadOp.CLEAR, StoreOp.STORE, BLACK);
@@ -501,9 +504,11 @@ class PostBuilder {
     p = ppl.addRenderPass(nw, nh, 'lc-post-final');
     p.addRenderTarget(cc.colorName, LoadOp.CLEAR, StoreOp.STORE, BLACK);
     p.addTexture(out, 'lcTexA', linear);
-    p.setVec4('lcP0', v0.set(1 / w, 1 / h, scale > 1.01 ? 0.25 * scale : 0, plain ? 0 : cfg.sharpen));
+    // 低于原生分辨率时(放大到屏幕会发虚)锐化按缩小程度加一点,0.7 倍时约 +0.24
+    const sharpen = cfg.sharpen + (scale < 0.99 ? Math.min(0.4, (1 - scale) * 0.8) : 0);
+    p.setVec4('lcP0', v0.set(1 / w, 1 / h, scale > 1.01 ? 0.25 * scale : 0, plain ? 0 : sharpen));
     p.setVec4('lcP1', v1.set(plain ? 0 : cfg.vignette, cfg.vignetteStart, cfg.vignetteEnd, cfg.vignetteRound));
-    p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, 0));
+    p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, scale < 0.99 && cfg.bicubic ? 1 : 0));
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 7);
     this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, aoMerge: aoOn && aoMerge, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
     return p;
