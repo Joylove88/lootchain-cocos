@@ -408,7 +408,7 @@ class Dungeon {
    * 正在出的这一招:move = 代码摆的招式(跃空重劈用片段,move 是空的);t = 出到第几秒;done = 每次判定做过没有;
    * yaw0 = 出手时面朝哪;adv = 已经往前挪了多少;hit = 这一招里已经打中过的怪(突进沿路每只只算一次)。
    */
-  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean; fxOnce?: boolean; fxLeap?: boolean } | null = null;
+  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean; fxOnce?: boolean; fxLeap?: boolean; fxBlade?: boolean } | null = null;
   /** 主角有没有动作库转套过来的那批招式(有 = 用片段出招、双手大剑;没有 = 代码摆的招式、单手长剑)。 */
   private gs = false;
   private swordLen = BLADE_LEN;
@@ -4592,11 +4592,14 @@ class Dungeon {
   }
 
   /** 出手 / 命中时亮一下的灯(很短)。 */
-  private flash(x: number, y: number, z: number, k: number, life: number): void {
+  private flash(x: number, y: number, z: number, k: number, life: number, rgb?: [number, number, number]): void {
     const L = this.lights.hit.find((v) => !v.node.active) ?? this.lights.hit[0];
     if (!L) {
       return;
     }
+    // 颜色:不给 = 默认的暖白(命中);大招旋涡用冷蓝
+    const c = rgb ?? [255, 214, 160];
+    L.color = new Color(c[0], c[1], c[2], 255);
     L.node.setPosition(x, y, z);
     L.node.active = true;
     const peak = DUNGEON.hit * DUNGEON.fluxK * k;
@@ -4610,7 +4613,7 @@ class Dungeon {
    * 跃空重劈的大招演出 · 腾空段(11-22,参考用户给的两段视频:身上缠闪电、最高点白光爆闪 + 慢镜 + 推镜)。
    * u = 招式进度,fireU = 落地砸下的那一刻。
    */
-  private ultLeap(act: { fxOnce?: boolean; fxLeap?: boolean }, u: number, fireU: number, dt: number): void {
+  private ultLeap(act: { fxOnce?: boolean; fxLeap?: boolean; fxBlade?: boolean }, u: number, fireU: number, dt: number): void {
     const fx = this.fx!;
     const hy = this.leaderY + this.floorY(this.lx, this.lz);
     if (!act.fxLeap) {
@@ -4620,6 +4623,23 @@ class Dungeon {
         fx.streak({ kind: 'spiral', x: this.lx, z: this.lz, a0: (k / 3) * Math.PI * 2, turns: Math.PI * 2.4, r0: 0.95, r1: 0.55, y0: hy + 0.05, y1: hy + 2.6,
           w0: 0.07, w1: 0.12, life: 0.5, grow: 0.22, len: 0.6, scroll: 4, rep: 2, color: k === 1 ? [1.0, 0.8, 0.5] : [0.65, 0.86, 1.0], a: 0.75 });
       }
+    }
+    if (u < fireU + 0.06 && dt > 0) {
+      // 剑身上冒的能量光点(剑根 → 剑尖之间随机一点,往剑走的反方向飘一点)
+      for (let k = 0; k < 2; k += 1) {
+        const s = fx.rand(0.15, 1);
+        fx.emit({ x: _base.x + (_tip.x - _base.x) * s, y: _base.y + (_tip.y - _base.y) * s, z: _base.z + (_tip.z - _base.z) * s,
+          vx: -this.tipVel.x * 1.2 + fx.rand(-0.3, 0.3), vy: fx.rand(0.1, 0.6), vz: -this.tipVel.z * 1.2 + fx.rand(-0.3, 0.3), life: fx.rand(0.18, 0.32), s0: fx.rand(0.05, 0.09), s1: 0.01,
+          c0: k ? [1, 0.86, 0.6] : [0.8, 0.94, 1], a: 0.9, cell: FX2_CELL.glow, t2: true, drag: 1.5, fadeIn: 0.05 });
+      }
+    }
+    // 开天斩:砸下前一瞬间,一道几层楼高的弯刀光从天劈到落点(正对镜头;外面一层宽而淡的光晕)
+    if (!act.fxBlade && u >= fireU - 0.05) {
+      act.fxBlade = true;
+      const bx = this.lx + Math.cos((this.lyaw * Math.PI) / 180) * 1.3;
+      const bz = this.lz - Math.sin((this.lyaw * Math.PI) / 180) * 1.3;
+      fx.blade({ x: bx, z: bz, h: 11, w0: 1.4, w1: 2.5, life: 0.36, color: [0.92, 0.97, 1.0], a: 1.15, cell: FX2_CELL.crescent });
+      fx.blade({ x: bx, z: bz, h: 12, w0: 2.2, w1: 3.4, life: 0.4, color: [0.5, 0.72, 1.0], a: 0.4, cell: FX2_CELL.glow });
     }
     if (u < fireU && dt > 0 && this.time >= this.ultSparkAt) {
       for (let k = 0; k < 2; k += 1) {
@@ -4657,8 +4677,8 @@ class Dungeon {
       this.slowK = 0.28;
       this.camTo = 0.8;
       this.pitchTo = -5;
-      fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.3, s0: 0.4, s1: 1.6, c0: [1, 1, 1], c1: [0.75, 0.9, 1], a: 0.5, cell: FX2_CELL.flare, t2: true, rot: 0.2, fadeIn: 0.02 });
-      fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.4, s0: 0.3, s1: 1.0, c0: [1, 0.95, 0.8], a: 0.3, cell: FX2_CELL.glow, t2: true, fadeIn: 0.02 });
+      fx.emit({ x: this.lx, y: hy + 3.0, z: this.lz, life: 0.3, s0: 0.3, s1: 1.2, c0: [1, 1, 1], c1: [0.75, 0.9, 1], a: 0.38, cell: FX2_CELL.flare, t2: true, rot: 0.2, fadeIn: 0.02 });
+      fx.emit({ x: this.lx, y: hy + 3.0, z: this.lz, life: 0.4, s0: 0.3, s1: 0.9, c0: [1, 0.95, 0.8], a: 0.22, cell: FX2_CELL.glow, t2: true, fadeIn: 0.02 });
       this.radialT = 0.5;
       this.radialPeak = 0.016;
       this.addShock(this.lx, hy + 1.6, this.lz, 0.45, 0.32, 0.016);
@@ -4674,9 +4694,9 @@ class Dungeon {
     const fx = this.fx!;
     const ice: [number, number, number] = [0.62, 0.86, 1.0];
     // 开天斩:一道从十几米高劈到地面的竖光(两层:细而亮的芯 + 宽而淡的风)
-    fx.pillar({ x, z, h: 13, w0: 0.28, w1: 0.08, life: 0.32, color: [1, 1, 1], a: 0.95 });          // 实心的刀光芯:又亮又窄,很快收细
-    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.22, w1: 0.32, life: 0.55, grow: 0.07, len: 1, scroll: -6, rep: 2, color: [1, 1, 1], a: 1.0 });
-    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.9, w1: 1.6, life: 0.7, grow: 0.09, len: 1, scroll: -4, rep: 1.5, color: ice, a: 0.55 });
+    fx.pillar({ x, z, h: 13, w0: 0.28, w1: 0.08, life: 0.32, color: [1, 1, 1], a: 0.5 });          // 实心的刀光芯(11-22 主角让给竖直巨刀光,这里调淡)
+    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.22, w1: 0.32, life: 0.55, grow: 0.07, len: 1, scroll: -6, rep: 2, color: [1, 1, 1], a: 0.6 });
+    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.9, w1: 1.6, life: 0.7, grow: 0.09, len: 1, scroll: -4, rep: 1.5, color: ice, a: 0.3 });
     // 地面笔触旋涡:一圈平躺的螺旋流线往外卷(半月),再加几道卷起来的浪
     const base = Math.atan2(fzn, fxn);
     for (let k = 0; k < 5; k += 1) {
@@ -4704,6 +4724,7 @@ class Dungeon {
     }
     this.ultMist(x, z);
     this.ultInk(x, z);
+    this.timers.push({ at: this.time + 0.32, run: () => this.flash(x, 1.4, z, 1.5, 1.5, [150, 196, 255]) });
     this.beginGrade();
     this.flashT = 0.2;
     this.timers.push({ at: this.time + 0.12, run: () => { this.dimTo = 0; } });
@@ -4847,7 +4868,7 @@ class Dungeon {
       if (this.radialT <= 0) {
         this.radialPeak = 0;
       }
-      this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.04).toFixed(5), radialC: [0.5, 0.55] });
+      this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.015).toFixed(5), radialC: [0.5, 0.55] });
     }
     // 大招调色:压暗 / 降饱和(慢镜里)+ 落地白闪,结束后还原
     if (this.gradeBase && this.post) {
@@ -4938,7 +4959,7 @@ class Dungeon {
     }
     // 11-22 精致化(用户「技能特效太简单」):
     // 光柱只要紫色一道、细而淡(主角就站在落点后面一米,太亮会把人照白)
-    fx.pillar({ x, z, h: 5.5, w0: 0.22, w1: 0.55, life: 0.4, color: [0.6, 0.8, 1.0], a: 0.45 });
+    fx.pillar({ x, z, h: 5.5, w0: 0.22, w1: 0.55, life: 0.4, color: [0.6, 0.8, 1.0], a: 0.3 });
     fx.emit({ x, y: 0.35, z, life: 0.16, s0: 0.7, s1: 1.7, c0: [1, 1, 1], c1: color, a: 0.55, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
     fx.decal('fx2', FX2_CELL.groundRing, x, z, 0.8, 4.2, 0.65, [0.6, 0.8, 1.0], 0.42, 0.02, 0.1, 0, 0.036);
     fx.decal('fx2', FX2_CELL.glow, x, z, 2.2, 2.6, 1.1, [0.4, 0.62, 0.95], 0.32, 0.02, 0.25, 0, 0.034);
@@ -5077,6 +5098,11 @@ class Dungeon {
       const u = Math.min(1, act.t / act.dur);
       on = u >= act.move.trail[0] && u <= act.move.trail[1];
       color = act.move.color as [number, number, number];
+      if (act.kind === 'smash') {
+        // 大招:起跳到砸下全程拖着发光的剑影
+        on = u >= 0.06 && u <= (act.move.fire ?? 0.6) + 0.14;
+        color = [0.72, 0.9, 1.0];
+      }
     } else if (act && act.move) {
       const u = Math.min(1, act.t / act.dur);
       poseAt(act.move, u, this.poseBuf);

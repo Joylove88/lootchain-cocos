@@ -41,6 +41,8 @@ interface Streak { kind: 'spiral' | 'drop'; x: number; z: number; a0: number; tu
 /** 墨盘旋涡:贴地的一整片黑墨 + 白色笔触,半径 r0 → r1(grow 秒内铺开),一边转一边在 hold 之后淡掉。 */
 interface Whirl { x: number; y: number; z: number; r0: number; r1: number; grow: number; hold: number; age: number; life: number; rot: number; spin: number;
   ink: [number, number, number]; hi: [number, number, number]; a: number }
+/** 竖直巨刀光(开天斩):正对镜头的竖片,弯刀痕那一格竖着贴(贴图的长度方向 = 高度),宽度 w0 → w1。 */
+interface Blade { x: number; y0: number; z: number; h: number; w0: number; w1: number; age: number; life: number; color: [number, number, number]; a: number; cell: number; flip: boolean }
 /** 光柱:从 (x,y0,z) 往上 h 米,宽 w(始终正对镜头的竖片)。 */
 interface Pillar { x: number; y0: number; z: number; h: number; w0: number; w1: number; age: number; life: number; color: [number, number, number]; a: number }
 
@@ -62,6 +64,7 @@ export class FxWorld {
   private readonly streaks: Streak[] = [];
   private readonly flowMesh: DynMesh;
   private readonly whirls: Whirl[] = [];
+  private readonly blades: Blade[] = [];
   private readonly inkMesh: DynMesh;
   /**
    * 预热(11-22 线上实测:第一次放旋风斩卡到 0 帧):空的动态网格不画,材质的着色器要等第一次真有东西时才编译,
@@ -145,6 +148,11 @@ export class FxWorld {
       age: 0, life: o.life, grow: o.grow ?? o.life * 0.4, len: o.len ?? 0.7, scroll: o.scroll ?? 2.5, rep: o.rep ?? 3, color: o.color, a: o.a ?? 1 });
   }
 
+  /** 竖直巨刀光(见 Blade)。cell 默认弯刀痕;flip = 弯的方向左右翻。 */
+  blade(o: { x: number; y0?: number; z: number; h: number; w0: number; w1?: number; life: number; color: [number, number, number]; a?: number; cell?: number; flip?: boolean }): void {
+    this.blades.push({ x: o.x, y0: o.y0 ?? 0, z: o.z, h: o.h, w0: o.w0, w1: o.w1 ?? o.w0, age: 0, life: o.life, color: o.color, a: o.a ?? 1, cell: o.cell ?? FX2_CELL.slash, flip: !!o.flip });
+  }
+
   /** 光柱(见 Pillar)。宽度从 w0 变到 w1。 */
   pillar(o: { x: number; y0?: number; z: number; h: number; w0: number; w1?: number; life: number; color: [number, number, number]; a?: number }): void {
     this.pillars.push({ x: o.x, y0: o.y0 ?? 0, z: o.z, h: o.h, w0: o.w0, w1: o.w1 ?? o.w0, age: 0, life: o.life, color: o.color, a: o.a ?? 1 });
@@ -204,6 +212,7 @@ export class FxWorld {
     this.pillars.length = 0;
     this.streaks.length = 0;
     this.whirls.length = 0;
+    this.blades.length = 0;
   }
 
   update(dt: number, cam: Node): void {
@@ -315,6 +324,7 @@ export class FxWorld {
     this.drawArcs(dt, add2);
     this.drawBands(dt, add2);
     this.drawPillars(dt, add2);
+    this.drawBlades(dt, add2);
     this.drawStreaks(dt);
     this.drawWhirls(dt);
 
@@ -657,4 +667,43 @@ export class FxWorld {
     m.end();
   }
 
+
+  private drawBlades(dt: number, m: DynMesh): void {
+    let hx = _rt.x;
+    let hz = _rt.z;
+    const hl = Math.hypot(hx, hz) || 1;
+    hx /= hl;
+    hz /= hl;
+    for (let i = this.blades.length - 1; i >= 0; i -= 1) {
+      const b = this.blades[i];
+      b.age += dt;
+      if (b.age >= b.life) {
+        this.blades.splice(i, 1);
+        continue;
+      }
+      const t = b.age / b.life;
+      const al = b.a * Math.min(1, t * 14) * (1 - t) * (1 - t * 0.5);
+      const w = b.w0 + (b.w1 - b.w0) * Math.min(1, t * 2.5);
+      // 从上往下「劈」出来:前 30% 的时间里下沿从高处落到地面
+      const reveal = Math.min(1, t / 0.3);
+      const top = b.y0 + b.h;
+      const bottom = top - b.h * (1 - Math.pow(1 - reveal, 2.2));
+      if (!m.room(4, 6)) {
+        continue;
+      }
+      const uv = fx2Uv(b.cell);
+      // 贴图长度方向(u)对应高度,厚度方向(v)对应宽度;露出的部分只取贴图对应的那一截
+      const uTop = uv[2];
+      const uBot = uv[2] - (uv[2] - uv[0]) * ((top - bottom) / b.h);
+      const vL = b.flip ? uv[3] : uv[1];
+      const vR = b.flip ? uv[1] : uv[3];
+      const c = b.color;
+      const i0 = m.vert(b.x - hx * w, bottom, b.z - hz * w, uBot, vL, c[0], c[1], c[2], al);
+      m.vert(b.x + hx * w, bottom, b.z + hz * w, uBot, vR, c[0], c[1], c[2], al);
+      m.vert(b.x + hx * w, top, b.z + hz * w, uTop, vR, c[0], c[1], c[2], al);
+      m.vert(b.x - hx * w, top, b.z - hz * w, uTop, vL, c[0], c[1], c[2], al);
+      m.tri(i0, i0 + 1, i0 + 2);
+      m.tri(i0, i0 + 2, i0 + 3);
+    }
+  }
 }
