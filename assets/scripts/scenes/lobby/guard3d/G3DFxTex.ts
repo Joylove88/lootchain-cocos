@@ -177,3 +177,58 @@ export function paintFx2Atlas(): Cv {
   ctx.putImageData(img, 0, 0);
   return cv;
 }
+
+/**
+ * 笔触流线贴图(11-22 大招演出,参考「水墨剑气」:一把干笔刷过去的几十道细丝,粗细不一、中间有断笔):
+ * 512 × 256,横向(沿笔触走向)可无缝平铺 —— 网格上把 u 一直往前推,丝就顺着流动;纵向 = 横穿笔触(中间密、两边散)。
+ */
+export function paintBrushStreak(): Cv {
+  const W = 512;
+  const H = 256;
+  const cv = makeCanvas(W, H);
+  const ctx = ctxOf(cv);
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  const N = 46;
+  const lines: Array<{ y: number; w: number; a: number; f: number; ph: number; gap: number; gph: number }> = [];
+  let seed = 12345;
+  const rnd = (): number => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let i = 0; i < N; i += 1) {
+    const y = 0.08 + 0.84 * rnd();
+    const center = 1 - Math.abs(y - 0.5) * 2;
+    lines.push({ y, w: 0.004 + 0.016 * rnd() * (0.4 + center), a: 0.35 + 0.65 * rnd() * (0.3 + 0.7 * center), f: 1 + Math.floor(rnd() * 3), ph: rnd() * 6.28, gap: 1 + Math.floor(rnd() * 4), gph: rnd() });
+  }
+  for (let y = 0; y < H; y += 1) {
+    const v = (y + 0.5) / H;
+    const env = Math.exp(-(((v - 0.5) / 0.3) ** 2));
+    for (let x = 0; x < W; x += 1) {
+      const u = (x + 0.5) / W;
+      let a = 0;
+      for (const L of lines) {
+        const yy = L.y + 0.012 * Math.sin(u * Math.PI * 2 * L.f + L.ph);
+        const dy = (v - yy) / L.w;
+        if (dy > 4 || dy < -4) {
+          continue;
+        }
+        // 断笔:沿 u 周期性的空白(整数个周期,保证首尾接得上)
+        const g = 0.5 + 0.5 * Math.sin((u + L.gph) * Math.PI * 2 * L.gap);
+        const brk = Math.min(1, Math.max(0, (g - 0.18) / 0.3));
+        a += Math.exp(-dy * dy) * L.a * brk;
+      }
+      const n = fbm(u * 16, v * 6, 3, 41);
+      const n2 = fbm((u - 1) * 16, v * 6, 3, 41);
+      const nn = n * (1 - u) + n2 * u;
+      a = Math.min(1, a * (0.75 + 0.5 * nn) + env * 0.08);
+      const p = (y * W + x) * 4;
+      d[p] = 255;
+      d[p + 1] = 255;
+      d[p + 2] = 255;
+      d[p + 3] = Math.round(255 * Math.min(1, a * env * 1.25));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}

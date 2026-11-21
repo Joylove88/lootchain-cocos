@@ -70,6 +70,10 @@ export interface PostCfg {
   sharpen: number;
   /** 低于原生分辨率时用双三次放大(11-21;false = 旧的双线性)。 */
   bicubic: boolean;
+  /** 大招演出(11-22):径向模糊强度(0 = 关;0.05 ≈ 往中心拖出 5% 画面的长度)、色散(0 = 关;0.006 ≈ 边缘错开 0.6%)、中心(画面坐标 0~1)。 */
+  radial: number;
+  chroma: number;
+  radialC: [number, number];
   dither: number;
   debug: number;
   // 雾(按深度在调色那一步加;镜头放开之后看得远才用得上):颜色(线性)、从多远开始(米)、浓度(每米)、最浓到几成
@@ -100,7 +104,7 @@ export const POST_CFG: PostCfg = {
   exposure: 1, contrast: 1.05, pivot: 0.2, toe: 0.03, saturation: 1.06, shoulder: 0.8,
   shadowTint: [0.97, 1.0, 1.04], highlightTint: [1.03, 1.0, 0.97], splitAt: 0.5,
   vignette: 0.16, vignetteStart: 0.55, vignetteEnd: 1.05, vignetteRound: 0,
-  sharpen: 0.18, bicubic: true, dither: 1, debug: 0,
+  sharpen: 0.18, bicubic: true, radial: 0, chroma: 0, radialC: [0.5, 0.5], dither: 1, debug: 0,
   fog: false, fogColor: [0.5, 0.58, 0.68], fogStart: 16, fogDensity: 0.024, fogMax: 0.9, fogAway: [0.5, 0.58, 0.68], fogSun: [0, 1, 0], fogLobe: 0,
 };
 
@@ -282,6 +286,7 @@ class PostBuilder {
   private v2 = new Vec4();
   private v3 = new Vec4();
   private v9 = new Vec4();
+  private v10 = new Vec4();
 
   constructor(private cfg: PostCfg) {}
 
@@ -509,6 +514,7 @@ class PostBuilder {
     p.setVec4('lcP0', v0.set(1 / w, 1 / h, scale > 1.01 ? 0.25 * scale : 0, plain ? 0 : sharpen));
     p.setVec4('lcP1', v1.set(plain ? 0 : cfg.vignette, cfg.vignetteStart, cfg.vignetteEnd, cfg.vignetteRound));
     p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, scale < 0.99 && cfg.bicubic ? 1 : 0));
+    p.setVec4('lcP3', this.v10.set(cfg.radialC[0], cfg.radialC[1], plain ? 0 : cfg.radial, plain ? 0 : cfg.chroma));
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 7);
     this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, aoMerge: aoOn && aoMerge, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
     return p;

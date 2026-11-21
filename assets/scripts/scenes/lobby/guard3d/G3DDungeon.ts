@@ -433,6 +433,14 @@ class Dungeon {
   private poseBuf = newPose();
   private leaderY = 0;
   private hitStop = 0;
+  // 11-22 大招演出(跃空重劈):慢镜(剩余真实秒数 + 速度倍数)、镜头推近(当前 / 目标距离倍数)、径向模糊 / 色散的剩余时间
+  private slowT = 0;
+  private slowK = 1;
+  private camK = 1;
+  private camTo = 1;
+  private radialT = 0;
+  private radialPeak = 0;
+  private ultSparkAt = 0;
   private shake = 0;
   private lastDt = 0;
   private realDt = 0;
@@ -3748,7 +3756,7 @@ class Dungeon {
     const can = this.reach(this.look.x, this.look.y, this.look.z, dx, dy, dz, this.view.dist);
     const want = Math.max(Math.min(1.2, this.view.dist), can - 0.15);
     this.pull = want < this.pull || dt <= 0 ? want : Math.min(want, this.pull + (want - this.pull) * (1 - Math.exp(-4 * dt)) + 0.001);
-    const d = Math.min(this.view.dist, this.pull);
+    const d = Math.min(this.view.dist, this.pull) * this.camK;
     // 震屏:几个不同频率的正弦叠起来,幅度很快衰减
     const sk = this.shake;
     const st = this.time * 60;
@@ -3767,6 +3775,11 @@ class Dungeon {
       this.hitStop -= dt;
       dt *= 0.05;
     }
+    if (this.slowT > 0 && dt > 0) {
+      this.slowT -= this.realDt;
+      dt *= this.slowK;
+    }
+    this.stepUltScreen(this.realDt);
     this.lastDt = dt;
     this.shake *= Math.exp(-this.realDt * 9);
     if (DUNGEON.snd) {
@@ -4247,9 +4260,12 @@ class Dungeon {
       }
     } else if (act.kind === 'smash' && m) {
       // 跃空重劈(动作库的片段):起跳和落地都在片段里,落地那一下砸地
-      if (!act.fired && u >= (m.fire ?? 0.6)) {
+      const fireU = m.fire ?? 0.6;
+      this.ultLeap(act, u, fireU, dt);
+      if (!act.fired && u >= fireU) {
         act.fired = true;
         this.slam(this.lx + fxn * 1.3, this.lz + fzn * 1.3, fxn, fzn);
+        this.ultImpact(this.lx + fxn * 1.3, this.lz + fzn * 1.3, fxn, fzn);
       }
     } else if (act.kind === 'smash') {
       // 跃空重劈:用模型自带的「过顶劈」片段。蓄力下蹲 → 腾空举剑 → 落地劈下 → 收势
@@ -4573,10 +4589,122 @@ class Dungeon {
   }
 
   /** 跃空重劈落地:一圈范围伤害 + 地裂、焦痕、三圈往外扩的冲击环、碎石、扬尘、火星、震屏。 */
+  /**
+   * 跃空重劈的大招演出 · 腾空段(11-22,参考用户给的两段视频:身上缠闪电、最高点白光爆闪 + 慢镜 + 推镜)。
+   * u = 招式进度,fireU = 落地砸下的那一刻。
+   */
+  private ultLeap(act: { fxOnce?: boolean }, u: number, fireU: number, dt: number): void {
+    const fx = this.fx!;
+    const hy = this.leaderY + this.floorY(this.lx, this.lz);
+    if (u < fireU && dt > 0 && this.time >= this.ultSparkAt) {
+      // 身上缠的金白闪电:身边随机两点之间的短闪电,每 0.05 秒换一批
+      this.ultSparkAt = this.time + 0.05;
+      for (let k = 0; k < 2; k += 1) {
+        const a0 = fx.rand(0, Math.PI * 2);
+        const a1 = a0 + fx.rand(1.2, 2.6);
+        const r0 = fx.rand(0.25, 0.5);
+        const r1 = fx.rand(0.3, 0.7);
+        const A = new Vec3(this.lx + Math.cos(a0) * r0, hy + fx.rand(0.3, 1.6), this.lz + Math.sin(a0) * r0);
+        const B = new Vec3(this.lx + Math.cos(a1) * r1, hy + fx.rand(0.4, 2.0), this.lz + Math.sin(a1) * r1);
+        fx.bolt(A, B, 0.028, 0.09, [1.0, 0.86, 0.55], 0.28, 1);
+      }
+      // 往剑上聚的光点(从四周吸进来)
+      for (let k = 0; k < 3; k += 1) {
+        const a = fx.rand(0, Math.PI * 2);
+        const r = fx.rand(1.6, 2.8);
+        const px = this.lx + Math.cos(a) * r;
+        const pz = this.lz + Math.sin(a) * r;
+        const py = hy + fx.rand(0.2, 2.2);
+        const T = 0.22;
+        fx.emit({ x: px, y: py, z: pz, vx: (this.lx - px) / T, vy: (hy + 1.3 - py) / T, vz: (this.lz - pz) / T, life: T, s0: 0.05, s1: 0.015, c0: [0.7, 0.9, 1.0], c1: [1, 1, 1], a: 0.85,
+          cell: FX2_CELL.spark, t2: true, stretch: 2.5, fadeIn: 0.2 });
+      }
+    }
+    // 接近最高点:白光爆闪 + 慢镜 + 推镜(一次)
+    if (!act.fxOnce && u >= fireU - 0.16) {
+      act.fxOnce = true;
+      this.slowT = 0.55;
+      this.slowK = 0.28;
+      this.camTo = 0.8;
+      fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.3, s0: 0.4, s1: 1.6, c0: [1, 1, 1], c1: [0.75, 0.9, 1], a: 0.5, cell: FX2_CELL.flare, t2: true, rot: 0.2, fadeIn: 0.02 });
+      fx.emit({ x: this.lx, y: hy + 2.3, z: this.lz, life: 0.4, s0: 0.3, s1: 1.0, c0: [1, 0.95, 0.8], a: 0.3, cell: FX2_CELL.glow, t2: true, fadeIn: 0.02 });
+      this.radialT = 0.5;
+      this.radialPeak = 0.016;
+      this.flash(this.lx, hy + 2.6, this.lz, 1.0, 0.25);
+    }
+  }
+
+  /** 跃空重劈的大招演出 · 落地段:开天斩(从天劈下的竖光)+ 地面笔触旋涡 + 地面四散的闪电 + 余火 + 径向模糊 / 色散。 */
+  private ultImpact(x: number, z: number, fxn: number, fzn: number): void {
+    const fx = this.fx!;
+    const ice: [number, number, number] = [0.62, 0.86, 1.0];
+    // 开天斩:一道从十几米高劈到地面的竖光(两层:细而亮的芯 + 宽而淡的风)
+    fx.pillar({ x, z, h: 13, w0: 0.28, w1: 0.08, life: 0.32, color: [1, 1, 1], a: 0.95 });          // 实心的刀光芯:又亮又窄,很快收细
+    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.22, w1: 0.32, life: 0.55, grow: 0.07, len: 1, scroll: -6, rep: 2, color: [1, 1, 1], a: 1.0 });
+    fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.9, w1: 1.6, life: 0.7, grow: 0.09, len: 1, scroll: -4, rep: 1.5, color: ice, a: 0.55 });
+    // 地面笔触旋涡:一圈平躺的螺旋流线往外卷(半月),再加几道卷起来的浪
+    const base = Math.atan2(fzn, fxn);
+    for (let k = 0; k < 9; k += 1) {
+      const a0 = base + (k / 9) * Math.PI * 2 + fx.rand(-0.15, 0.15);
+      fx.streak({ kind: 'spiral', x, z, a0, turns: 2.6 + fx.rand(-0.3, 0.3), r0: 0.35, r1: 4.6 + fx.rand(-0.5, 0.6), y0: 0.05, y1: 0.08, w0: 0.18, w1: 0.62,
+        life: 1.15, grow: 0.32, len: 0.75, scroll: 3.2, rep: 3, color: k % 3 === 0 ? [1, 1, 1] : ice, a: k % 3 === 0 ? 0.9 : 0.7 });
+    }
+    for (let k = 0; k < 4; k += 1) {
+      const a0 = base + (k / 4) * Math.PI * 2 + 0.4;
+      fx.streak({ kind: 'spiral', x, z, a0, turns: 2.0, r0: 0.6, r1: 3.2, y0: 0.15, y1: 1.6, w0: 0.14, w1: 0.4, life: 0.9, grow: 0.3, len: 0.7, scroll: 3.6, rep: 2.5, color: ice, a: 0.55 });
+    }
+    // 地面四散的闪电
+    for (let k = 0; k < 7; k += 1) {
+      const a = base + (k / 7) * Math.PI * 2 + fx.rand(-0.2, 0.2);
+      const L = fx.rand(2.6, 4.2);
+      fx.bolt(new Vec3(x, 0.08, z), new Vec3(x + Math.cos(a) * L, 0.06, z + Math.sin(a) * L), 0.045, 0.32, [0.7, 0.85, 1.0], 0.18, 2);
+    }
+    // 地缝里的余火(橙红,停得久一点)+ 往上飘的火星
+    fx.decal('fx2', FX2_CELL.glow, x, z, 1.4, 1.8, 2.4, [1.0, 0.42, 0.12], 0.4, 0.05, 1.2, 0, 0.033);
+    for (let k = 0; k < 26; k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const r = fx.rand(0.3, 2.6);
+      fx.emit({ x: x + Math.cos(a) * r, y: 0.1, z: z + Math.sin(a) * r, vx: fx.rand(-0.3, 0.3), vy: fx.rand(0.8, 2.2), vz: fx.rand(-0.3, 0.3), life: fx.rand(1.0, 2.2), s0: fx.rand(0.02, 0.04), s1: 0.008,
+        c0: [1, 0.7, 0.3], c1: [1, 0.3, 0.08], a: 0.9, cell: FX_CELL.ember, drag: 0.8, fadeIn: 0.1 });
+    }
+    // 白雾往外滚
+    for (let k = 0; k < 12; k += 1) {
+      const a = (k / 12) * Math.PI * 2 + fx.rand(-0.2, 0.2);
+      const sp = fx.rand(3, 5);
+      fx.emit({ x: x + Math.cos(a) * 0.6, y: fx.rand(0.2, 0.5), z: z + Math.sin(a) * 0.6, vx: Math.cos(a) * sp, vy: fx.rand(0.2, 0.8), vz: Math.sin(a) * sp, life: fx.rand(1.0, 1.7), s0: 0.7, s1: 2.4,
+        c0: [0.72, 0.78, 0.86], c1: [0.4, 0.44, 0.5], a: 0.22, cell: FX2_CELL.dust, t2: true, add: false, rot: fx.rand(0, 6), spin: fx.rand(-0.5, 0.5), drag: 2.2, fadeIn: 0.05 });
+    }
+    this.radialT = 0.55;
+    this.radialPeak = 0.04;
+    this.camTo = 0.86;
+    this.timers.push({ at: this.time + 0.25, run: () => { this.camTo = 1; } });
+    this.shake = Math.max(this.shake, 0.42);
+  }
+
+  /** 大招演出的画面部分:镜头推近慢慢回来、径向模糊 / 色散衰减(按真实时间走,慢镜里也照常)。 */
+  private stepUltScreen(rdt: number): void {
+    if (rdt <= 0) {
+      return;
+    }
+    if (this.slowT <= 0 && this.camTo < 1 && this.radialT <= 0) {
+      this.camTo = Math.min(1, this.camTo + rdt * 0.6);
+    }
+    this.camK += (this.camTo - this.camK) * (1 - Math.exp(-rdt * (this.camTo < this.camK ? 7 : 2.5)));
+    if (this.radialT > 0 || this.radialPeak > 0) {
+      this.radialT = Math.max(0, this.radialT - rdt);
+      const k = this.radialT > 0 ? Math.min(1, this.radialT / 0.35) : 0;
+      const r = this.radialPeak * k * k;
+      if (this.radialT <= 0) {
+        this.radialPeak = 0;
+      }
+      this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.06).toFixed(5), radialC: [0.5, 0.55] });
+    }
+  }
+
   private slam(x: number, z: number, fxn: number, fzn: number): void {
     const fx = this.fx!;
     sfx.play('slam', this.heard(x, z));
-    const color: [number, number, number] = [0.66, 0.6, 1.0];
+    const color: [number, number, number] = [0.6, 0.8, 1.0];          // 11-22 大招演出改冰蓝(配金白闪电 + 橙红地火)
     let any = false;
     for (const m of this.mobs) {
       if (m.state === 'down' || m.state === 'gone') {
@@ -4596,14 +4724,14 @@ class Dungeon {
         }
       }
     }
-    fx.decal('atlas', FX_CELL.crack, x, z, 2.6, 2.9, 3.2, [0.72, 0.68, 1.0], 0.75, 0.02, 0.5, 0, 0.026);
+    fx.decal('atlas', FX_CELL.crack, x, z, 2.6, 2.9, 3.4, [1.0, 0.55, 0.22], 0.75, 0.02, 1.2, 0, 0.026);
     fx.decal('scorch', 0, x, z, 2.2, 2.4, 5, [0, 0, 0], 0.5, 0.05, 2.5, 0, 0.024);
     // 两圈细环(不用那张粗的冲击波:放大以后是一整片亮盘,把地面盖没了)
     for (let i = 0; i < 2; i += 1) {
       this.timers.push({ at: this.time + i * 0.08, run: () => fx.decal('atlas', FX_CELL.ring, x, z, 0.5, 3.4 + i * 1.3, 0.3 + i * 0.07, color, 0.42 - i * 0.2, 0.02, 0.04, 0, 0.032 + i * 0.002) });
     }
     // 中心一道往上的短光 + 一圈贴地往外冲的细火星
-    fx.emit({ x, y: 0.4, z, life: 0.09, s0: 0.5, s1: 1.0, c0: [0.85, 0.82, 1], a: 0.3, cell: FX_CELL.core, fadeIn: 0.01 });
+    fx.emit({ x, y: 0.4, z, life: 0.09, s0: 0.5, s1: 1.0, c0: [0.82, 0.92, 1], a: 0.3, cell: FX_CELL.core, fadeIn: 0.01 });
     for (let i = 0; i < 44; i += 1) {
       const a = (i / 44) * Math.PI * 2 + fx.rand(-0.06, 0.06);
       const sp = fx.rand(5, 11);
@@ -4618,10 +4746,10 @@ class Dungeon {
     }
     // 11-22 精致化(用户「技能特效太简单」):
     // 光柱只要紫色一道、细而淡(主角就站在落点后面一米,太亮会把人照白)
-    fx.pillar({ x, z, h: 5.5, w0: 0.22, w1: 0.55, life: 0.4, color: [0.62, 0.56, 1.0], a: 0.45 });
+    fx.pillar({ x, z, h: 5.5, w0: 0.22, w1: 0.55, life: 0.4, color: [0.6, 0.8, 1.0], a: 0.45 });
     fx.emit({ x, y: 0.35, z, life: 0.16, s0: 0.7, s1: 1.7, c0: [1, 1, 1], c1: color, a: 0.55, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
-    fx.decal('fx2', FX2_CELL.groundRing, x, z, 0.8, 4.2, 0.65, [0.6, 0.55, 1.0], 0.42, 0.02, 0.1, 0, 0.036);
-    fx.decal('fx2', FX2_CELL.glow, x, z, 2.2, 2.6, 1.1, [0.45, 0.38, 0.95], 0.32, 0.02, 0.25, 0, 0.034);
+    fx.decal('fx2', FX2_CELL.groundRing, x, z, 0.8, 4.2, 0.65, [0.6, 0.8, 1.0], 0.42, 0.02, 0.1, 0, 0.036);
+    fx.decal('fx2', FX2_CELL.glow, x, z, 2.2, 2.6, 1.1, [0.4, 0.62, 0.95], 0.32, 0.02, 0.25, 0, 0.034);
     for (let i = 0; i < 16; i += 1) {
       const a = (i / 16) * Math.PI * 2 + fx.rand(-0.15, 0.15);
       const sp = fx.rand(2.2, 4.2);

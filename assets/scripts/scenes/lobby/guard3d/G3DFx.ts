@@ -1,7 +1,7 @@
 import { Material, Node, Texture2D, Vec3 } from 'cc';
 import { DynMesh, material, tex } from './G3DKit';
 import { FX_CELL, fxUv, paintFxAtlas, paintRune, paintScorch } from './G3DSkins';
-import { FX2_CELL, fx2Uv, paintFx2Atlas } from './G3DFxTex';
+import { FX2_CELL, fx2Uv, paintBrushStreak, paintFx2Atlas } from './G3DFxTex';
 import { mulberry32 } from './G3DTextures';
 
 /**
@@ -31,6 +31,13 @@ interface Decal { kind: 'scorch' | 'rune' | 'atlas' | 'fx2' | 'fx2a'; cell: numb
 interface Arc { x: number; y: number; z: number; fx: number; fz: number; vx: number; vz: number; r0: number; r1: number; w: number; span: number; tilt: number; age: number; life: number; color: [number, number, number]; a: number; fadeIn: number }
 /** 旋风带:绕 (x,z) 的一圈竖带,半径 r、从 y 到 y+h,spin = 每秒转多少弧度。 */
 interface Band { x: number; y: number; z: number; r0: number; r1: number; h: number; age: number; life: number; rot: number; spin: number; color: [number, number, number]; a: number; follow?: () => [number, number] }
+/**
+ * 流线(11-22 大招演出):用可平铺的笔触贴图沿一条路径铺带子,u 随时间往前推 —— 丝顺着路径流动。
+ * spiral = 绕 (x,z) 的螺旋(从 r0 转到 r1,共 turns 弧度,带子平躺在地上 / 随高度斜起来);drop = 从 (x, y0, z) 竖直劈到地面(正对镜头)。
+ * 头部在 grow 秒内从起点走到终点,尾巴随后跟上(len = 同时可见的长度占比)。
+ */
+interface Streak { kind: 'spiral' | 'drop'; x: number; z: number; a0: number; turns: number; r0: number; r1: number; y0: number; y1: number; w0: number; w1: number;
+  age: number; life: number; grow: number; len: number; scroll: number; rep: number; color: [number, number, number]; a: number }
 /** 光柱:从 (x,y0,z) 往上 h 米,宽 w(始终正对镜头的竖片)。 */
 interface Pillar { x: number; y0: number; z: number; h: number; w0: number; w1: number; age: number; life: number; color: [number, number, number]; a: number }
 
@@ -49,6 +56,8 @@ export class FxWorld {
   private readonly arcs: Arc[] = [];
   private readonly bands: Band[] = [];
   private readonly pillars: Pillar[] = [];
+  private readonly streaks: Streak[] = [];
+  private readonly flowMesh: DynMesh;
   /** 第二张(高清)图集。 */
   readonly atlas2: Texture2D;
   private readonly scorchMesh: DynMesh;
@@ -82,6 +91,7 @@ export class FxWorld {
     this.alpha2Mesh = new DynMesh(parent, 'ShowFxAlpha2', mk(3, this.atlas2, 1), 700 * 4, 700 * 6, false, false, bounds);
     this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6, false, false, bounds);
     this.add2Mesh = new DynMesh(parent, 'ShowFxAdd2', mk(2, this.atlas2, 5), 2400 * 4, 2400 * 6, false, false, bounds);
+    this.flowMesh = new DynMesh(parent, 'ShowFxFlow', mk(2, tex(paintBrushStreak(), true, 4), 4), 3200, 4800, false, false, bounds);
   }
 
   rand(a = 0, b = 1): number {
@@ -110,6 +120,13 @@ export class FxWorld {
   /** 旋风带(见 Band)。follow 给了就每帧跟着它的位置走(绕着主角转)。 */
   band(o: { x: number; y: number; z: number; r0: number; r1?: number; h: number; life: number; spin: number; color: [number, number, number]; a?: number; follow?: () => [number, number] }): void {
     this.bands.push({ x: o.x, y: o.y, z: o.z, r0: o.r0, r1: o.r1 ?? o.r0, h: o.h, age: 0, life: o.life, rot: this.rnd() * 6.28, spin: o.spin, color: o.color, a: o.a ?? 1, follow: o.follow });
+  }
+
+  /** 流线(见 Streak)。 */
+  streak(o: { kind: 'spiral' | 'drop'; x: number; z: number; a0?: number; turns?: number; r0?: number; r1?: number; y0?: number; y1?: number; w0: number; w1?: number;
+    life: number; grow?: number; len?: number; scroll?: number; rep?: number; color: [number, number, number]; a?: number }): void {
+    this.streaks.push({ kind: o.kind, x: o.x, z: o.z, a0: o.a0 ?? 0, turns: o.turns ?? 0, r0: o.r0 ?? 0, r1: o.r1 ?? 0, y0: o.y0 ?? 0, y1: o.y1 ?? 0, w0: o.w0, w1: o.w1 ?? o.w0,
+      age: 0, life: o.life, grow: o.grow ?? o.life * 0.4, len: o.len ?? 0.7, scroll: o.scroll ?? 2.5, rep: o.rep ?? 3, color: o.color, a: o.a ?? 1 });
   }
 
   /** 光柱(见 Pillar)。宽度从 w0 变到 w1。 */
@@ -169,6 +186,7 @@ export class FxWorld {
     this.arcs.length = 0;
     this.bands.length = 0;
     this.pillars.length = 0;
+    this.streaks.length = 0;
   }
 
   update(dt: number, cam: Node): void {
@@ -275,6 +293,7 @@ export class FxWorld {
     this.drawArcs(dt, add2);
     this.drawBands(dt, add2);
     this.drawPillars(dt, add2);
+    this.drawStreaks(dt);
 
     // ── 闪电 ──
     const buv = fxUv(FX_CELL.bolt);
@@ -481,5 +500,72 @@ export class FxWorld {
       m.quad(p.x - hx * w, p.y0, p.z - hz * w, p.x + hx * w, p.y0, p.z + hz * w, p.x + hx * w, p.y0 + h, p.z + hz * w, p.x - hx * w, p.y0 + h, p.z - hz * w,
         uv[0], uv[1], uv[2], uv[3], p.color[0], p.color[1], p.color[2], al);
     }
+  }
+
+  private drawStreaks(dt: number): void {
+    const m = this.flowMesh;
+    m.begin();
+    const SEG = 28;
+    let hx = _rt.x;
+    let hz = _rt.z;
+    const hl = Math.hypot(hx, hz) || 1;
+    hx /= hl;
+    hz /= hl;
+    for (let i = this.streaks.length - 1; i >= 0; i -= 1) {
+      const st = this.streaks[i];
+      st.age += dt;
+      if (st.age >= st.life) {
+        this.streaks.splice(i, 1);
+        continue;
+      }
+      const head = Math.min(1, st.age / Math.max(0.001, st.grow));
+      // 尾巴:头走到底之前保持 len 的长度,之后在剩下的时间里收到头上
+      const after = Math.max(0, st.age - st.grow) / Math.max(0.001, st.life - st.grow);
+      const tail = Math.max(0, head - st.len) + (1 - Math.max(0, head - st.len)) * after * after;
+      if (head - tail < 0.01 || !m.room((SEG + 1) * 2, SEG * 6)) {
+        continue;
+      }
+      const fade = Math.min(1, st.age / 0.05) * (1 - after);
+      const c = st.color;
+      let prev = -1;
+      for (let k = 0; k <= SEG; k += 1) {
+        const s = tail + (head - tail) * (k / SEG);
+        const w = st.w0 + (st.w1 - st.w0) * s;
+        // 带子两头渐隐(头部一小截更亮)
+        const local = (s - tail) / Math.max(0.001, head - tail);
+        const al = st.a * fade * Math.min(1, local * 5) * Math.min(1, (1 - local) * 8 + 0.15);
+        const u = s * st.rep - st.age * st.scroll;
+        let px: number; let py: number; let pz: number; let ox: number; let oy: number; let oz: number;
+        if (st.kind === 'spiral') {
+          const ang = st.a0 + st.turns * s;
+          const r = st.r0 + (st.r1 - st.r0) * s;
+          const ca = Math.cos(ang);
+          const sa = Math.sin(ang);
+          px = st.x + ca * r;
+          pz = st.z + sa * r;
+          py = st.y0 + (st.y1 - st.y0) * s;
+          // 宽度方向:沿半径(平躺);越高越往上翘,远看像卷起来的浪
+          const lift = Math.min(1, Math.abs(st.y1 - st.y0) * 0.6);
+          ox = ca * w * (1 - lift * 0.6);
+          oz = sa * w * (1 - lift * 0.6);
+          oy = w * lift * 0.8;
+        } else {
+          px = st.x;
+          pz = st.z;
+          py = st.y0 * (1 - s);
+          ox = hx * w;
+          oz = hz * w;
+          oy = 0;
+        }
+        const i0 = m.vert(px - ox, py - oy, pz - oz, u, 1, c[0], c[1], c[2], al);
+        m.vert(px + ox, py + oy, pz + oz, u, 0, c[0], c[1], c[2], al);
+        if (prev >= 0) {
+          m.tri(prev, i0, i0 + 1);
+          m.tri(prev, i0 + 1, prev + 1);
+        }
+        prev = i0;
+      }
+    }
+    m.end();
   }
 }
