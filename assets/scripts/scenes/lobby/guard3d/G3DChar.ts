@@ -1,4 +1,4 @@
-import { AnimationClip, instantiate, JsonAsset, Mat4, MeshRenderer, Node, Prefab, resources, SkeletalAnimation, SkinnedMeshRenderer, Vec3 } from 'cc';
+import { AnimationClip, instantiate, JsonAsset, Mat4, MeshRenderer, Node, Prefab, resources, SkeletalAnimation, SkinnedMeshRenderer, Vec3, Vec4 } from 'cc';
 import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastDeath, poseBeastHit, poseBeastIdle, poseBeastWalk, poseBite, poseCast, poseHit, poseShoot, Rig } from './G3DPose';
 
 /**
@@ -11,6 +11,15 @@ import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastDeath, poseBeastHit, p
  * 一个模型读一次(CharTemplate),之后每个实例都从它克隆(同一种怪一群好几只)。
  * 实例的结构:holder(站在脚底的位置上,负责位移 / 转向 / 缩放)→ model(预制体的克隆,挪到「包围盒底面中心 = holder 原点」)。
  */
+
+/**
+ * 角色专属打光(11-22,用户「角色需要做的更精致」):只写进角色材质的 lcRim / lcFill(着色器 g3d-standard-ml,见那里的 lcCharacterLight)。
+ * rim = 轮廓光 [r, g, b](线性,已乘强度)+ 边缘收窄指数;fill = 跟镜头的柔光 [r, g, b] + 朝正面的偏向。
+ * 场景在建角色前按自己的光照改这份(地宫冷月、野外月光、主城白天);单遍多灯没开(&ml=0)时着色器里没有这两项,自动不生效。
+ */
+export const CHAR_LIGHT = { rim: [0.3, 0.36, 0.55, 6.0] as [number, number, number, number], fill: [0.03, 0.03, 0.028, 0.8] as [number, number, number, number], on: true };
+const _rim = new Vec4();
+const _fill = new Vec4();
 
 /** 动作片段的先后(展示模式轮播用;也是「哪个算待机 / 行走」的查找顺序)。 */
 export const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
@@ -273,6 +282,7 @@ export class G3DChar {
         this.mats.push({ mr, index: i });
       }
     }
+    this.applyCharLight();
     if (!tpl.lo || !tpl.hi) {
       // 量包围盒(站姿下的网格最小 / 最大点,换到 holder 自己的坐标里)
       holder.updateWorldTransform();
@@ -424,6 +434,27 @@ export class G3DChar {
     this.node.setScale(this.scale, this.scale, this.scale);
     if (this.beast) {
       this.beast.height *= k;
+    }
+  }
+
+  /** 把 CHAR_LIGHT 写进这个角色的材质(建角色时调一次;现场调参后再调一次生效)。 */
+  applyCharLight(): void {
+    const k = CHAR_LIGHT.on ? 1 : 0;
+    _rim.set(CHAR_LIGHT.rim[0] * k, CHAR_LIGHT.rim[1] * k, CHAR_LIGHT.rim[2] * k, k ? CHAR_LIGHT.rim[3] : 0);
+    _fill.set(CHAR_LIGHT.fill[0] * k, CHAR_LIGHT.fill[1] * k, CHAR_LIGHT.fill[2] * k, CHAR_LIGHT.fill[3]);
+    for (const m of this.mats) {
+      const mi = m.mr.getMaterialInstance(m.index);          // 每个角色自己一份(蒙皮网格本来就不合批)
+      if (!mi) {
+        continue;
+      }
+      this.tinted = true;
+      for (const pass of mi.passes) {
+        const hr = pass.getHandle('lcRim');
+        if (hr) {
+          pass.setUniform(hr, _rim);
+          pass.setUniform(pass.getHandle('lcFill'), _fill);
+        }
+      }
     }
   }
 

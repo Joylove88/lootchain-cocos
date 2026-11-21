@@ -455,17 +455,43 @@ CCProgram standard-fs %{
     vec4 lcLightSRA[8];           // 尺寸、范围、聚光外角余弦、-
     vec4 lcLightDir[8];           // 聚光朝向(xyz)、聚光角度衰减力度(w)
     vec4 lcLightCount;                        // x = 灯数
+    // 11-22 角色专属打光(只有角色材质写这两项,其余材质保持 0 = 不生效):
+    vec4 lcRim;                               // 轮廓光:rgb 颜色 × 强度(线性)、w 边缘收窄指数
+    vec4 lcFill;                              // 跟镜头的柔光:rgb 颜色 × 强度(线性)、w 朝镜头面的偏向(0 = 均匀,1 = 只照正面)
   };
+
+  // 角色专属打光:轮廓光沿视线掠过的边缘亮一圈(侧上方更亮,脚下收住),柔光从镜头方向把脸和衣服托亮一点
+  vec3 lcCharacterLight(in SurfacesMaterialData surfaceData, vec3 worldPos)
+  {
+    vec3 N = normalize(surfaceData.worldNormal);
+    vec3 V = normalize(cc_cameraPos.xyz - worldPos);
+    float nv = clamp(dot(N, V), 0.0, 1.0);
+    vec3 albedo = surfaceData.baseColor.rgb;
+    vec3 add = vec3(0.0);
+    if (lcRim.w > 0.0) {
+      float rim = pow(1.0 - nv, lcRim.w);
+      rim *= clamp(0.55 + 0.6 * N.y, 0.0, 1.0);          // 朝上的边亮、朝下的边暗,像月光从后上方勾出来
+      add += lcRim.rgb * rim * mix(vec3(1.0), albedo * 2.0 + 0.25, 0.35);
+    }
+    if (lcFill.w > 0.0 || dot(lcFill.rgb, lcFill.rgb) > 0.0) {
+      float f = mix(1.0, nv, lcFill.w);
+      add += lcFill.rgb * albedo * f * surfaceData.ao;
+    }
+    return add;
+  }
 
   void SurfacesLightingModifyFinalResult(inout LightingResult result, in LightingIntermediateData lightingData0, in SurfacesMaterialData surfaceData, in LightingMiscData miscData)
   {
   #if !CC_FORWARD_ADD && (CC_PIPELINE_TYPE == CC_PIPELINE_TYPE_FORWARD || CC_FORCE_FORWARD_SHADING)
+    vec3 worldPos;
+    HIGHP_VALUE_FROM_STRUCT_DEFINED(worldPos, surfaceData.worldPos);
+    if (lcRim.w > 0.0 || lcFill.w > 0.0 || dot(lcFill.rgb, lcFill.rgb) > 0.0) {
+      result.emissive += lcCharacterLight(surfaceData, worldPos);
+    }
     int n = int(lcLightCount.x + 0.5);
     if (n <= 0) {
       return;
     }
-    vec3 worldPos;
-    HIGHP_VALUE_FROM_STRUCT_DEFINED(worldPos, surfaceData.worldPos);
     // 以下逐行对照 common-flow.chunk 里 CC_FORWARD_ADD 的 CCSurfacesLighting(只保留标准材质用得到的分支)
     LightingIntermediateData lightingData;
     CCSurfacesInitializeLightingIntermediateData(lightingData, surfaceData);

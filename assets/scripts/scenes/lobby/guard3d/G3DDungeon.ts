@@ -1,10 +1,11 @@
 import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, gfx, ImageAsset, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
-import { charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
+import { CHAR_LIGHT, charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { barkPbr, canvasPbr, endGrainPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
 import { FxWorld } from './G3DFx';
+import { FX2_CELL } from './G3DFxTex';
 import { deviceInfo, GpuTimer } from './G3DGpuTimer';
 import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
 import { addMesh, DynMesh, loadKit, material, tex } from './G3DKit';
@@ -407,7 +408,7 @@ class Dungeon {
    * 正在出的这一招:move = 代码摆的招式(跃空重劈用片段,move 是空的);t = 出到第几秒;done = 每次判定做过没有;
    * yaw0 = 出手时面朝哪;adv = 已经往前挪了多少;hit = 这一招里已经打中过的怪(突进沿路每只只算一次)。
    */
-  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean } | null = null;
+  private act: { kind: string; move: Move | null; dur: number; t: number; done: boolean[]; yaw0: number; adv: number; advR: number; hit: Set<Mob>; fired: boolean; fxOnce?: boolean } | null = null;
   /** 主角有没有动作库转套过来的那批招式(有 = 用片段出招、双手大剑;没有 = 代码摆的招式、单手长剑)。 */
   private gs = false;
   private swordLen = BLADE_LEN;
@@ -3052,6 +3053,17 @@ class Dungeon {
   //    每试一项都重量一次,真变快了(≥ 5%)才保留,没用的立刻退回(Arc 140V 上卡的不是像素,降分辨率只会变糊不会变快)。
   //    结果按显卡 + 场景 + 档位记在本机,下次直接套用;选定后不再让运行中的 autoQuality 盲目往下降。
   //    只在没指定档位(&dq=)、不是测速模式、没关(&autotier=0)时启用;&autotier=reset 清掉记录重测。
+  /** 角色专属打光改了之后重写进所有角色(主角 / 队友 / 怪)。 */
+  refreshCharLight(): void {
+    this.leader?.applyCharLight();
+    for (const f of this.followers) {
+      f.c.applyCharLight();
+    }
+    for (const m of this.mobs) {
+      m.c.applyCharLight();
+    }
+  }
+
   private pipeFixed = false;
   private packHoldUntil = 0;
   private tuneState: 'off' | 'wait' | 'run' | 'done' = 'off';
@@ -4193,9 +4205,21 @@ class Dungeon {
         // 收势:剑尖前面一团很短的闪 + 贴地一圈往外扩的环
         fx.emit({ x: this.lx + fxn * 1.2, y: 1.15, z: this.lz + fzn * 1.2, life: 0.1, s0: 0.5, s1: 1.4, c0: [0.8, 0.78, 1], a: 0.5, cell: FX_CELL.core, fadeIn: 0.01 });
         fx.decal('atlas', FX_CELL.ring, this.lx + fxn * 0.6, this.lz + fzn * 0.6, 0.3, 2.2, 0.32, [0.6, 0.56, 1.0], 0.5, 0.02, 0.05, 0, 0.03);
+        // 11-22 精致化:横扫出去的一道宽弧 + 贴地的尘浪环 + 剑尖前一颗星芒
+        fx.arc({ x: this.lx, y: 0.95, z: this.lz, fx: fxn, fz: fzn, r0: 1.5, r1: 2.6, w: 1.1, span: 3.6, tilt: -0.12, life: 0.3, color: [0.62, 0.55, 1.0], a: 1.1, fadeIn: 0.02 });
+        fx.decal('fx2', FX2_CELL.groundRing, this.lx + fxn * 0.6, this.lz + fzn * 0.6, 0.6, 3.0, 0.45, [0.55, 0.5, 0.95], 0.5, 0.02, 0.08, 0, 0.035);
+        fx.emit({ x: this.lx + fxn * 1.6, y: 1.1, z: this.lz + fzn * 1.6, life: 0.16, s0: 0.5, s1: 1.5, c0: [1, 1, 1], c1: [0.6, 0.55, 1], a: 0.8, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
         this.shake = Math.max(this.shake, 0.06);
       }
     } else if (act.kind === 'whirl') {
+      if (!act.fxOnce && u > fxA) {
+        act.fxOnce = true;
+        const life = Math.max(0.3, (fxB - fxA) * act.dur);
+        const follow = (): [number, number] => [this.lx, this.lz];
+        fx.band({ x: this.lx, y: 0.1, z: this.lz, r0: 1.5, r1: 2.1, h: 1.7, life, spin: 13, color: [0.55, 0.72, 1.0], a: 0.42, follow });
+        fx.band({ x: this.lx, y: 0.35, z: this.lz, r0: 2.2, r1: 2.6, h: 0.9, life: life * 0.9, spin: -9, color: [0.5, 0.62, 1.0], a: 0.26, follow });
+        fx.decal('fx2', FX2_CELL.groundRing, this.lx, this.lz, 0.8, 3.2, 0.6, [0.5, 0.62, 0.95], 0.45, 0.03, 0.1, 0, 0.035);
+      }
       if (dt > 0 && u > fxA && u < fxB) {
         // 旋风:身边往上卷的细丝 + 贴地往外带的尘
         for (let i = 0; i < 2; i += 1) {
@@ -4215,6 +4239,10 @@ class Dungeon {
         act.fired = true;
         sfx.play('wave');
         this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set() });
+        // 11-22 精致化:一道和剑气同速往前飞的宽月牙(前沿锐利、后面拖一层带细丝的雾)+ 出手处一颗星芒
+        fx.arc({ x: this.lx + fxn * 0.2, y: 1.1, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 1.0, r1: 1.6, w: 1.2, span: 2.5, tilt: 0.1, life: 0.62, color: [0.66, 0.58, 1.0], a: 1.25, fadeIn: 0.03 });
+        fx.arc({ x: this.lx + fxn * 0.2, y: 1.1, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 0.8, r1: 1.3, w: 0.5, span: 2.1, tilt: 0.1, life: 0.55, color: [0.95, 0.95, 1.0], a: 0.9, fadeIn: 0.03 });
+        fx.emit({ x: this.lx + fxn * 1.2, y: 1.15, z: this.lz + fzn * 1.2, life: 0.14, s0: 0.4, s1: 1.3, c0: [1, 1, 1], c1: [0.66, 0.58, 1], a: 0.75, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
         this.shake = Math.max(this.shake, 0.07);
       }
     } else if (act.kind === 'smash' && m) {
@@ -4499,6 +4527,18 @@ class Dungeon {
     }
     // 接触点一下很短的白闪(小,不糊成一团)
     fx.emit({ x: px, y: py, z: pz, life: 0.07, s0: heavy ? 0.26 : 0.18, s1: heavy ? 0.52 : 0.34, c0: [1, 1, 1], a: 0.4, cell: FX_CELL.star, rot: fx.rand(0, 3), fadeIn: 0.01 });
+    // 11-22 精致化:星芒(带两道横向光芒)、顺着刀走的一道弯刀痕、一圈很快散开的小冲击环
+    fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.16 : 0.11, s0: heavy ? 0.4 : 0.28, s1: heavy ? 1.3 : 0.85, c0: [1, 1, 1], c1: color, a: heavy ? 0.85 : 0.65, cell: FX2_CELL.flare, t2: true, rot: fx.rand(-0.3, 0.3), fadeIn: 0.01 });
+    fx.emit({ x: px + ux * 0.05, y: py + uy * 0.05, z: pz + uz * 0.05, vx: ux * 0.02, vy: uy * 0.02, vz: uz * 0.02, life: heavy ? 0.2 : 0.14, s0: heavy ? 0.75 : 0.55, s1: heavy ? 0.95 : 0.7,
+      c0: [1, 1, 1], c1: color, a: 0.95, cell: FX2_CELL.slash, t2: true, stretch: 0.01, fadeIn: 0.01 });
+    fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.26 : 0.18, s0: 0.15, s1: heavy ? 1.6 : 1.0, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.55 : 0.4, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    if (heavy) {
+      for (let i = 0; i < 6; i += 1) {
+        const sp = fx.rand(6, 12);
+        fx.emit({ x: px, y: py, z: pz, vx: ux * sp + fx.rand(-3, 3), vy: uy * sp + fx.rand(0, 3), vz: uz * sp + fx.rand(-3, 3), life: fx.rand(0.15, 0.3), s0: 0.05, s1: 0.015,
+          c0: [1, 1, 1], c1: color, cell: FX2_CELL.spark, t2: true, drag: 2, stretch: 3 });
+      }
+    }
     if (heavy) {
       for (let i = 0; i < 4; i += 1) {
         fx.emit({ x: px + fx.rand(-0.2, 0.2), y: fx.rand(0.1, 0.5), z: pz + fx.rand(-0.2, 0.2), vx: nx * fx.rand(0.5, 2) + fx.rand(-0.6, 0.6), vy: fx.rand(0.3, 1), vz: nz * fx.rand(0.5, 2) + fx.rand(-0.6, 0.6),
@@ -4576,6 +4616,24 @@ class Dungeon {
       fx.emit({ x: x + Math.cos(a) * 0.8, y: 0.2, z: z + Math.sin(a) * 0.8, vx: Math.cos(a) * fx.rand(2.5, 4.5), vy: fx.rand(0.3, 1.1), vz: Math.sin(a) * fx.rand(2.5, 4.5), life: fx.rand(0.8, 1.5), s0: 0.4, s1: 1.4,
         c0: [0.3, 0.31, 0.36], a: 0.2, cell: i % 2 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: fx.rand(0, 6), spin: fx.rand(-0.5, 0.5), drag: 1.6 });
     }
+    // 11-22 精致化(用户「技能特效太简单」):
+    // 光柱只要紫色一道、细而淡(主角就站在落点后面一米,太亮会把人照白)
+    fx.pillar({ x, z, h: 5.5, w0: 0.22, w1: 0.55, life: 0.4, color: [0.62, 0.56, 1.0], a: 0.45 });
+    fx.emit({ x, y: 0.35, z, life: 0.16, s0: 0.7, s1: 1.7, c0: [1, 1, 1], c1: color, a: 0.55, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
+    fx.decal('fx2', FX2_CELL.groundRing, x, z, 0.8, 4.2, 0.65, [0.6, 0.55, 1.0], 0.42, 0.02, 0.1, 0, 0.036);
+    fx.decal('fx2', FX2_CELL.glow, x, z, 2.2, 2.6, 1.1, [0.45, 0.38, 0.95], 0.32, 0.02, 0.25, 0, 0.034);
+    for (let i = 0; i < 16; i += 1) {
+      const a = (i / 16) * Math.PI * 2 + fx.rand(-0.15, 0.15);
+      const sp = fx.rand(2.2, 4.2);
+      fx.emit({ x: x + Math.cos(a) * 0.9, y: fx.rand(0.25, 0.6), z: z + Math.sin(a) * 0.9, vx: Math.cos(a) * sp, vy: fx.rand(0.4, 1.4), vz: Math.sin(a) * sp, life: fx.rand(1.3, 2.2), s0: 0.6, s1: fx.rand(1.8, 2.6),
+        c0: [0.46, 0.44, 0.48], c1: [0.32, 0.31, 0.35], a: 0.32, cell: FX2_CELL.dust, t2: true, add: false, rot: fx.rand(0, 6), spin: fx.rand(-0.6, 0.6), drag: 2.0, fadeIn: 0.05 });
+    }
+    for (let i = 0; i < 16; i += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const sp = fx.rand(2, 5.5);
+      fx.emit({ x: x + Math.cos(a) * 0.5, y: 0.15, z: z + Math.sin(a) * 0.5, vx: Math.cos(a) * sp, vy: fx.rand(3, 6.5), vz: Math.sin(a) * sp, life: fx.rand(0.8, 1.4), s0: fx.rand(0.05, 0.12), s1: fx.rand(0.04, 0.1),
+        c0: [0.24, 0.23, 0.25], a: 1, cell: FX2_CELL.debris, t2: true, add: false, grav: 1, drag: 0.4, rot: fx.rand(0, 6), spin: fx.rand(-12, 12), fadeIn: 0.01 });
+    }
     this.hitStop = Math.max(this.hitStop, any ? 0.12 : 0.05);
     this.shake = Math.max(this.shake, 0.3);
     this.flash(x, 1.0, z, 3.2, 0.4);
@@ -4610,6 +4668,8 @@ class Dungeon {
         }
       }
       if (w.age >= w.life || out) {
+        fx.emit({ x: w.x, y: 1.15, z: w.z, life: 0.25, s0: 0.3, s1: 2.2, c0: [0.85, 0.82, 1], c1: color, a: 0.55, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+        fx.emit({ x: w.x, y: 1.15, z: w.z, life: 0.12, s0: 0.4, s1: 1.1, c0: [1, 1, 1], c1: color, a: 0.6, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
         // 散开:一小撮火星
         for (let k = 0; k < 16; k += 1) {
           fx.emit({ x: w.x, y: fx.rand(0.5, 1.9), z: w.z, vx: w.dx * fx.rand(1, 5) + fx.rand(-2.5, 2.5), vy: fx.rand(-1, 3), vz: w.dz * fx.rand(1, 5) + fx.rand(-2.5, 2.5), life: fx.rand(0.2, 0.45), s0: 0.016, s1: 0.004,
@@ -5051,6 +5111,7 @@ if (!EDITOR && sys.isBrowser) {
     audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
     bld: (key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number; sx?: number; sy?: number; wf?: number } = {}) => dungeon.tuneBld(key, o),
+    charLight: (o: Partial<typeof CHAR_LIGHT>) => { Object.assign(CHAR_LIGHT, o); dungeon.refreshCharLight(); return CHAR_LIGHT; },
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1' || param('g3dwild') === '1' || param('g3dcity') === '1') {
     boot();

@@ -472,10 +472,10 @@ export function paintTrail(W = 256, H = 64): HTMLCanvasElement {
     const v = 1 - (y + 0.5) / H;            // 0 剑根 → 1 剑尖
     for (let x = 0; x < W; x += 1) {
       const u = (x + 0.5) / W;              // 0 新 → 1 旧
-      const core = Math.exp(-(((v - 0.9) / 0.035) ** 2));                         // 剑尖内侧的一条亮线
+      const core = Math.exp(-(((v - 0.9) / 0.045) ** 2));                         // 剑尖内侧的一条亮线(11-22 加宽)
       const body = Math.max(0, Math.min(1, (v - 0.12) / 0.75)) ** 1.6 * (v < 0.97 ? 1 : Math.max(0, (1 - v) / 0.03));
       const streak = 0.55 + 0.9 * Math.max(0, pfbm(u * 0.6, v, 3, 28, 3, 71) - 0.42);
-      const a = (core * 0.95 + body * 0.42 * streak) * (1 - u) ** 1.25;
+      const a = (core + body * 0.62 * streak) * (1 - u) ** 1.1;          // 11-22 精致化:身子更实、拖得更长
       const p = (y * W + x) * 4;
       img.data[p] = 255;
       img.data[p + 1] = 255;
@@ -496,14 +496,14 @@ interface Sample { bx: number; by: number; bz: number; tx: number; ty: number; t
 export class BladeTrail {
   readonly mesh: DynMesh;
   readonly mat: Material;
-  life = 0.2;
+  life = 0.27;
   private samples: Sample[] = [];
   private last: { b: Vec3; t: Vec3 } | null = null;
 
   constructor(parent: Node, bounds: { min: [number, number, number]; max: [number, number, number] }, texture?: Texture2D) {
     this.mat = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, 2);
     this.mat.setProperty('mainTexture', texture ?? tex(paintTrail(), false, 2));
-    this.mat.setProperty('colorScale', new Vec3(2.4, 2.4, 2.4));
+    this.mat.setProperty('colorScale', new Vec3(3.4, 3.4, 3.4));
     this.mesh = new DynMesh(parent, 'DgBladeTrail', this.mat, 4 * 260, 6 * 260, false, false, bounds);
   }
 
