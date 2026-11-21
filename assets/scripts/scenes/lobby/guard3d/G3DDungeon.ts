@@ -453,6 +453,9 @@ class Dungeon {
   private dim = 0;
   private dimTo = 0;
   private flashT = 0;
+  /** 大招时主角身上的气场(轮廓光加强):当前 / 目标强度 0~1。 */
+  private heroAura = 0;
+  private heroAuraTo = 0;
   private readonly shockS = new Vec3();
   private shake = 0;
   private lastDt = 0;
@@ -4618,6 +4621,14 @@ class Dungeon {
     const hy = this.leaderY + this.floorY(this.lx, this.lz);
     if (!act.fxLeap) {
       act.fxLeap = true;
+      this.heroAuraTo = 1;
+      this.flash(this.lx, hy + 1.2, this.lz, 0.9, 0.55, [170, 205, 255]);
+      fx.decal('fx2', FX2_CELL.groundRing, this.lx, this.lz, 0.4, 2.4, 0.5, [0.7, 0.85, 1.0], 0.35, 0.02, 0.06, 0, 0.035);
+      for (let k = 0; k < 8; k += 1) {
+        const a = (k / 8) * Math.PI * 2 + fx.rand(-0.2, 0.2);
+        fx.emit({ x: this.lx + Math.cos(a) * 0.4, y: hy + 0.15, z: this.lz + Math.sin(a) * 0.4, vx: Math.cos(a) * fx.rand(2.5, 4), vy: fx.rand(0.2, 0.6), vz: Math.sin(a) * fx.rand(2.5, 4),
+          life: fx.rand(0.6, 0.9), s0: 0.3, s1: 0.9, c0: [0.62, 0.64, 0.7], a: 0.22, cell: FX2_CELL.dust, t2: true, add: false, rot: fx.rand(0, 6), drag: 3, fadeIn: 0.05 });
+      }
       // 缠身气旋:三条绕身体螺旋往上窜的气流线(原来用圆柱风带,侧面看轮廓是个长方形,像罩了个发光箱子)
       for (let k = 0; k < 3; k += 1) {
         fx.streak({ kind: 'spiral', x: this.lx, z: this.lz, a0: (k / 3) * Math.PI * 2, turns: Math.PI * 2.4, r0: 0.95, r1: 0.55, y0: hy + 0.05, y1: hy + 2.6,
@@ -4725,6 +4736,7 @@ class Dungeon {
     this.ultMist(x, z);
     this.ultInk(x, z);
     this.timers.push({ at: this.time + 0.32, run: () => this.flash(x, 1.4, z, 1.5, 1.5, [150, 196, 255]) });
+    this.timers.push({ at: this.time + 0.7, run: () => { this.heroAuraTo = 0; } });
     this.beginGrade();
     this.flashT = 0.2;
     this.timers.push({ at: this.time + 0.12, run: () => { this.dimTo = 0; } });
@@ -4869,6 +4881,18 @@ class Dungeon {
         this.radialPeak = 0;
       }
       this.post?.set({ radial: +r.toFixed(4), chroma: +(r * 0.015).toFixed(5), radialC: [0.5, 0.55] });
+    }
+    // 主角气场:轮廓光从全局值加强到冰蓝色的宽光边,收掉后还原
+    if ((this.heroAura > 0.001 || this.heroAuraTo > 0) && this.leader) {
+      this.heroAura += (this.heroAuraTo - this.heroAura) * (1 - Math.exp(-rdt * (this.heroAuraTo > this.heroAura ? 7 : 3)));
+      if (this.heroAuraTo === 0 && this.heroAura < 0.01) {
+        this.heroAura = 0;
+        this.leader.applyCharLight();
+      } else {
+        const r = CHAR_LIGHT.rim;
+        const k = this.heroAura;
+        this.leader.setRim(r[0] + 0.9 * k, r[1] + 1.25 * k, r[2] + 2.1 * k, r[3] + (2.6 - r[3]) * k);
+      }
     }
     // 大招调色:压暗 / 降饱和(慢镜里)+ 落地白闪,结束后还原
     if (this.gradeBase && this.post) {

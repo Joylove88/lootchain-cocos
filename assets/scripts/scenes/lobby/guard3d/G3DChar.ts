@@ -458,6 +458,23 @@ export class G3DChar {
     }
   }
 
+  /** 只改这个角色的轮廓光(大招时主角身上的气场);applyCharLight() 还原成全局的 CHAR_LIGHT。 */
+  setRim(r: number, g: number, b: number, pow: number): void {
+    _rim.set(r, g, b, pow);
+    for (const m of this.mats) {
+      const mi = m.mr.getMaterialInstance(m.index);
+      if (!mi) {
+        continue;
+      }
+      for (const pass of mi.passes) {
+        const h = pass.getHandle('lcRim');
+        if (h) {
+          pass.setUniform(h, _rim);
+        }
+      }
+    }
+  }
+
   /** 整体染色(受击闪一下 / 冰冻发蓝):乘在颜色贴图上,不发光。 */
   setTint(r: number, g: number, b: number): void {
     if (Math.abs(this.tint.x - r) + Math.abs(this.tint.y - g) + Math.abs(this.tint.z - b) < 0.004) {
