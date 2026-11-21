@@ -31,6 +31,9 @@ interface TodDef {
   duskEdge: number;
   /** 白天四周压暗(11-22 向守卫战看齐:中间亮、四周暗,地面才有光感)。 */
   dayEdge: number;
+  /** 队伍斜长影子的长度 / 浓度(11-22 目标画面:荒原午后长影)。 */
+  shadowLen?: number;
+  shadowAlpha?: number;
 }
 
 const TOD_DEFS: Record<string, TodDef> = {
@@ -38,22 +41,22 @@ const TOD_DEFS: Record<string, TodDef> = {
   VILLAGE: {
     day: { wash: [0.30, 0.31, 0.36, 0.2], mul: [1.0, 0.95, 0.88] },
     dusk: { wash: [0.10, 0.14, 0.34, 0.12], mul: [0.46, 0.46, 0.74] },
-    sun: 0.55, duskEdge: 0.58, dayEdge: 0.78,
+    sun: 0.55, duskEdge: 0.58, dayEdge: 0.78, shadowLen: 210,
   },
   WOODS: {
     day: { wash: [0.18, 0.24, 0.26, 0.06], mul: [0.96, 0.92, 0.82] },
     dusk: { wash: [0.10, 0.16, 0.28, 0.16], mul: [0.48, 0.52, 0.66] },
-    sun: 0.32, duskEdge: 0.6, dayEdge: 0.72,
+    sun: 0.5, duskEdge: 0.6, dayEdge: 0.72, shadowLen: 230,
   },
   GRAY: {
     day: { wash: [0.24, 0.26, 0.30, 0.06], mul: [0.96, 0.91, 0.82] },
     dusk: { wash: [0.14, 0.16, 0.30, 0.16], mul: [0.52, 0.50, 0.64] },
-    sun: 0.26, duskEdge: 0.6, dayEdge: 0.72,
+    sun: 0.3, duskEdge: 0.6, dayEdge: 0.72, shadowLen: 340, shadowAlpha: 178,
   },
   DEADWOOD: {
     day: { wash: [0.18, 0.22, 0.24, 0.06], mul: [0.94, 0.94, 0.90] },
     dusk: { wash: [0.08, 0.14, 0.22, 0.16], mul: [0.46, 0.52, 0.60] },
-    sun: 0.16, duskEdge: 0.58, dayEdge: 0.72,
+    sun: 0.16, duskEdge: 0.58, dayEdge: 0.72, shadowLen: 230,
   },
 };
 
@@ -524,23 +527,27 @@ export class FieldTod {
     if (!root.active) {
       return;
     }
+    const len = this.def?.shadowLen ?? 200;
     while (this.shadows.length < actors.length) {
       const node = new Node('S');
       node.layer = root.layer;
-      node.addComponent(UITransform).setContentSize(new Size(200, 52));
+      node.addComponent(UITransform).setContentSize(new Size(len, 54));
       const s = node.addComponent(Sprite);
       s.sizeMode = Sprite.SizeMode.CUSTOM;
       s.spriteFrame = glowTex();
-      s.color = new Color(12, 18, 30, 150);
+      s.color = new Color(12, 18, 30, this.def?.shadowAlpha ?? 150);
       node.angle = -28;
       root.addChild(node);
       this.shadows.push(node);
     }
+    // 影子从脚下往右下拉长(光从左上来):中心离脚 0.36 个影长
+    const ox = len * 0.36 * Math.cos((28 * Math.PI) / 180);
+    const oy = -len * 0.36 * Math.sin((28 * Math.PI) / 180);
     this.shadows.forEach((node, i) => {
       const a = actors[i];
       node.active = !!a;
       if (a) {
-        node.setPosition(a.x + 70, a.y - 30, 0);
+        node.setPosition(a.x + ox, a.y + oy, 0);
       }
     });
   }

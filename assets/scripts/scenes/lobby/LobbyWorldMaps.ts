@@ -1016,6 +1016,15 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),
     // 11-20 野外画质:枯木林鬼火用的柔光点(LobbyFieldLook)
     ...(code === 'DEADWOOD' ? [worldAsset('fx/mote')] : []),
+    // 11-22 野外沉浸感(LobbyFieldLife + 每张图的飘叶 / 云影 / 浮尘参数):斑驳光 / 炊烟 / 风沙 / 蝴蝶 / 鸟影 / 近景枝叶
+    ...(code === 'VILLAGE' || code === 'WOODS'
+      ? [worldAsset('fx/life_dapple'), worldAsset('fx/life_bird'), worldAsset('fx/mote'), ...[0, 1, 2].map((i) => worldAsset(`fx/life_fly_${i}`))] : []),
+    ...(code === 'WOODS' ? [0, 1, 2].map((i) => worldAsset(`fx/life_leaf_${i}`)) : []),
+    ...(code === 'GRAY' ? [worldAsset('fx/life_dust'), worldAsset('fx/life_bird')] : []),
+    ...(code === 'DEADWOOD' ? [worldAsset('fx/life_bird')] : []),
+    ...(code === 'WOODS' || code === 'GRAY' || code === 'DEADWOOD' ? [worldAsset('fx/life_smoke')] : []),
+    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'DEADWOOD'
+      ? [worldAsset('fx/cloud_shadow'), ...[0, 1, 2].map((i) => worldAsset(`fx/leaf_${i}`))] : []),
     // 整图场景:遮挡层 / 柔光点 / 站着的人(11-11)
     ...(def.scene ? [...def.scene.tiles.masks, def.scene.dot, ...def.scene.idlers.map((n) => n.asset)] : []),
     ...(def.minimapArt ? [def.minimapArt] : []),

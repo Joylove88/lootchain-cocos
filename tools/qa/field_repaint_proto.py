@@ -61,7 +61,7 @@ def main():
     Image.open(os.path.join(BG, REF[code])).convert('RGB').resize((1672, 941)).save(ref)
     raw = os.path.join(OUT, f'{code}_repaint_raw.png')
     if not os.path.exists(raw):
-        if not run_codex([src, ref], PROMPT, raw, f'repaint {code}'):
+        if not run_codex([src, ref], PROMPT, raw, f'repaint {code}', size=None):
             return
     w, h = BOX[2] - BOX[0], BOX[3] - BOX[1]
     bg = np.asarray(Image.open(raw).convert('RGB').resize((w, h), Image.LANCZOS), dtype=np.float32) / 255

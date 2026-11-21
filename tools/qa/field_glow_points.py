@@ -104,7 +104,38 @@ def main():
         f.write('// 整图重绘里画死的光源(世界坐标):[x, y, 种类, 亮度, 颜色?]。\n')
         f.write('export const MAP_LIGHTS: Record<string, Array<Array<number | string | number[]>>> = '
                 + json.dumps(map_lights(), ensure_ascii=False, separators=(',', ':')) + ';\n')
-    print('wrote', OUT_TS, len(data), {k: len(v) for k, v in MAP_LIGHTS.items()})
+        water = map_water()
+        f.write('// 水声用的水面采样点(世界坐标,约每 220 见方一个):[x, y]。\n')
+        f.write('export const MAP_WATER: Record<string, number[][]> = ' + json.dumps(water, separators=(',', ':')) + ';\n')
+    print('wrote', OUT_TS, len(data), {k: len(v) for k, v in MAP_LIGHTS.items()}, 'water', {k: len(v) for k, v in water.items()})
+
+
+def map_water(step=220):
+    """水声用的水面采样点(世界坐标):读重绘图的水流遮罩(R = 水面),每 step 见方有水就取一个点(该格水面像素的质心)。"""
+    import numpy as np
+    src = open(os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyFieldPaintData.ts'), encoding='utf-8').read()
+    paint = json.loads(src.split('FIELD_PAINT: Record<string, FieldPaintDef> = ', 1)[1].rsplit(';', 1)[0])
+    out = {}
+    for code, d in paint.items():
+        fp = os.path.join(RES, d['dir'], 'flow.png')
+        if not d.get('flow') or not os.path.exists(fp):
+            continue
+        a = np.asarray(Image.open(fp).convert('RGB'))[..., 0] > 128
+        fh, fw = a.shape
+        upx = d['mapW'] / fw          # 遮罩一像素 = 多少世界单位
+        cell = max(1, int(round(step / upx)))
+        pts = []
+        for y0 in range(0, fh, cell):
+            for x0 in range(0, fw, cell):
+                blk = a[y0:y0 + cell, x0:x0 + cell]
+                if blk.sum() < 3:
+                    continue
+                ys, xs = np.nonzero(blk)
+                cx = (x0 + xs.mean() + 0.5) * upx - d['mapW'] / 2
+                cy = d['mapH'] / 2 - (y0 + ys.mean() + 0.5) * upx
+                pts.append([round(float(cx)), round(float(cy))])
+        out[code] = pts
+    return out
 
 
 if __name__ == '__main__':

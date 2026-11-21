@@ -25,6 +25,25 @@ const FG_SIZE = 620;
 const FG_STEP_X = 2200;
 const FG_STEP_Y = 1200;
 
+/**
+ * 各元素的开关 / 数量(11-22 野外沉浸感:每张野外图各配一套,见 LobbyFieldLife 的 ambient;主城仍用 depth = true 那套)。
+ * localClouds = 镜头附近循环飘的云影块数;mapClouds = 旧版散在整张图上的云影块数。
+ */
+export interface AmbientOpts {
+  leaves: number;
+  leafTint?: [number, number, number];
+  localClouds: number;
+  mapClouds?: number;
+  cloudOpacity?: number;
+  cloudScale?: number;
+  motes: number;
+  moteTint?: [number, number, number];
+  canopy: boolean;
+}
+
+const DEPTH_OPTS: AmbientOpts = { leaves: LEAF_COUNT, localClouds: DEPTH_CLOUD_COUNT, cloudOpacity: 58, motes: MOTE_COUNT, canopy: true };
+const PLAIN_OPTS: AmbientOpts = { leaves: LEAF_COUNT, localClouds: 0, mapClouds: CLOUD_COUNT, motes: 0, canopy: false };
+
 interface Mote {
   node: Node;
   opacity: UIOpacity;
@@ -72,25 +91,30 @@ export class TownAmbient {
   private depth = false;
   private seed = 1;
 
-  /** 挂到世界层最上面(实体层之后);mapW / mapH 用来放云影。 */
-  mount(world: Node, mapW: number, mapH: number, camX: number, camY: number, viewW: number, viewH: number, depth = false): void {
+  /** 挂到世界层最上面(实体层之后);mapW / mapH 用来放云影。opts = true 是主城那套加强层,false 是旧版飘叶 + 云影。 */
+  mount(world: Node, mapW: number, mapH: number, camX: number, camY: number, viewW: number, viewH: number, opts: boolean | AmbientOpts = false): void {
     this.destroy();
+    const o = typeof opts === 'boolean' ? (opts ? DEPTH_OPTS : PLAIN_OPTS) : opts;
     const root = new Node('Ambient');
     root.layer = world.layer;
     root.addComponent(UITransform);
     world.addChild(root);
     this.root = root;
-    this.depth = depth;
-    if (depth) {
-      this.mountDepth(root, mapW, mapH, camX, camY, viewW, viewH);
+    this.depth = o.localClouds > 0 || o.motes > 0 || o.canopy;
+    if (this.depth) {
+      this.mountDepth(root, mapW, mapH, camX, camY, viewW, viewH, o);
     }
-    for (let i = 0; i < (depth ? 0 : CLOUD_COUNT); i += 1) {
+    for (let i = 0; i < (o.mapClouds ?? 0); i += 1) {
       const node = this.spriteNode(root, CLOUD_ASSET, 1700 + i * 300, 1100 + i * 160);
       node.getComponent(UIOpacity)!.opacity = 34;
       this.clouds.push({ node, x: -mapW / 2 + (i + 0.5) * (mapW / CLOUD_COUNT), y: (this.rand() - 0.5) * mapH * 0.7, vx: 14 + this.rand() * 10 });
     }
-    for (let i = 0; i < LEAF_COUNT; i += 1) {
-      const node = this.spriteNode(root, LEAF_ASSETS[i % LEAF_ASSETS.length], 26, 26);
+    for (let i = 0; i < o.leaves; i += 1) {
+      // 同一张叶片贴图的节点挨着建(相邻同贴图才能合批,原来三张轮换 = 每片叶子一次绘制)
+      const node = this.spriteNode(root, LEAF_ASSETS[Math.min(LEAF_ASSETS.length - 1, Math.floor((i * LEAF_ASSETS.length) / o.leaves))], 26, 26);
+      if (o.leafTint) {
+        node.getComponent(Sprite)!.color = new Color(o.leafTint[0], o.leafTint[1], o.leafTint[2], 255);
+      }
       const leaf: Leaf = { node, opacity: node.getComponent(UIOpacity)!, x: 0, y: 0, vx: 0, vy: 0, spin: 0, flip: 0, life: 1, age: 0 };
       this.respawnLeaf(leaf, camX, camY, viewW, viewH, true);
       this.leaves.push(leaf);
@@ -108,26 +132,27 @@ export class TownAmbient {
     this.canopies = [];
   }
 
-  private mountDepth(root: Node, mapW: number, mapH: number, camX: number, camY: number, viewW: number, viewH: number): void {
+  private mountDepth(root: Node, mapW: number, mapH: number, camX: number, camY: number, viewW: number, viewH: number, o: AmbientOpts): void {
     // 云影:镜头附近循环飘(出了视野右边就从左边重新进来)
-    for (let i = 0; i < DEPTH_CLOUD_COUNT; i += 1) {
-      const w = 1700 + this.rand() * 900;
+    for (let i = 0; i < o.localClouds; i += 1) {
+      const w = (1700 + this.rand() * 900) * (o.cloudScale ?? 1);
       const node = this.spriteNode(root, CLOUD_ASSET, w, w * (0.55 + this.rand() * 0.2));
-      node.getComponent(UIOpacity)!.opacity = 58;
+      node.getComponent(UIOpacity)!.opacity = o.cloudOpacity ?? 58;
       node.angle = (this.rand() - 0.5) * 30;
       this.clouds.push({ node, x: camX + (this.rand() - 0.5) * (viewW + w), y: camY + (this.rand() - 0.5) * viewH, vx: 18 + this.rand() * 14 });
     }
     // 浮尘光点
-    for (let i = 0; i < MOTE_COUNT; i += 1) {
+    const mt = o.moteTint ?? [255, 232, 186];
+    for (let i = 0; i < o.motes; i += 1) {
       const size = 12 + this.rand() * 22;
       const node = this.spriteNode(root, MOTE_ASSET, size, size);
-      node.getComponent(Sprite)!.color = new Color(255, 232, 186, 255);
+      node.getComponent(Sprite)!.color = new Color(mt[0], mt[1], mt[2], 255);
       const mote: Mote = { node, opacity: node.getComponent(UIOpacity)!, x: 0, y: 0, vx: 0, vy: 0, phase: 0, peak: 0 };
       this.respawnMote(mote, camX, camY, viewW, viewH, true);
       this.motes.push(mote);
     }
     // 近景树冠:按网格撒点 + 抖动(固定种子,每次进图位置一样)
-    for (let gx = -mapW / 2 + FG_STEP_X / 2; gx < mapW / 2; gx += FG_STEP_X) {
+    for (let gx = -mapW / 2 + FG_STEP_X / 2; o.canopy && gx < mapW / 2; gx += FG_STEP_X) {
       for (let gy = -mapH / 2 + FG_STEP_Y / 2; gy < mapH / 2; gy += FG_STEP_Y) {
         const node = this.spriteNode(root, FG_ASSET, FG_SIZE, FG_SIZE * 1.02);
         node.setScale(this.rand() < 0.5 ? -1 : 1, 1, 1);
@@ -193,7 +218,12 @@ export class TownAmbient {
     if (!this.root || !this.root.isValid) {
       return;
     }
-    this.root.setSiblingIndex(this.root.parent!.children.length - 1);
+    // 保持在实体层之上:已经是最后一个(或只被野外沉浸层 LifeHigh 压着)就不动,免得每帧重排
+    const kids = this.root.parent!.children;
+    const n = kids.length;
+    if (kids[n - 1] !== this.root && !(kids[n - 2] === this.root && kids[n - 1].name === 'LifeHigh')) {
+      this.root.setSiblingIndex(n - 1);
+    }
     const t = Date.now() / 1000;
     if (this.depth) {
       this.stepDepth(dt, t, camX, camY, viewW, viewH);

@@ -83,7 +83,10 @@ def match_mean(img: Image.Image, ref: Image.Image) -> Image.Image:
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
-def run_codex(inputs, prompt, dst, tag, match=None):
+def run_codex(inputs, prompt, dst, tag, match=None, size=(1024, 1024)):
+    """生图一张存到 dst(同时存 _raw)。size = 统一缩放到的尺寸;None = 保留生图原尺寸。
+    11-22 教训:野外整图重绘(field_repaint)原来也走了默认 1024×1024,生图原本就是 1672×941,
+    先压成方图再拉回去,横向细节丢了约四成 → 整图发糊。重绘类调用一律传 size=None。"""
     while other_codex_exec() > 0:
         time.sleep(10)
     before = set(os.listdir(GEN)) if os.path.isdir(GEN) else set()
@@ -102,7 +105,9 @@ def run_codex(inputs, prompt, dst, tag, match=None):
     if not imgs:
         print('FAIL', tag, r.returncode, text[-400:], flush=True)
         return False
-    img = Image.open(max(imgs, key=os.path.getmtime)).convert('RGB').resize((1024, 1024), Image.LANCZOS)
+    img = Image.open(max(imgs, key=os.path.getmtime)).convert('RGB')
+    if size:
+        img = img.resize(size, Image.LANCZOS)
     img.save(dst.replace('.png', '_raw.png'))
     if match:
         img = match_mean(img, Image.open(match).convert('RGB'))

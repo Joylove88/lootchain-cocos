@@ -1,0 +1,87 @@
+// 树冠斑驳光(2026-11-22 用户看完「目标画面」:「开始做」——林地:阳光透过树冠在草地 / 小路上落下斑驳光影)。
+// 一块跟着镜头的全屏面片,按地图坐标(mapOrigin 换算,同 world-wind)采样两层错开慢慢飘的光斑贴图(树冠被风吹着轻轻晃),
+// 乘上「树冠密度图」(运行时按地图上树的位置生成:树下浓、空地淡);
+// 混合 = 2 倍正片叠底(输出 0.5 = 不变,< 0.5 压暗成偏冷的叶影,> 0.5 提亮成暖色光斑),人物走到树下也会被叶影扫过。
+// dappleParams = (叶影深度, 光斑亮度, 空地上的保底强度, 光斑贴图一格的世界尺寸)
+// maskRect = (地图宽, 地图高, 0, 0)
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: dapple-vs:vert
+      frag: dapple-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: dst_color
+          blendDst: src_color
+          blendSrcAlpha: zero
+          blendDstAlpha: one
+      rasterizerState:
+        cullMode: none
+      properties:
+        dappleTex: { value: white }
+        maskTex: { value: white }
+        mapOrigin: { value: [0.0, 0.0, 1.0, 0.0] }
+        dappleParams: { value: [0.4, 0.3, 0.2, 560.0] }
+        maskRect: { value: [10000.0, 10000.0, 0.0, 0.0] }
+}%
+
+CCProgram dapple-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec2 mapPos;
+  out float alpha;
+
+  uniform DappleVert {
+    vec4 mapOrigin;
+  };
+
+  vec4 vert () {
+    mapPos = (a_position.xy - mapOrigin.xy) * mapOrigin.z;
+    alpha = a_color.a;
+    return cc_matViewProj * vec4(a_position, 1);
+  }
+}%
+
+CCProgram dapple-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec2 mapPos;
+  in float alpha;
+
+  uniform sampler2D dappleTex;
+  uniform sampler2D maskTex;
+
+  uniform DappleFrag {
+    vec4 dappleParams;
+    vec4 maskRect;
+  };
+
+  vec4 frag () {
+    float t = cc_time.x;
+    float s = dappleParams.w;
+    // 两层光斑:尺度不同、各自缓慢漂移 + 轻微摇晃(风吹树冠),叠出不重复的叶隙
+    vec2 a = mapPos / s + vec2(t * 0.006 + sin(t * 0.21) * 0.012, cos(t * 0.17) * 0.010);
+    vec2 b = mapPos / (s * 0.61) + vec2(cos(t * 0.19) * 0.016, -t * 0.004 + sin(t * 0.23) * 0.012) + vec2(0.37, 0.71);
+    float la = texture(dappleTex, a).r;
+    float lb = texture(dappleTex, b).r;
+    float light = clamp(la * 0.65 + lb * 0.55 - 0.18, 0.0, 1.0);
+    // 树冠密度(贴图第一行 = 地图最上面)
+    vec2 muv = vec2(mapPos.x / maskRect.x + 0.5, 0.5 - mapPos.y / maskRect.y);
+    float m = texture(maskTex, muv).r;
+    float k = max(m, dappleParams.z) * alpha;
+    vec3 shade = vec3(1.0, 0.93, 0.80) * (dappleParams.x * k * (1.0 - light));
+    vec3 sun = vec3(1.0, 0.86, 0.58) * (dappleParams.y * k * light);
+    vec3 mul = vec3(1.0) - shade + sun;
+    return vec4(clamp(mul * 0.5, 0.0, 1.0), 1.0);
+  }
+}%

@@ -147,7 +147,7 @@ def gen_piece(code, c, r, xs, ys):
         inputs.append(gp)
         extra = EXTRA_SEAM
     raw = dst.replace('.png', '_raw.png')
-    if not run_codex(inputs, PROMPT.format(extra=extra, mood=MOOD.get(code, MOOD['WOODS'])), raw, f'{code} piece r{r} c{c}'):
+    if not run_codex(inputs, PROMPT.format(extra=extra, mood=MOOD.get(code, MOOD['WOODS'])), raw, f'{code} piece r{r} c{c}', size=None):
         return None
     Image.open(raw).convert('RGB').resize((PW, PH), Image.LANCZOS).save(dst)
     return dst
@@ -200,8 +200,23 @@ def _seam_mask(old, new, axis):
     return m.T if axis == 0 else m
 
 
+LF_SIGMA = 24      # 拼块分频:低频(大块明暗 / 色调)在整条重叠带里渐变,高频(细节)沿差异最小的线切
+
+
+def _blur_known(a, known, s):
+    """只按已知像素做高斯模糊(未贴过的地方不参与),避免边缘被 0 拉暗。"""
+    from scipy import ndimage as nd
+    k = known.astype(np.float32)
+    num = nd.gaussian_filter(a * k[..., None], (s, s, 0))
+    den = nd.gaussian_filter(k, s)[..., None]
+    return num / np.maximum(den, 1e-4)
+
+
 def cmd_assemble(code):
-    """按行优先把块贴进整图:每块先按和已贴部分的重叠带均值对齐色调(只校正 70%),再沿差异最小的线切缝。"""
+    """按行优先把块贴进整图:每块先按和已贴部分的重叠带均值对齐色调(只校正 70%),再拼进去。
+    11-22 改分频拼接:原来整块只沿差异最小的线 6 像素软切,两块色调差一点就露出一条直边 / 斜边(用户截图里地上的直边);
+    现在低频在整条重叠带里线性渐变(色调慢慢过渡),高频仍沿那条线切(细节不糊、不重影)。"""
+    from scipy import ndimage as nd
     d = out_dir(code)
     base = Image.open(os.path.join(d, 'base.png'))
     xs, ys = grid(base.size)
@@ -215,7 +230,7 @@ def cmd_assemble(code):
             bc = base.crop((x0, y0, x0 + PW, y0 + PH)).convert('RGB')
             raw = p.replace('.png', '_raw.png')
             if os.path.exists(raw):
-                # 生图出 1024 方图:按底稿配准缩放 + 平移(立物位置要和原图对上,遮挡件的形状取原立物贴图)
+                # 生图结果按底稿配准缩放 + 平移(立物位置要和原图对上,遮挡件的形状取原立物贴图)
                 src, reg = _register(np.asarray(bc, dtype=np.float32), Image.open(raw))
                 print('piece', r, c, 'reg', reg, flush=True)
             else:
@@ -225,14 +240,24 @@ def cmd_assemble(code):
             if f.any():
                 src = src + (old[f].mean(0) - src[f].mean(0)) * 0.7
             w = np.ones((PH, PW), dtype=np.float32)
+            wide = np.ones((PH, PW), dtype=np.float32)
             if c > 0:
                 ov = xs[c - 1] + PW - x0
                 w[:, :ov] = np.minimum(w[:, :ov], _seam_mask(old[:, :ov], src[:, :ov], 1))
+                wide[:, :ov] = np.minimum(wide[:, :ov], np.linspace(0, 1, ov, dtype=np.float32)[None, :])
             if r > 0:
                 ov = ys[r - 1] + PH - y0
                 w[:ov, :] = np.minimum(w[:ov, :], _seam_mask(old[:ov, :], src[:ov, :], 0))
-            w = np.where(f, w, 1.0)[..., None]
-            canvas[y0:y0 + PH, x0:x0 + PW] = old * (1 - w) + src * w
+                wide[:ov, :] = np.minimum(wide[:ov, :], np.linspace(0, 1, ov, dtype=np.float32)[:, None])
+            if f.any():
+                w = np.where(f, w, 1.0)[..., None]
+                wide = np.where(f, wide, 1.0)[..., None]
+                old_lf = _blur_known(old, f, LF_SIGMA)
+                src_lf = nd.gaussian_filter(src, (LF_SIGMA, LF_SIGMA, 0))
+                mixed = old_lf * (1 - wide) + src_lf * wide + (old - old_lf) * (1 - w) + (src - src_lf) * w
+                canvas[y0:y0 + PH, x0:x0 + PW] = np.where(f[..., None], mixed, src)
+            else:
+                canvas[y0:y0 + PH, x0:x0 + PW] = src
             filled[y0:y0 + PH, x0:x0 + PW] = True
     out = Image.fromarray(np.clip(canvas, 0, 255).astype(np.uint8))
     out.save(os.path.join(d, 'mosaic.png'))
@@ -360,7 +385,7 @@ def cmd_roads(code):
             for _ in range(3):
                 if ok:
                     break
-                ok = run_codex([src, ref, tp], ROAD_PROMPT, raw, f'{code} roads r{r} c{c}')
+                ok = run_codex([src, ref, tp], ROAD_PROMPT, raw, f'{code} roads r{r} c{c}', size=None)
             if not ok:
                 continue
             new, reg = _register(old, Image.open(raw))
@@ -458,7 +483,7 @@ def cmd_fix(code):
         for _ in range(3):
             if ok:
                 break
-            ok = run_codex([src, tp], FIX_PROMPT.format(what=it['what']), raw, f'{code} fix {it["id"]}')
+            ok = run_codex([src, tp], FIX_PROMPT.format(what=it['what']), raw, f'{code} fix {it["id"]}', size=None)
         if not ok:
             print('fix failed', it['id'])
             continue

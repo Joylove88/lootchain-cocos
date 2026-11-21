@@ -61,6 +61,8 @@ import { REALM_ULT_BASE, RealmUltShow, realmUltCfg, realmUltTiming } from './Rea
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
+import { FieldLife, fieldLifeDef } from './LobbyFieldLife';
+import { fieldAmbience } from './LobbyFieldAmbience';
 import { FieldLook } from './LobbyFieldLook';
 import { FieldTod } from './LobbyFieldTod';
 import { FieldPaint, fieldPaintDef } from './LobbyFieldPaint';
@@ -560,6 +562,11 @@ export class LobbyTownRenderer {
   /** 北缘远景横条(11-10 主城):世界层第一个子节点(压在地面之下),每帧按镜头做视差。 */
   private backdropNode: Node | null = null;
   private readonly ambient = new TownAmbient();
+  private ambientOn = false;
+  /** 11-22 野外沉浸感:斑驳树冠光 / 炊烟 / 风沙 / 薄雾 / 蝴蝶 / 鸟影 / 近景枝叶(LobbyFieldLife)。 */
+  private readonly life = new FieldLife();
+  /** 11-22 野外环境声(现场合成;自检脚本经 t.fieldAmbience.renderStats 离线渲染量响度)。 */
+  readonly fieldAmbience = fieldAmbience;
   /** 11-20 野外画质看齐守卫战:调色 / 光照图 / 暗角空气感 / 鬼火(LobbyFieldLook)。 */
   private readonly look = new FieldLook();
   /** 11-21 野外昼夜循环(白天斜阳 ↔ 黄昏点灯)。 */
@@ -883,11 +890,13 @@ export class LobbyTownRenderer {
         hidden.push(child);
       }
     }
-    // 环境动效(飘叶 / 云影)也收起:心境里没有风
-    const ambient = ground.parent?.getChildByName('Ambient');
-    if (ambient && ambient.active) {
-      ambient.active = false;
-      hidden.push(ambient);
+    // 环境动效(飘叶 / 云影 / 斑驳光 / 炊烟蝴蝶等)也收起:心境里没有风
+    for (const name of ['Ambient', 'LifeHigh', 'LifeDapple']) {
+      const n = ground.parent?.getChildByName(name);
+      if (n && n.active) {
+        n.active = false;
+        hidden.push(n);
+      }
     }
     const nodes: Node[] = [];
     const W = this.def.width;
@@ -1165,6 +1174,7 @@ export class LobbyTownRenderer {
         this.tod.mount(this.world, this.groundRoot);
       }
       this.look.mount(this.world, this.camX, this.camY, view.w, view.h);
+      this.life.mount(this.world, this.groundRoot, this.def, this.camX, this.camY, view.w, view.h);
     }
     this.stepPaint();
   }
@@ -1211,10 +1221,12 @@ export class LobbyTownRenderer {
     });
   }
 
-  /** 环境动效(飘叶 / 云影):地图开了 ambient 才挂;世界层重建后重挂。 */
+  /** 环境动效(飘叶 / 云影):地图开了 ambient、或野外图有沉浸层参数(LobbyFieldLife)才挂;世界层重建后重挂。 */
   private ensureAmbient(): void {
     const world = this.world;
-    if (!world || !world.isValid || !this.def.ambient || !this.layout) {
+    const field = this.look.active ? fieldLifeDef(this.def.code)?.ambient ?? null : null;
+    this.ambientOn = !!world && world.isValid && (!!this.def.ambient || !!field) && !!this.layout;
+    if (!this.ambientOn || !world) {
       this.ambient.destroy();
       return;
     }
@@ -1222,7 +1234,7 @@ export class LobbyTownRenderer {
       return;
     }
     const view = this.viewSize();
-    this.ambient.mount(world, this.def.width, this.def.height, this.camX, this.camY, view.w, view.h, !!this.def.ambientDepth);
+    this.ambient.mount(world, this.def.width, this.def.height, this.camX, this.camY, view.w, view.h, field ?? !!this.def.ambientDepth);
   }
 
   private viewSize(): { w: number; h: number } {
@@ -1291,6 +1303,7 @@ export class LobbyTownRenderer {
     this.world = world;
     this.look.reset();
     this.tod.reset();
+    this.life.reset();
     this.todCastNight = -1;
     this.paint.reset();
     this.paintCovered = false;
@@ -2447,7 +2460,7 @@ export class LobbyTownRenderer {
     this.stepChestGlow();
     this.stepPoiCues();
     this.stepHaul(Date.now());
-    if (this.def.ambient) {
+    if (this.ambientOn) {
       const view = this.viewSize();
       this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
     }
@@ -2456,6 +2469,10 @@ export class LobbyTownRenderer {
       this.look.step(this.camX, this.camY, view.w, view.h, this.world);
       if (this.tod.active) {
         this.stepTod(view.w, view.h);
+      }
+      this.life.step(clamped, this.camX, this.camY, view.w, view.h);
+      if (!this.trial) {
+        fieldAmbience.step(this.def.code, this.leader ? this.leader.x : this.camX, this.leader ? this.leader.y : this.camY);
       }
     }
     this.stepPaint();
