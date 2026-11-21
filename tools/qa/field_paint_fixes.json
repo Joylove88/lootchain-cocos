@@ -1,0 +1,10 @@
+{
+  "WOODS": [
+    {"id": "river_road_e", "note": "跑图 11-21:东南路口往西南的路直接扎进河里(没桥、河不可走),改成在岸边草地里自然收住",
+     "rect": [-950, -2700, -330, -2230],
+     "what": "the dirt road coming from the upper right must end naturally on this side of the stream: it narrows and fades into the grass a short distance before the rocky bank and never touches the water. Keep the stream, rocks and bank exactly as they are."},
+    {"id": "river_road_w", "note": "同上,对岸那段路的起点",
+     "rect": [-1620, -3620, -1040, -3150],
+     "what": "the dirt road coming from the bottom must start naturally in the grass a short distance before the rocky bank: it narrows and fades out and never touches the water. Keep the stream, rocks and bank exactly as they are."}
+  ]
+}

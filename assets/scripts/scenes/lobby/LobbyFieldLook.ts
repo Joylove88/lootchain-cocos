@@ -69,6 +69,20 @@ const PAINTED_LOOKS: Record<string, FieldLookDef> = {
     sat: 1, val: 1, contrast: 0, shadowTint: [1, 1, 1], hiTint: [1, 1, 1], pool: 0, rays: 0,
     vig: 0.32, haze: [170, 188, 176, 0.06],
   },
+  GRAY: {
+    sat: 1, val: 1, contrast: 0, shadowTint: [1, 1, 1], hiTint: [1, 1, 1], pool: 0, rays: 0,
+    vig: 0.3, haze: [196, 202, 214, 0.06],
+  },
+  // 枯木林保留鬼火(气氛件,不是调色)
+  DEADWOOD: {
+    sat: 1, val: 1, contrast: 0, shadowTint: [1, 1, 1], hiTint: [1, 1, 1], pool: 0, rays: 0,
+    vig: 0.34, haze: [168, 184, 188, 0.12], wisps: { count: 220, color: [120, 230, 200] },
+  },
+  // 晨风村只重画了地面(建筑 / 树照旧实时画),立物不乘色
+  VILLAGE: {
+    sat: 1, val: 1, contrast: 0, shadowTint: [1, 1, 1], hiTint: [1, 1, 1], pool: 0, rays: 0,
+    vig: 0.28, haze: [214, 208, 192, 0.05],
+  },
 };
 
 const LIGHT_W = 1024;

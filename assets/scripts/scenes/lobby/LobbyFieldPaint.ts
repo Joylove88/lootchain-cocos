@@ -8,8 +8,14 @@ import { FIELD_PAINT, FieldPaintDef } from './LobbyFieldPaintData';
  * 比人高的立物另画一层遮挡件(effects/world-paint-occlude):颜色取图块上同一块像素,形状取原立物贴图的透明度,
  * 按脚线参与人物排序 → 人走到树后面被树盖住;平时和地面逐像素相同,看不出来。
  * 没登记 / ?fieldpaint=0 的地图照旧(多层地表 + 立物贴图)。
+ * 11-21:登记了 flow 的图,图块换 effects/world-paint-ground(水流遮罩 <dir>/flow:河面晃动、瀑布白水往下滚);
+ * 树的遮挡件随风摆几个像素;队长走到树后用圆形透视孔(和原立物同口径),不再整棵淡出。
  */
 const OCCLUDE_EFFECT = 'effects/world-paint-occlude';
+const GROUND_EFFECT = 'effects/world-paint-ground';
+/** 树冠摆幅(占立物宽的比例)/ 速度;同 world-wind 的观感。 */
+const SWAY_AMP = 0.012;
+const SWAY_SPEED = 1.5;
 /** 镜头外多留一圈再加载 / 超出这圈再释放(世界单位)。 */
 const LOAD_MARGIN = 700;
 const DROP_MARGIN = 1800;
@@ -21,6 +27,8 @@ interface Tile {
   node: Node | null;
   tex: Texture2D | null;
   loading: boolean;
+  /** 套了水流材质(没有遮罩的图 / 遮罩还没到时为 false)。 */
+  flowMat: Material | null;
 }
 
 interface OccluderPart {
@@ -37,6 +45,8 @@ interface Occluder {
   h: number;
   flip: boolean;
   mask: SpriteFrame;
+  sway: boolean;
+  hole: Vec4 | null;
   /** 按图块记的已挂部件。 */
   parts: Map<string, OccluderPart>;
 }
@@ -53,6 +63,9 @@ export class FieldPaint {
   private occluders: Occluder[] = [];
   private effect: EffectAsset | null = null;
   private effectLoading = false;
+  private groundEffect: EffectAsset | null = null;
+  private flowTex: Texture2D | null = null;
+  private flowLoading = false;
   /** 有新登记的遮挡件 / 着色器刚到:下一帧给已到的图块补挂。 */
   private dirty = true;
   /** 镜头内的图块是不是全到齐了(没到齐时 TownRenderer 留着旧地表兜底)。 */
@@ -83,11 +96,33 @@ export class FieldPaint {
         this.dirty = true;
       });
     }
+    if (def.flow && !this.flowLoading && !(this.groundEffect && this.flowTex)) {
+      this.flowLoading = true;
+      let left = 2;
+      const done = (): void => {
+        left -= 1;
+        if (left === 0) {
+          this.flowLoading = false;
+          this.dirty = true;
+        }
+      };
+      resources.load(GROUND_EFFECT, EffectAsset, (error, asset) => {
+        this.groundEffect = error ? null : asset;
+        done();
+      });
+      resources.load(`${def.dir}/flow/texture`, Texture2D, (error, tex) => {
+        if (!error && tex) {
+          tex.addRef();
+          this.flowTex = tex;
+        }
+        done();
+      });
+    }
   }
 
   /** 登记一件比人高的立物(art = 立物节点下的空容器;x / y = 脚点,w / h = 显示尺寸)。 */
-  addOccluder(art: Node, x: number, y: number, w: number, h: number, flip: boolean, mask: SpriteFrame): void {
-    this.occluders.push({ art, x, y, w, h, flip, mask, parts: new Map() });
+  addOccluder(art: Node, x: number, y: number, w: number, h: number, flip: boolean, mask: SpriteFrame, sway = false): void {
+    this.occluders.push({ art, x, y, w, h, flip, mask, sway, hole: null, parts: new Map() });
     this.dirty = true;
   }
 
@@ -144,11 +179,49 @@ export class FieldPaint {
     if (this.dirty && this.effect) {
       this.dirty = false;
       this.refreshOccluders();
+      for (const tile of this.tiles.values()) {
+        this.applyFlow(def, tile);
+      }
+    }
+  }
+
+  /** 图块套水流材质(本图有遮罩且着色器 / 遮罩都到了)。 */
+  private applyFlow(def: FieldPaintDef, tile: Tile): void {
+    const effect = this.groundEffect;
+    const flow = this.flowTex;
+    if (!def.flow || !effect || !flow || !tile.node || !tile.node.isValid || tile.flowMat) {
+      return;
+    }
+    const rect = this.tileRect(def, tile.r, tile.c);
+    const mat = new Material();
+    mat.initialize({ effectAsset: effect });
+    mat.setProperty('flowTex', flow);
+    mat.setProperty('flowRect', new Vec4(rect.x0 / def.w, rect.y0 / def.h, rect.w / def.w, rect.h / def.h));
+    mat.setProperty('tileSize', new Vec4(rect.w, rect.h, 0, 0));
+    // 幅度按图块 uv:水波约 2.2 像素、白水约 3.5 像素
+    mat.setProperty('flowParams', new Vec4(2.2 / rect.w, 3.5 / rect.h, 1, 0));
+    tile.node.getComponent(Sprite)!.customMaterial = mat;
+    tile.flowMat = mat;
+  }
+
+  /** 队长被这件立物挡住时给它开圆形透视孔(hole = 世界 x / y / 半径 / 强度,null = 关)。 */
+  setHole(art: Node, hole: Vec4 | null): void {
+    const o = this.occluders.find((it) => it.art === art);
+    if (!o) {
+      return;
+    }
+    if (!hole && !o.hole) {
+      return;
+    }
+    o.hole = hole ? (o.hole ?? new Vec4()).set(hole) : null;
+    const v = o.hole ?? Vec4.ZERO;
+    for (const part of o.parts.values()) {
+      part.mat.setProperty('holeParams', v);
     }
   }
 
   private loadTile(def: FieldPaintDef, r: number, c: number, key: string): void {
-    const tile: Tile = { key, r, c, node: null, tex: null, loading: true };
+    const tile: Tile = { key, r, c, node: null, tex: null, loading: true, flowMat: null };
     this.tiles.set(key, tile);
     resources.load(`${def.dir}/p_${r}_${c}/texture`, Texture2D, (error, tex) => {
       tile.loading = false;
@@ -179,6 +252,7 @@ export class FieldPaint {
       node.setPosition(-def.mapW / 2 + (rect.x0 + rect.w / 2) / def.px, def.mapH / 2 - (rect.y0 + rect.h / 2) / def.px, 0);
       this.root.addChild(node);
       tile.node = node;
+      this.applyFlow(def, tile);
       this.attachOccluders(def, tile);
     });
   }
@@ -197,6 +271,10 @@ export class FieldPaint {
     }
     if (tile.node && tile.node.isValid) {
       tile.node.destroy();
+    }
+    if (tile.flowMat) {
+      tile.flowMat.destroy();
+      tile.flowMat = null;
     }
     if (tile.tex) {
       tile.tex.decRef(true);
@@ -247,6 +325,13 @@ export class FieldPaint {
       const mh = mtex.height;
       const ux = o.flip ? 1 - u0 : u0;
       mat.setProperty('maskRect', new Vec4((mr.x + ux * mr.width) / mw, (mr.y + v0 * mr.height) / mh, ((o.flip ? -du : du) * mr.width) / mw, (dv * mr.height) / mh));
+      if (o.sway) {
+        // 相位按地图位置(同 world-wind:一阵风从西往东扫过去)
+        mat.setProperty('swayParams', new Vec4(SWAY_AMP, SWAY_SPEED, 0, o.x * 0.0021 + o.y * 0.0013));
+      }
+      if (o.hole) {
+        mat.setProperty('holeParams', o.hole);
+      }
       const node = new Node(`PaintOcc_${tile.key}`);
       node.layer = o.art.layer;
       const w = fr.width / px;
@@ -288,5 +373,9 @@ export class FieldPaint {
     this.root = null;
     this.def = null;
     this.covered = false;
+    if (this.flowTex) {
+      this.flowTex.decRef(true);
+      this.flowTex = null;
+    }
   }
 }

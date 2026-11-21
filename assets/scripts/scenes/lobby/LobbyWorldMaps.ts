@@ -3,7 +3,7 @@
  * 坐标系同主城(LobbyTownConfig):世界单位 = 900 高舞台设计像素,y 向上,地图中心为原点;
  * 建筑 (x, y) = 贴图底边中点(脚线),footprint 从脚线往屏幕上方延伸的不可走矩形,door = 交互点(相对脚线)。
  */
-import { FIELD_PAINT } from './LobbyFieldPaintData';
+import { fieldPaintDef } from './LobbyFieldPaint';
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
@@ -986,10 +986,13 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
   if (!def) {
     return [];
   }
-  const splat = def.groundSplat;
+  // 11-21 整图重绘的图:多层地表不装、贴地件已画进图块 → 这些贴图不预读也不进下载包(立物要当遮挡件的形状,照旧)
+  const painted = !!fieldPaintDef(code);
+  const splat = painted ? undefined : def.groundSplat;
   return Array.from(new Set([def.ground, def.lampAsset,
     // 多层地表遮罩 + 材质(11-08)
-    ...(splat ? [splat.mask, splat.mask2, splat.floor, splat.moss, splat.meadow, splat.dirt, splat.leaf] : []), ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
+    ...(splat ? [splat.mask, splat.mask2, splat.floor, splat.moss, splat.meadow, splat.dirt, splat.leaf] : []), ...def.buildings.map((b) => b.asset),
+    ...def.props.filter((p) => !(painted && p.flat)).map((p) => p.asset),
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
@@ -1023,7 +1026,7 @@ export function worldMapPackPrefixes(code: WorldMapCode): string[] {
   }
   const set = new Set<string>(worldMapAssetPaths(code).map((path) => path.replace(/\/spriteFrame$/, '')));
   // 11-20 整图重绘的图块目录(LobbyFieldPaint 按镜头加载,不进开图预读;整目录随这张图下到本地)
-  const paint = FIELD_PAINT[code];
+  const paint = fieldPaintDef(code);
   if (paint) {
     set.add(paint.dir);
   }

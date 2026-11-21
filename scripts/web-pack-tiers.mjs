@@ -16,6 +16,8 @@ export const CORE_PREFIXES = [
   'ui/world/vil3', 'ui/world/vil2', 'ui/world/fx', 'ui/world/overview/ov_village', 'ui/world/mapui',
   'ui/world/ground_village3', 'ui/world/npc_', 'ui/world/portrait_chief', 'ui/world/waypoint', 'ui/world/fx_rune_ring',
   'ui/world/city_board', 'ui/world/guild_bg_b', 'ui/world/map_world1',
+  // 11-21 晨风村地面整图重绘图块(LobbyFieldPaint,只重画地面;约 16 块)
+  'ui/world/village_paint',
   // 野外兴趣点素材(docs/54:石碑 / 草药 / 矿脉 / 隐藏点,晨风村就有)
   'ui/world/poi',
   // 进化抉择卡面图案(docs/58 §10,Lv.2 就弹)
@@ -60,7 +62,8 @@ export const CORE_PREFIXES = [
 // 后台下载顺序(越靠前越先下):玩家最可能的下一步。没列到的放最后,按文件名。
 export const BACKGROUND_ORDER = [
   // 出村:村外林地 + 林地怪(woods4 = 11-08 多层地表材质 / 遮罩)
-  'ui/world/woods3', 'ui/world/woods4', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods',
+  // 11-21 起林地是整图重绘图块(woods_paint);woods4 的多层地表材质只在 ?fieldpaint=0 时用
+  'ui/world/woods_paint', 'ui/world/woods3', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods', 'ui/world/woods4',
   'spine/monster/small_spider', 'spine/monster/medium_dog', 'spine/monster/medium_bear', 'monster/',
   // 村里剧情会带去的功能页:召唤(祭司)/ 英雄养成 + 锻造(铁匠)/ 背包任务商店
   'ui/gacha', 'spine/gacha', 'ui/hero', 'ui/hero-detail', 'ui/hero-roster', 'ui/forge', 'ui/equip', 'ui/bag', 'ui/shop', 'ui/mission',

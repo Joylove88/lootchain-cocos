@@ -23,6 +23,7 @@ import {
   resources,
   sp,
   tween,
+  Vec4,
 } from 'cc';
 import { HERO_CLIP_COMBOS } from './HeroClipCombos';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
@@ -61,6 +62,7 @@ import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSk
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { FieldLook } from './LobbyFieldLook';
+import { FieldTod } from './LobbyFieldTod';
 import { FieldPaint, fieldPaintDef } from './LobbyFieldPaint';
 import type { FieldPaintDef } from './LobbyFieldPaintData';
 import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
@@ -560,6 +562,10 @@ export class LobbyTownRenderer {
   private readonly ambient = new TownAmbient();
   /** 11-20 野外画质看齐守卫战:调色 / 光照图 / 暗角空气感 / 鬼火(LobbyFieldLook)。 */
   private readonly look = new FieldLook();
+  /** 11-21 野外昼夜循环(白天斜阳 ↔ 黄昏点灯)。 */
+  private readonly tod = new FieldTod();
+  private todActors: Array<{ x: number; y: number }> = [];
+  private todCastNight = -1;
   /** 11-20 野外整图重绘(LobbyFieldPaint):登记了重绘图块的地图用图块代替多层地表 + 立物贴图。 */
   private readonly paint = new FieldPaint();
   private paintDef: FieldPaintDef | null = null;
@@ -592,7 +598,10 @@ export class LobbyTownRenderer {
    */
   private cullItems: Array<{ node: Node; x0: number; x1: number; y0: number; y1: number }> = [];
   /** 会挡住队伍的高立物(树 / 岩 / 营帐):队长走到它身后时,随风摆的开圆形透视孔,其余淡成半透明(11-08 B 方案)。 */
-  private occluders: Array<{ node: Node; sprite: Sprite; x: number; y: number; w: number; h: number; sway: boolean; hole: boolean; fade: number }> = [];
+  private readonly paintHole = new Vec4();
+  /** 上一帧镜头内图块是否到齐(变了才去开关兜底底纹)。 */
+  private paintCovered = false;
+  private occluders: Array<{ node: Node; sprite: Sprite; x: number; y: number; w: number; h: number; sway: boolean; hole: boolean; fade: number; painted?: boolean }> = [];
   private holeStrength = 0;
   private cullKey = '';
   private camX: number = TOWN_SPAWN.x;
@@ -1123,7 +1132,7 @@ export class LobbyTownRenderer {
     this.uiZ = this.def.cameraZoom ?? 1;
     this.k = layout.stageHeight / 900 / this.uiZ;
     this.paintDef = fieldPaintDef(this.def.code);
-    this.look.prepare(this.def.code, this.def.width, this.def.height, !!this.paintDef);
+    this.tod.prepare(this.def, this.look.prepare(this.def.code, this.def.width, this.def.height, !!this.paintDef));
     if (!restored || !this.world || !this.world.isValid || !this.world.parent) {
       this.buildWorld();
     }
@@ -1152,6 +1161,9 @@ export class LobbyTownRenderer {
     this.ensureAmbient();
     if (this.world && this.world.isValid && this.look.active) {
       const view = this.viewSize();
+      if (this.tod.active) {
+        this.tod.mount(this.world, this.groundRoot);
+      }
       this.look.mount(this.world, this.camX, this.camY, view.w, view.h);
     }
     this.stepPaint();
@@ -1278,7 +1290,10 @@ export class LobbyTownRenderer {
     world.setScale(this.k, this.k, 1);
     this.world = world;
     this.look.reset();
+    this.tod.reset();
+    this.todCastNight = -1;
     this.paint.reset();
+    this.paintCovered = false;
     this.backdropNode = def.backdrop ? this.host.addChildPlainNode(world, 'Backdrop', 0, def.height / 2, 10, 10) : null;
     this.groundRoot = this.host.addChildPlainNode(world, 'Ground', 0, 0, def.width, def.height);
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, def.width, def.height);
@@ -1312,10 +1327,11 @@ export class LobbyTownRenderer {
     const def = this.def;
     const splat = def.groundSplat;
     if (this.paintDef) {
-      // 整图重绘:图块容器压在最底;多层地表留着当兜底(镜头内图块没到齐时露出来,到齐后在 step 里关掉)
+      // 整图重绘:图块容器压在最底;旧平铺底纹留着当兜底(镜头内图块没到齐时露出来,到齐后在 step 里关掉)。
+      // 11-21 起不再装多层地表(它的 7 张材质不进这张图的下载包,图块本身就在本地,兜底只要一张底纹)
       this.paint.mount(root, this.paintDef);
     }
-    if (splat) {
+    if (splat && !this.paintDef) {
       // 11-08 多层地表:素材到齐后整图一个四边形压在最底,旧平铺底纹(兜底)拆掉
       mountGroundSplat(root, def.width, def.height, splat, (node) => {
         node.setSiblingIndex(0);
@@ -1399,6 +1415,9 @@ export class LobbyTownRenderer {
           const h = cfg.width * (oh / Math.max(1, ow));
           sprite.node.getComponent(UITransform)?.setContentSize(new Size(cfg.width, h));
           sprite.node.setPosition(0, h / 2, 0);
+          if (this.tod.active && !cfg.flat && frame) {
+            this.mountCastShadow(cfg.asset, frame, cfg.x, cfg.y, cfg.width, h, false, `B_${cfg.key}`);
+          }
           // 名牌挂在图顶上方;图没到前不挂,免得浮在空地上
           entity.sprite = sprite;
           entity.plate?.destroy();
@@ -1527,8 +1546,14 @@ export class LobbyTownRenderer {
         return;
       }
       if (this.paintDef) {
-        this.ensurePaintedProp(prop, name, entities);
-        return;
+        if (!this.paintDef.flatsOnly) {
+          this.ensurePaintedProp(prop, name, entities);
+          return;
+        }
+        // 只重画了地面的图(晨风村):贴地件已画进图块,立物照旧实时画
+        if (prop.flat) {
+          return;
+        }
       }
       const node = this.host.addChildPlainNode(parent, name, prop.x, prop.y, prop.width, prop.width);
       const sprite = this.host.addSprite('Art', prop.asset, 0, 0, prop.width, prop.width, node);
@@ -1584,6 +1609,10 @@ export class LobbyTownRenderer {
       }
       if (this.def.groundShadows) {
         this.mountPropShadow(prop, sprite.spriteFrame, h, index);
+      } else if (this.tod.active && h >= OCCLUDER_MIN_H && prop.block && sprite.spriteFrame
+        && !(this.def.castShadowSkip ?? []).some((k) => prop.asset.includes(k))) {
+        // 11-21 昼夜:没开整套接地影的图(晨风村)白天也要有树的长投影
+        this.mountCastShadow(prop.asset, sprite.spriteFrame, prop.x, prop.y, prop.width, h, !!prop.flipX, `Sh_${index}`);
       }
       this.propNodes.push({ node, y: prop.y });
     });
@@ -1612,10 +1641,66 @@ export class LobbyTownRenderer {
     art.addComponent(UITransform).setContentSize(new Size(prop.width, h));
     const sprite = art.addComponent(Sprite);
     node.addChild(art);
-    this.paint.addOccluder(art, prop.x, prop.y, prop.width, h, !!prop.flipX, frame);
+    this.paint.addOccluder(art, prop.x, prop.y, prop.width, h, !!prop.flipX, frame, prop.sway ?? isSwayAsset(prop.asset));
     this.addCull(node, prop.x - prop.width / 2, prop.x + prop.width / 2, prop.y - 40, prop.y + h);
-    this.occluders.push({ node, sprite, x: prop.x, y: prop.y, w: prop.width, h, sway: false, hole: false, fade: 255 });
+    // 挡人时走 FieldPaint 的圆形透视孔(painted),不整件淡出
+    this.occluders.push({ node, sprite, x: prop.x, y: prop.y, w: prop.width, h, sway: false, hole: false, fade: 255, painted: true });
     this.propNodes.push({ node, y: prop.y });
+  }
+
+  /** 贴地层里的投影容器(压在所有贴地件上、所有人物下面)。 */
+  private shadowLayer(): Node | null {
+    const ground = this.groundRoot;
+    if (!ground || !ground.isValid) {
+      return null;
+    }
+    let layer = ground.getChildByName('Shadows');
+    if (!layer) {
+      layer = this.host.addChildPlainNode(ground, 'Shadows', 0, 0, 10, 10);
+      const vignette = ground.getChildByName('Vignette');
+      if (vignette) {
+        layer.setSiblingIndex(vignette.getSiblingIndex());
+      }
+    }
+    return layer;
+  }
+
+  /**
+   * 方向投影:用自己的贴图染成偏冷的暗色、压扁并向右下斜(光从左上来),按贴图分组(同贴图相邻可合批),登记视野裁剪。
+   * 斜切靠三层节点「转 -9.09° → 缩放 (1.081, -0.389) → 转 -24°」合成矩阵 [[1, 0.378], [0, -0.42]](节点不支持直接斜切)。
+   * 11-21 昼夜:组名 Cast_ 开头,stepTod 按时间整组变淡。
+   */
+  private mountCastShadow(asset: string, frame: SpriteFrame, x: number, y: number, w: number, h: number, flip: boolean, name: string): void {
+    const layer = this.shadowLayer();
+    if (!layer) {
+      return;
+    }
+    const key = `Cast_${asset}`;
+    const group = layer.getChildByName(key) ?? this.host.addChildPlainNode(layer, key, 0, 0, 10, 10);
+    if (group.getChildByName(name)) {
+      return;
+    }
+    if (this.todCastNight >= 0 && !group.getComponent(UIOpacity)) {
+      group.addComponent(UIOpacity).opacity = Math.round((1 - this.todCastNight) * 255);
+    }
+    const outer = this.host.addChildPlainNode(group, name, x, y + 4, 10, 10);
+    outer.angle = -9.09;
+    const mid = this.host.addChildPlainNode(outer, 'S', 0, 0, 10, 10);
+    mid.setScale(1.081, -0.389, 1);
+    const inner = this.host.addChildPlainNode(mid, 'R', 0, 0, 10, 10);
+    inner.angle = -24;
+    const node = this.host.addChildPlainNode(inner, 'Art', 0, h / 2, w, h);
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.spriteFrame = frame;
+    node.getComponent(UITransform)?.setContentSize(new Size(w, h));
+    sprite.color = rgba(10, 18, 30, 255);
+    if (flip) {
+      node.setScale(-1, 1, 1);
+    }
+    node.addComponent(UIOpacity).opacity = this.def.castShadowOpacity ?? 120;
+    // 投影落在脚下往右下 0.38h × 0.42h 的范围
+    this.addCull(outer, x - w / 2, x + w / 2 + h * 0.4, y - h * 0.45, y + 20);
   }
 
   /**
@@ -1630,36 +1715,15 @@ export class LobbyTownRenderer {
     if (!ground || !ground.isValid || !frame) {
       return;
     }
-    let layer = ground.getChildByName('Shadows');
+    const layer = this.shadowLayer();
     if (!layer) {
-      layer = this.host.addChildPlainNode(ground, 'Shadows', 0, 0, 10, 10);
-      const vignette = ground.getChildByName('Vignette');
-      if (vignette) {
-        layer.setSiblingIndex(vignette.getSiblingIndex());
-      }
+      return;
     }
-    const group = (key: string): Node => layer!.getChildByName(key) ?? this.host.addChildPlainNode(layer!, key, 0, 0, 10, 10);
+    const group = (key: string): Node => layer.getChildByName(key) ?? this.host.addChildPlainNode(layer, key, 0, 0, 10, 10);
     const name = `Sh_${index}`;
     const skipCast = (this.def.castShadowSkip ?? []).some((k) => prop.asset.includes(k));
     if (h >= OCCLUDER_MIN_H && prop.block && !skipCast) {
-      const outer = this.host.addChildPlainNode(group(`Cast_${prop.asset}`), name, prop.x, prop.y + 4, 10, 10);
-      outer.angle = -9.09;
-      const mid = this.host.addChildPlainNode(outer, 'S', 0, 0, 10, 10);
-      mid.setScale(1.081, -0.389, 1);
-      const inner = this.host.addChildPlainNode(mid, 'R', 0, 0, 10, 10);
-      inner.angle = -24;
-      const node = this.host.addChildPlainNode(inner, 'Art', 0, h / 2, prop.width, h);
-      const sprite = node.addComponent(Sprite);
-      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-      sprite.spriteFrame = frame;
-      node.getComponent(UITransform)?.setContentSize(new Size(prop.width, h));
-      sprite.color = rgba(10, 18, 30, 255);
-      if (prop.flipX) {
-        node.setScale(-1, 1, 1);
-      }
-      node.addComponent(UIOpacity).opacity = this.def.castShadowOpacity ?? 120;
-      // 投影落在脚下往右下 0.38h × 0.42h 的范围
-      this.addCull(outer, prop.x - prop.width / 2, prop.x + prop.width / 2 + h * 0.4, prop.y - h * 0.45, prop.y + 20);
+      this.mountCastShadow(prop.asset, frame, prop.x, prop.y, prop.width, h, !!prop.flipX, name);
     }
     const listed = (list?: string[]): boolean => (list ?? []).some((k) => prop.asset.includes(k));
     if (listed(this.def.aoStrip)) {
@@ -1773,6 +1837,9 @@ export class LobbyTownRenderer {
       const w = h * (ow / Math.max(1, oh));
       sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
       sprite.node.setPosition(0, h / 2, 0);
+      if (this.tod.active && frame) {
+        this.mountCastShadow(this.def.lampAsset, frame, lamp.x, lamp.y, w, h, false, `L_${index}`);
+      }
       this.lampNodes.push(node);
     });
   }
@@ -2387,8 +2454,33 @@ export class LobbyTownRenderer {
     if (this.look.active) {
       const view = this.viewSize();
       this.look.step(this.camX, this.camY, view.w, view.h, this.world);
+      if (this.tod.active) {
+        this.stepTod(view.w, view.h);
+      }
     }
     this.stepPaint();
+  }
+
+  /** 昼夜:各层跟镜头 + 立物方向投影(Cast_ 组)按时间变淡(黄昏没有太阳投影)。 */
+  private stepTod(viewW: number, viewH: number): void {
+    const all = this.leader ? [this.leader, ...this.followers] : [];
+    this.todActors.length = all.length;
+    all.forEach((a, i) => {
+      const slot = this.todActors[i] ?? (this.todActors[i] = { x: 0, y: 0 });
+      slot.x = a.x;
+      slot.y = a.y;
+    });
+    const n = this.tod.step(this.camX, this.camY, viewW, viewH, this.todActors);
+    const layer = this.groundRoot?.isValid ? this.groundRoot.getChildByName('Shadows') : null;
+    if (!layer || Math.abs(n - this.todCastNight) < 0.01) {
+      return;
+    }
+    this.todCastNight = n;
+    for (const g of layer.children) {
+      if (g.name.startsWith('Cast_')) {
+        (g.getComponent(UIOpacity) ?? g.addComponent(UIOpacity)).opacity = Math.round((1 - n) * 255);
+      }
+    }
   }
 
   /** 整图重绘:按镜头加载图块;镜头内图块到齐后关掉兜底的多层地表(省一层全屏填充),没到齐时再打开。 */
@@ -2398,9 +2490,15 @@ export class LobbyTownRenderer {
     }
     const view = this.viewSize();
     this.paint.step(this.camX, this.camY, view.w, view.h);
-    const splat = this.groundRoot?.getChildByName('Splat');
-    if (splat && splat.active === this.paint.covered) {
-      splat.active = !this.paint.covered;
+    const covered = this.paint.covered;
+    if (covered === this.paintCovered || !this.groundRoot) {
+      return;
+    }
+    this.paintCovered = covered;
+    for (const child of this.groundRoot.children) {
+      if (child.name === 'Splat' || child.name.startsWith('Tile_')) {
+        child.active = !covered;
+      }
     }
   }
 
@@ -2834,7 +2932,7 @@ export class LobbyTownRenderer {
       && Math.abs(leader.x - o.x) < o.w * 0.42 && leader.y < o.y + o.h * 0.9;
     let any = false;
     for (const o of this.occluders) {
-      if (o.node.isValid && o.sway && covers(o)) {
+      if (o.node.isValid && (o.sway || o.painted) && covers(o)) {
         any = true;
         break;
       }
@@ -2846,11 +2944,23 @@ export class LobbyTownRenderer {
     const scale = world.worldScale.x || 1;
     const p = leader.node.worldPosition;
     setWindHole(p.x, p.y + HERO_SLOT_H * 0.45 * scale, CANOPY_HOLE_R * scale, this.holeStrength);
+    this.paintHole.set(p.x, p.y + HERO_SLOT_H * 0.45 * scale, CANOPY_HOLE_R * scale, this.holeStrength);
     for (const o of this.occluders) {
       if (!o.node.isValid) {
         continue;
       }
       const covered = covers(o);
+      if (o.painted) {
+        // 整图重绘的遮挡件:孔参数挂在它自己的材质上(孔渐隐期间同样保留到强度降到 0)
+        const want = covered || (o.hole && !any && this.holeStrength > 0);
+        if (want) {
+          this.paint.setHole(o.sprite.node, this.paintHole);
+        } else if (o.hole) {
+          this.paint.setHole(o.sprite.node, null);
+        }
+        o.hole = want;
+        continue;
+      }
       if (o.sway) {
         // 孔渐隐期间(没人被挡了)保留上一批带孔的树,强度降到 0 再换回普通材质,不闪
         const want = covered || (o.hole && !any && this.holeStrength > 0);

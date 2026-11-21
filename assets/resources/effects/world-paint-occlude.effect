@@ -2,6 +2,10 @@
 // 地面 + 立物都画在重绘图块里;比人高的立物另画一层「遮挡件」,人走到它后面时把人盖住。
 // 颜色直接取重绘图块(cc_spriteTexture,精灵帧 = 图块上这件立物盖住的那一块,和地面同一批像素,叠上去没有色差),
 // 形状取这件立物原来的贴图透明度(maskTex,uv 由 baseRect → maskRect 换算;maskRect 宽度为负 = 左右翻转)。
+// 11-21 用户「优化还不够好的地方」:
+//   swayParams = (摆幅:占立物宽的比例,速度,0,相位);摆幅 > 0 的(树)按高度横向错开颜色和形状的采样——树根不动、树梢摆,
+//   底下图块里同一棵树是静止的,错开只有几个像素,看起来像树冠在晃;
+//   holeParams = (世界 x,世界 y,半径,强度):队长走到树后时同原立物的圆形透视孔(world-wind 同口径),只挂在挡住队伍的那几棵上。
 CCEffect %{
   techniques:
   - passes:
@@ -22,6 +26,8 @@ CCEffect %{
         maskTex: { value: white }
         baseRect: { value: [0.0, 0.0, 1.0, 1.0] }
         maskRect: { value: [0.0, 0.0, 1.0, 1.0] }
+        swayParams: { value: [0.0, 1.5, 0.0, 0.0] }
+        holeParams: { value: [0.0, 0.0, 0.0, 0.0] }
 }%
 
 CCProgram paint-occlude-vs %{
@@ -34,20 +40,24 @@ CCProgram paint-occlude-vs %{
 
   out vec4 color;
   out vec2 uv0;
+  out vec2 wpos;
 
   vec4 vert () {
     vec4 pos = cc_matViewProj * vec4(a_position, 1);
     uv0 = a_texCoord;
     color = a_color;
+    wpos = a_position.xy;
     return pos;
   }
 }%
 
 CCProgram paint-occlude-fs %{
   precision highp float;
+  #include <builtin/uniforms/cc-global>
 
   in vec4 color;
   in vec2 uv0;
+  in vec2 wpos;
 
   #pragma builtin(local)
   layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
@@ -56,12 +66,31 @@ CCProgram paint-occlude-fs %{
   uniform PaintOcclude {
     vec4 baseRect;
     vec4 maskRect;
+    vec4 swayParams;
+    vec4 holeParams;
   };
 
   vec4 frag () {
-    vec4 base = texture(cc_spriteTexture, uv0);
     vec2 l = (uv0 - baseRect.xy) / baseRect.zw;
-    float a = texture(maskTex, maskRect.xy + l * maskRect.zw).a;
-    return vec4(base.rgb * color.rgb, a * color.a);
+    vec2 mv = maskRect.xy + l * maskRect.zw;
+    vec2 uv = uv0;
+    if (swayParams.x > 0.0) {
+      // 立物贴图里的高度:贴图底(mv.y = 1)是树根
+      float h = clamp(1.0 - mv.y, 0.0, 1.0);
+      float t = cc_time.x * swayParams.y;
+      float sway = sin(t + swayParams.w) * 0.75 + sin(t * 2.7 + swayParams.w * 1.9 + mv.y * 6.0) * 0.25;
+      float dm = sway * swayParams.x * pow(h, 1.4);
+      mv.x += dm * sign(maskRect.z);
+      uv.x += dm / abs(maskRect.z) * baseRect.z;
+    }
+    vec4 base = texture(cc_spriteTexture, uv);
+    float a = texture(maskTex, mv).a;
+    vec4 o = vec4(base.rgb * color.rgb, a * color.a);
+    if (holeParams.w > 0.0) {
+      float d = length((wpos - holeParams.xy) * vec2(1.0, 0.8));
+      float k = 1.0 - smoothstep(holeParams.z * 0.55, holeParams.z, d);
+      o.a *= 1.0 - k * holeParams.w * 0.72;
+    }
+    return o;
   }
 }%
