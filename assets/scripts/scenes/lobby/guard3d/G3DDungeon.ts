@@ -419,6 +419,11 @@ class Dungeon {
   private tipVel = new Vec3(0, 0, 1);
   /** 挥剑白屑的发射累计(按时间均匀发)。 */
   private fleckAcc = 0;
+  /** 泛光脉冲(11-22 光效 v4):原值(没在脉冲 = null)、这次加多少、剩余 / 总时长(真实时间)。 */
+  private bloomBase: number | null = null;
+  private bloomPeak = 0;
+  private bloomT = 0;
+  private bloomLife = 1;
   private tipPrev = new Vec3();
   /** 调试:把主角定在某个片段的某一刻(逐帧看动作用)。 */
   dbgClip: { name: string; t: number } | null = null;
@@ -1456,13 +1461,16 @@ class Dungeon {
     this.sword = sw.node;
     this.swordLit = sw.lit;
     sw.node.active = false;
-    this.trail = new BladeTrail(world, fxBounds);
+    this.trail = new BladeTrail(world, fxBounds, undefined, true);
     this.aura = new BladeTrail(world, fxBounds, this.trail.mat.getProperty('mainTexture') as any);
     this.aura.life = 0.26;
     this.aura.mat.setProperty('colorScale', new Vec3(1.3, 1.3, 1.3));
     this.waveMesh = new DynMesh(world, 'DgSwordWave', this.trail.mat, 4 * 120, 6 * 120, false, false, fxBounds);
     // 刀光 / 突进拖尾 / 剑气带画在所有特效之后(和原来按创建顺序画的时候一样)
     this.trail.mesh.order = FX_ORDER_BASE + 10;
+    if (this.trail.halo) {
+      this.trail.halo.order = FX_ORDER_BASE + 9;
+    }
     this.aura.mesh.order = FX_ORDER_BASE + 11;
     this.waveMesh.order = FX_ORDER_BASE + 12;
     this.loadChars();
@@ -4319,6 +4327,13 @@ class Dungeon {
           fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.4, 1.7), z: this.lz + Math.sin(a) * r, vx: Math.sin(a) * sp + Math.cos(a) * 0.8, vy: fx.rand(0.2, 1.2), vz: -Math.cos(a) * sp + Math.sin(a) * 0.8,
             life: fx.rand(0.4, 0.8), s0: fx.rand(0.032, 0.055), s1: 0.01, c0: [1, 1, 1], c1: [0.6, 0.8, 1.0], a: 1.5, cell: FX2_CELL.spark, t2: true, drag: 1.6, stretch: 1.8, fadeIn: 0.03 });
         }
+        // 光效 v4:绕着人转的花瓣屑
+        if (fx.rand() < 0.8) {
+          const a = fx.rand(0, Math.PI * 2);
+          const r = fx.rand(1.2, 2.1);
+          const sp = fx.rand(4, 7);
+          this.petal(this.lx + Math.cos(a) * r, fx.rand(0.4, 1.8), this.lz + Math.sin(a) * r, Math.sin(a) * sp + Math.cos(a) * 0.8, fx.rand(0.3, 1.4), -Math.cos(a) * sp + Math.sin(a) * 0.8, fx.rand(0.7, 1.2), fx.rand(0.035, 0.06), fx.rand() < 0.3, [0.6, 0.8, 1.0]);
+        }
         // 被旋风卷起来、绕着人转着往外甩的碎叶碎石(深色小片,打着转)
         for (let k = 0; k < 2; k += 1) {
           const a = fx.rand(0, Math.PI * 2);
@@ -4337,6 +4352,7 @@ class Dungeon {
       if (!act.fired && u >= (m?.fire ?? 0.44)) {
         act.fired = true;
         sfx.play('wave');
+        this.bloomPulse(0.25, 0.45);
         // 地上跟着铺的青色笔触痕迹:终点每帧挪到剑气所在处(剑气飞到哪铺到哪),散了以后从起点那头褪掉
         const trail = fx.streak({ kind: 'line', x: this.lx + fxn * 0.3, z: this.lz + fzn * 0.3, x2: this.lx + fxn * 1.0, z2: this.lz + fzn * 1.0, y0: 0.06, w0: 0.8, w1: 1.3,
           life: 1.3, grow: 0.01, len: 1, scroll: -5, rep: 4, color: WAVE_TEAL, a: 0.95 });
@@ -4652,6 +4668,7 @@ class Dungeon {
     }
     if (heavy && this.act?.kind !== 'smash') {
       this.addShock(px, py, pz, 0.32, 0.22, 0.012);
+      this.bloomPulse(0.1, 0.22);
     }
     if (heavy) {
       for (let i = 0; i < 6; i += 1) {
@@ -4680,6 +4697,35 @@ class Dungeon {
   }
 
   /**
+   * 白色花瓣屑(11-22 光效 v4,参考视频里满天翻飞的白色碎屑):半透明的白片翻着转、被风托着慢慢往下飘;glow = 发光的那种(少数)。
+   * tint = 发光那种褪到的颜色(跟招式色)。
+   */
+  private petal(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, glow: boolean, tint?: [number, number, number]): void {
+    const fx = this.fx;
+    if (!fx) {
+      return;
+    }
+    fx.emit({ x, y, z, vx, vy, vz, life, s0: size, s1: size * 0.75, c0: glow ? [1, 1, 1] : [0.97, 0.98, 1.0], c1: glow ? (tint ?? [0.75, 0.88, 1.0]) : [0.88, 0.91, 0.97],
+      a: glow ? 1.4 : 0.92, cell: FX2_CELL.petal, t2: true, add: glow, rot: fx.rand(0, Math.PI * 2), spin: fx.rand(-10, 10), grav: 0.1, drag: 2.4, fadeIn: 0.05 });
+  }
+
+  /** 泛光脉冲:把泛光强度往上加 peak(场景原值约 0.55),按真实时间 life 秒收回;叠加时只在更强时替换。 */
+  private bloomPulse(peak: number, life: number): void {
+    if (!this.post) {
+      return;
+    }
+    if (this.bloomBase === null) {
+      this.bloomBase = (this.post.info().cfg as { bloomIntensity: number }).bloomIntensity;
+    }
+    const k = this.bloomT > 0 ? this.bloomT / this.bloomLife : 0;
+    if (peak >= this.bloomPeak * k * k) {
+      this.bloomPeak = peak;
+      this.bloomT = life;
+      this.bloomLife = life;
+    }
+  }
+
+  /**
    * 11-22 光效 v3(参考视频「剑气可视化」:挥剑时满屏飘着细碎发光的白屑):沿剑身外半段一路洒出白屑,顺着剑走的方向甩出去、很快停住慢慢灭;
    * 偶尔一颗柔光点往上飘。只在刀光亮着的时候发(_base / _tip = 这一帧的剑根 / 剑尖)。
    */
@@ -4695,6 +4741,12 @@ class Dungeon {
     for (let k = 0; k < n; k += 1) {
       const s = fx.rand(0.4, 1.05);
       const sp = fx.rand(2, 5.5) * s;
+      if (fx.rand() < 0.45) {
+        // 花瓣屑:顺着剑甩出去,很快被风托住、翻着往下飘
+        this.petal(_base.x + (_tip.x - _base.x) * s, _base.y + (_tip.y - _base.y) * s, _base.z + (_tip.z - _base.z) * s,
+          this.tipVel.x * sp * 0.8 + fx.rand(-0.8, 0.8), this.tipVel.y * sp * 0.3 + fx.rand(0.3, 1.3), this.tipVel.z * sp * 0.8 + fx.rand(-0.8, 0.8), fx.rand(0.7, 1.3), fx.rand(0.035, 0.06), fx.rand() < 0.3, color);
+        continue;
+      }
       fx.emit({ x: _base.x + (_tip.x - _base.x) * s, y: _base.y + (_tip.y - _base.y) * s, z: _base.z + (_tip.z - _base.z) * s,
         vx: this.tipVel.x * sp + fx.rand(-0.7, 0.7), vy: this.tipVel.y * sp * 0.4 + fx.rand(0.1, 1.0), vz: this.tipVel.z * sp + fx.rand(-0.7, 0.7),
         life: fx.rand(0.35, 0.8), s0: fx.rand(0.032, 0.058), s1: 0.01, c0: [1, 1, 1], c1: color, a: 1.6, cell: FX2_CELL.spark, t2: true, drag: 3.2, stretch: 1.5, fadeIn: 0.02 });
@@ -4796,6 +4848,7 @@ class Dungeon {
     // 接近最高点:白光爆闪 + 慢镜 + 推镜(一次)
     if (!act.fxOnce && u >= fireU - 0.16) {
       act.fxOnce = true;
+      this.bloomPulse(0.18, 0.5);
       this.slowT = 0.55;
       this.slowK = 0.28;
       this.camTo = 0.8;
@@ -4816,6 +4869,15 @@ class Dungeon {
   private ultImpact(x: number, z: number, fxn: number, fzn: number): void {
     const fx = this.fx!;
     const ice: [number, number, number] = [0.62, 0.86, 1.0];
+    // 泛光脉冲等落地白闪过去再起(和白闪叠在一起会把主角照白)
+    this.timers.push({ at: this.time + 0.16, run: () => this.bloomPulse(0.32, 0.9) });
+    // 光效 v4:落地一圈往外炸开的花瓣屑(先快后被风托住,翻着飘下来)
+    const qn = DUNGEON.tier === 'phone' ? 16 : 34;
+    for (let k = 0; k < qn; k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const sp = fx.rand(3, 9);
+      this.petal(x + Math.cos(a) * 0.5, fx.rand(0.3, 1.4), z + Math.sin(a) * 0.5, Math.cos(a) * sp, fx.rand(1.5, 4.5), Math.sin(a) * sp, fx.rand(1.2, 2.0), fx.rand(0.04, 0.07), k % 4 === 0, ice);
+    }
     // 开天斩:一道从十几米高劈到地面的竖光(两层:细而亮的芯 + 宽而淡的风)
     fx.pillar({ x, z, h: 13, w0: 0.28, w1: 0.08, life: 0.32, color: [1, 1, 1], a: 0.5 });          // 实心的刀光芯(11-22 主角让给竖直巨刀光,这里调淡)
     fx.streak({ kind: 'drop', x, z, y0: 13, w0: 0.22, w1: 0.32, life: 0.55, grow: 0.07, len: 1, scroll: -6, rep: 2, color: [1, 1, 1], a: 0.6 });
@@ -4868,6 +4930,12 @@ class Dungeon {
   private skillDashEnd(sx: number, sz: number, fxn: number, fzn: number): void {
     const fx = this.fx!;
     const violet: [number, number, number] = [0.62, 0.55, 1.0];
+    this.bloomPulse(0.25, 0.45);
+    for (let k = 0; k < 10; k += 1) {
+      const a = Math.atan2(fzn, fxn) + fx.rand(-1.2, 1.2);
+      const sp = fx.rand(2.5, 6);
+      this.petal(this.lx + fxn * 1.0, fx.rand(0.6, 1.5), this.lz + fzn * 1.0, Math.cos(a) * sp, fx.rand(0.8, 2.5), Math.sin(a) * sp, fx.rand(0.9, 1.5), fx.rand(0.035, 0.06), k % 3 === 0, violet);
+    }
     if (Math.hypot(this.lx - sx, this.lz - sz) > 0.8) {
       fx.streak({ kind: 'line', x: sx, z: sz, x2: this.lx, z2: this.lz, y0: 0.06, w0: 0.35, w1: 0.6, life: 0.85, grow: 0.07, len: 1, scroll: -4, rep: 3, color: violet, a: 0.7 });
       // 拖痕上一路几团水汽
@@ -4898,6 +4966,13 @@ class Dungeon {
   /** 旋风斩 / 连环斩收尾:一圈贴地往外滚的云浪 + 细碎的闪点。 */
   private skillWhirlEnd(x: number, z: number): void {
     const fx = this.fx!;
+    this.bloomPulse(0.28, 0.5);
+    // 光效 v4:旋风散开时甩出去的一圈花瓣屑(顺着转向往外飞)
+    for (let k = 0; k < 16; k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const sp = fx.rand(3, 6);
+      this.petal(x + Math.cos(a) * 1.4, fx.rand(0.5, 1.6), z + Math.sin(a) * 1.4, Math.sin(a) * sp + Math.cos(a) * 2, fx.rand(0.6, 2.0), -Math.cos(a) * sp + Math.sin(a) * 2, fx.rand(1.0, 1.6), fx.rand(0.035, 0.06), k % 3 === 0, [0.6, 0.8, 1.0]);
+    }
     for (let k = 0; k < 9; k += 1) {
       const a = (k / 9) * Math.PI * 2 + fx.rand(-0.2, 0.2);
       const sp = fx.rand(3.5, 5.5);
@@ -5023,6 +5098,13 @@ class Dungeon {
       fx.emit({ x: x + Math.cos(a) * r, y: fx.rand(0.15, 2.4), z: z + Math.sin(a) * r, vx: -Math.sin(a) * sp + Math.cos(a) * 1.2, vy: fx.rand(0.3, 1.6), vz: Math.cos(a) * sp + Math.sin(a) * 1.2,
         life: fx.rand(0.7, 1.5), s0: fx.rand(0.03, 0.055), s1: 0.01, c0: [1, 1, 1], c1: [0.7, 0.85, 1.0], a: 1.4, cell: FX2_CELL.spark, t2: true, drag: 1.4, stretch: 1.6, fadeIn: 0.05 });
     }
+    // 光效 v4:旋涡上翻飞的花瓣屑(跟着旋涡转着往外甩)
+    for (let k = 0; k < n(40); k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const r = fx.rand(1.0, 4.2);
+      const sp = fx.rand(2.5, 5.5) * (1.4 - r / 6);
+      this.petal(x + Math.cos(a) * r, fx.rand(0.3, 2.6), z + Math.sin(a) * r, -Math.sin(a) * sp + Math.cos(a) * 1.0, fx.rand(0.4, 1.8), Math.cos(a) * sp + Math.sin(a) * 1.0, fx.rand(1.2, 2.2), fx.rand(0.04, 0.07), k % 4 === 0, [0.7, 0.85, 1.0]);
+    }
     // 空中飘散的白色闪点
     for (let k = 0; k < n(34); k += 1) {
       const a = fx.rand(0, Math.PI * 2);
@@ -5091,6 +5173,18 @@ class Dungeon {
         this.dim = 0;
       } else {
         this.post.set({ exposure: +(b.exposure * (1 - 0.28 * this.dim) * (1 + 1.5 * fl * fl)).toFixed(4), saturation: +(b.saturation * (1 - 0.4 * this.dim)).toFixed(4) });
+      }
+    }
+    // 泛光脉冲(光效 v4):大招 / 技能爆发那一下亮的东西周围一大圈柔光,按真实时间收回原值
+    if (this.bloomBase !== null && this.post) {
+      this.bloomT = Math.max(0, this.bloomT - rdt);
+      if (this.bloomT <= 0) {
+        this.post.set({ bloomIntensity: this.bloomBase });
+        this.bloomBase = null;
+        this.bloomPeak = 0;
+      } else {
+        const k = this.bloomT / this.bloomLife;
+        this.post.set({ bloomIntensity: +(this.bloomBase + this.bloomPeak * k * k).toFixed(4) });
       }
     }
     // 气浪:按游戏时间推进(慢镜里也跟着慢),中心每帧投到画面上
@@ -5212,6 +5306,11 @@ class Dungeon {
       if (w.glow) {
         w.glow.x2 = w.x;
         w.glow.z2 = w.z;
+      }
+      // 光效 v4:剑气两边被卷起来的花瓣屑
+      if (dt > 0 && fx.rand() < 0.7) {
+        const side = fx.rand(-1.6, 1.6);
+        this.petal(w.x - w.dz * side, fx.rand(0.3, 1.2), w.z + w.dx * side, w.dx * fx.rand(3, 7) - w.dz * side * 0.8, fx.rand(0.6, 2.0), w.dz * fx.rand(3, 7) + w.dx * side * 0.8, fx.rand(0.8, 1.3), fx.rand(0.035, 0.06), fx.rand() < 0.35, WAVE_TEAL);
       }
       // 11-22 光效 v3:剑气身后拖着的速度光线(比剑气飞得慢一点,一根根落在后面)
       if (dt > 0 && fx.rand() < 0.8) {

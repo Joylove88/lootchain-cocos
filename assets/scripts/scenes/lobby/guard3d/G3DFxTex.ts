@@ -6,7 +6,7 @@ import { ctxOf, Cv, fbm, makeCanvas } from './G3DTextures';
  * 星芒闪光、冲击波环、烟尘、刀痕、光柱、旋风带、长火星、碎石、柔光、剑气月牙、地面冲击环、能量团。
  * 全部白色 + 透明度,颜色由顶点色给(同一格能染成紫 / 金 / 冰蓝)。
  */
-export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11, fog: 12, wisp: 13, cumulus: 14 };
+export const FX2_CELL = { flare: 0, ring: 1, dust: 2, slash: 3, beam: 4, swirl: 5, spark: 6, debris: 7, glow: 8, crescent: 9, groundRing: 10, energy: 11, fog: 12, wisp: 13, cumulus: 14, petal: 15 };
 export const FX2_N = 4;
 
 /** 第二张图集里某一格的贴图坐标(往里收两个多像素,免得相邻格渗过来)。 */
@@ -190,6 +190,19 @@ export function paintFx2Atlas(): Cv {
     const n = fbm(u * 5 + 1.3, v * 5 + 4.4, 4, 909);
     const dd = cumDensity(x, y) + (n - 0.5) * 0.28;
     return sat(sstep(0.0, 0.28, dd) * sat((1 - Math.hypot(x, y)) * 3));
+  };
+  // 15 花瓣屑(11-22 光效 v4,参考视频「剑气可视化」满天飘的白色碎屑):两头尖、微微弯的一片,边缘柔,外面一圈很淡的光
+  cells[FX2_CELL.petal] = (u, v) => {
+    const x = (u * 2 - 1) / 0.86;
+    const y0 = v * 2 - 1;
+    const halo = Math.exp(-(x * x * 0.8 + y0 * y0 * 5)) * 0.1;
+    if (Math.abs(x) >= 1) {
+      return sat(halo);
+    }
+    const y = y0 - 0.16 * (1 - x * x);
+    const hw = 0.3 * Math.pow(1 - x * x, 0.75);
+    const body = 1 - sstep(0.65, 1.0, Math.abs(y) / Math.max(1e-3, hw));
+    return sat(body * (0.82 + 0.18 * (1 - Math.abs(x))) + halo);
   };
   const lum: Array<((u: number, v: number) => number) | undefined> = [];
   lum[FX2_CELL.cumulus] = (u, v) => {

@@ -496,6 +496,32 @@ export function paintTrail(W = 256, H = 64): HTMLCanvasElement {
   return cv;
 }
 
+/**
+ * 刀光外层的柔光晕(11-22 光效 v4,参考视频里剑光外面一大圈柔光):带子比刀光本身往剑尖外多出三成、剑根那头收进四分之一,
+ * 横向一团很宽的柔光,峰值落在刀光那条亮线的位置;越旧淡得越快。
+ */
+export function paintTrailHalo(W = 128, H = 64): HTMLCanvasElement {
+  const cv = makeCanvas(W, H);
+  const c = ctxOf(cv);
+  const img = c.createImageData(W, H);
+  for (let y = 0; y < H; y += 1) {
+    const v = 1 - (y + 0.5) / H;            // 0 内沿 → 1 外沿
+    for (let x = 0; x < W; x += 1) {
+      const u = (x + 0.5) / W;
+      const g = Math.exp(-(((v - 0.62) / 0.2) ** 2)) * 0.8 + Math.exp(-(((v - 0.58) / 0.42) ** 2)) * 0.25;
+      const edge = Math.min(1, v / 0.08, (1 - v) / 0.12);
+      const a = g * Math.max(0, edge) * (1 - u) ** 1.6;
+      const p = (y * W + x) * 4;
+      img.data[p] = 255;
+      img.data[p + 1] = 255;
+      img.data[p + 2] = 255;
+      img.data[p + 3] = Math.round(255 * Math.max(0, Math.min(1, a)));
+    }
+  }
+  c.putImageData(img, 0, 0);
+  return cv;
+}
+
 interface Sample { bx: number; by: number; bz: number; tx: number; ty: number; tz: number; age: number; head: boolean; r: number; g: number; b: number }
 
 /**
@@ -505,12 +531,14 @@ interface Sample { bx: number; by: number; bz: number; tx: number; ty: number; t
 export class BladeTrail {
   readonly mesh: DynMesh;
   readonly mat: Material;
+  /** 外层柔光晕(构造时 halo = true 才有)。 */
+  readonly halo: DynMesh | null = null;
   life = 0.27;
   private fx = false;
   private samples: Sample[] = [];
   private last: { b: Vec3; t: Vec3 } | null = null;
 
-  constructor(parent: Node, bounds: { min: [number, number, number]; max: [number, number, number] }, texture?: Texture2D) {
+  constructor(parent: Node, bounds: { min: [number, number, number]; max: [number, number, number] }, texture?: Texture2D, halo = false) {
     const trailTex = texture ?? tex(paintTrail(), false, 2);
     // 11-22 特效专用着色器:渐变上色 + 噪声流动,旧的那头边缘先碎(顶点透明度 = 寿命);读不到着色器退回通用材质
     const fxm = fxMaterial('add', trailTex, [0.6, 0.012, 0.45, 3.4], [0.7, 0.7, 0.5, -0.9]);
@@ -523,6 +551,16 @@ export class BladeTrail {
       this.mat.setProperty('colorScale', new Vec3(3.4, 3.4, 3.4));
     }
     this.mesh = new DynMesh(parent, 'DgBladeTrail', this.mat, 4 * 260, 6 * 260, false, false, bounds);
+    if (halo) {
+      const ht = tex(paintTrailHalo(), false, 1);
+      let hm = fxMaterial('add', ht, [0.3, 0.015, 0, 1.3], [0.5, 0.5, 0.3, -0.6]);
+      if (!hm) {
+        hm = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, 2);
+        hm.setProperty('mainTexture', ht);
+        hm.setProperty('colorScale', new Vec3(1.3, 1.3, 1.3));
+      }
+      this.halo = new DynMesh(parent, 'DgBladeHalo', hm, 4 * 260, 6 * 260, false, false, bounds);
+    }
   }
 
   /** 这一帧剑在哪(on = 刀光开着;关着的时候只是让已有的慢慢淡掉)。 */
@@ -591,6 +629,31 @@ export class BladeTrail {
       m.tri(i0, i0 + 2, i0 + 3);
     }
     m.end();
+    const h = this.halo;
+    if (h) {
+      // 光晕:同一条带子,剑尖那头往外多出 30%、剑根那头收进 25%
+      h.begin();
+      for (let i = 1; i < s.length; i += 1) {
+        const a = s[i - 1];
+        const b = s[i];
+        if (b.head || !h.room(4, 6)) {
+          continue;
+        }
+        const ua = Math.min(1, a.age / this.life);
+        const ub = Math.min(1, b.age / this.life);
+        const la = this.fx ? 1 - ua * 0.85 : 1;
+        const lb = this.fx ? 1 - ub * 0.85 : 1;
+        const adx = a.tx - a.bx; const ady = a.ty - a.by; const adz = a.tz - a.bz;
+        const bdx = b.tx - b.bx; const bdy = b.ty - b.by; const bdz = b.tz - b.bz;
+        const i0 = h.vert(a.bx + adx * 0.25, a.by + ady * 0.25, a.bz + adz * 0.25, ua, 1, a.r, a.g, a.b, la);
+        h.vert(a.tx + adx * 0.3, a.ty + ady * 0.3, a.tz + adz * 0.3, ua, 0, a.r, a.g, a.b, la);
+        h.vert(b.tx + bdx * 0.3, b.ty + bdy * 0.3, b.tz + bdz * 0.3, ub, 0, b.r, b.g, b.b, lb);
+        h.vert(b.bx + bdx * 0.25, b.by + bdy * 0.25, b.bz + bdz * 0.25, ub, 1, b.r, b.g, b.b, lb);
+        h.tri(i0, i0 + 1, i0 + 2);
+        h.tri(i0, i0 + 2, i0 + 3);
+      }
+      h.end();
+    }
   }
 
   clear(): void {
