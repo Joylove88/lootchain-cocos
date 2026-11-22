@@ -82,8 +82,8 @@ class TownFx3D implements FieldExtra {
     }
     const g = this.hdr ? this.cfg.glowHdr : this.cfg.glow;
     const r = this.hdr ? this.cfg.runeHdr : this.cfg.rune;
-    this.fx.mats[3].setProperty('colorScale', new Vec3(g, g, g));
-    this.fx.mats[1].setProperty('colorScale', new Vec3(r, r, r));
+    this.fx.setGlowScale(g);
+    this.fx.setRuneScale(r);
   }
 
   /** 现在是不是该出 3D 特效(真 3D 场景开着,且这个渲染器就是当前这个)。 */
@@ -157,7 +157,7 @@ class TownFx3D implements FieldExtra {
     // 这套材质原来是给摄影棚的「高动态 + 泛光」调的(亮度乘 5):线性直出时压到 1.5;野外开了后期时给到 3 左右(见 cfg)
     this.hdr = world.post.isOn();
     this.tone();
-    this.arc = new DynMesh(this.root, 'TownFxSlash', this.fx.mats[3], 2600, 15000, false, false, bounds);
+    this.arc = new DynMesh(this.root, 'TownFxSlash', this.fx.glowMat, 2600, 15000, false, false, bounds);
     for (let i = 0; i < 3; i += 1) {
       const n = new Node('TownFxLight');
       n.layer = FIELD_LAYER;

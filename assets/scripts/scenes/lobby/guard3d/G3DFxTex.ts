@@ -376,3 +376,64 @@ export function paintInkWhirl(): Cv {
   }
   return out;
 }
+
+/** 周期值噪声(格点按 period 取模,铺满一张图时上下左右接得上)。 */
+function pnoise(x: number, y: number, period: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const h = (a: number, b: number): number => {
+    const aa = ((a % period) + period) % period;
+    const bb = ((b % period) + period) % period;
+    let v = Math.imul(aa, 374761393) ^ Math.imul(bb, 668265263) ^ Math.imul(seed + 1, 1274126177);
+    v = Math.imul(v ^ (v >>> 13), 1274126177);
+    return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+  };
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const a = h(ix, iy) + (h(ix + 1, iy) - h(ix, iy)) * ux;
+  const b = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * ux;
+  return a + (b - a) * uy;
+}
+
+/**
+ * 特效着色器用的噪声(11-22):256 × 256、可无缝平铺;R / G 两路不同种子、不同疏密的分形噪声(光效内部的翻涌、溶解的碎边都靠它)。
+ */
+export function paintFxNoise(): Cv {
+  const N = 256;
+  const cv = makeCanvas(N, N);
+  const ctx = ctxOf(cv);
+  const img = ctx.createImageData(N, N);
+  const d = img.data;
+  const fbmP = (u: number, v: number, base: number, seed: number): number => {
+    let s = 0;
+    let a = 0.5;
+    let f = base;
+    let n = 0;
+    for (let o = 0; o < 4; o += 1) {
+      s += a * pnoise(u * f, v * f, f, seed + o * 17);
+      n += a;
+      a *= 0.5;
+      f *= 2;
+    }
+    return s / n;
+  };
+  for (let y = 0; y < N; y += 1) {
+    for (let x = 0; x < N; x += 1) {
+      const u = x / N;
+      const v = y / N;
+      const r = fbmP(u, v, 4, 501);
+      const g = fbmP(u, v, 8, 733);
+      // 拉开反差(分形噪声都挤在 0.5 附近,溶解的门槛不好用)
+      const k = (q: number): number => Math.max(0, Math.min(1, (q - 0.5) * 1.9 + 0.5));
+      const p = (y * N + x) * 4;
+      d[p] = Math.round(255 * k(r));
+      d[p + 1] = Math.round(255 * k(g));
+      d[p + 2] = 128;
+      d[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}

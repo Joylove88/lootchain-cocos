@@ -4,7 +4,7 @@ import { sfx } from './G3DAudio';
 import { CHAR_LIGHT, charKeys, G3DChar, hasChar, hasMoves, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
 import { barkPbr, canvasPbr, endGrainPbr, ironPbr, Pbr, rockPbr, woodPbr } from './G3DFieldTex';
-import { FxWorld } from './G3DFx';
+import { FX_ORDER_BASE, FxWorld } from './G3DFx';
 import { FX2_CELL } from './G3DFxTex';
 import { deviceInfo, GpuTimer } from './G3DGpuTimer';
 import { applyPose, BLADE_LEN, BLADE_ROOT, BladeTrail, buildSword, COMBO, GS_COMBO, GS_RUN, GS_SKILLS, GS_STAND, Move, MoveHit, newPose, placeSword, poseAt, rootAt, SKILLS } from './G3DHeroMoves';
@@ -417,6 +417,8 @@ class Dungeon {
   private swordRoot = BLADE_ROOT;
   /** 剑尖这一帧往哪边走(世界方向;命中的火星顺着它飞)。 */
   private tipVel = new Vec3(0, 0, 1);
+  /** 挥剑白屑的发射累计(按时间均匀发)。 */
+  private fleckAcc = 0;
   private tipPrev = new Vec3();
   /** 调试:把主角定在某个片段的某一刻(逐帧看动作用)。 */
   dbgClip: { name: string; t: number } | null = null;
@@ -1459,6 +1461,10 @@ class Dungeon {
     this.aura.life = 0.26;
     this.aura.mat.setProperty('colorScale', new Vec3(1.3, 1.3, 1.3));
     this.waveMesh = new DynMesh(world, 'DgSwordWave', this.trail.mat, 4 * 120, 6 * 120, false, false, fxBounds);
+    // 刀光 / 突进拖尾 / 剑气带画在所有特效之后(和原来按创建顺序画的时候一样)
+    this.trail.mesh.order = FX_ORDER_BASE + 10;
+    this.aura.mesh.order = FX_ORDER_BASE + 11;
+    this.waveMesh.order = FX_ORDER_BASE + 12;
     this.loadChars();
     this.stats.buildMs = Math.round(performance.now() - t0);
   }
@@ -4245,6 +4251,12 @@ class Dungeon {
           }
           fx.emit({ x: this.lx - fxn * 0.3, y: 0.15, z: this.lz - fzn * 0.3, vx: fx.rand(-0.5, 0.5), vy: fx.rand(0.2, 0.7), vz: fx.rand(-0.5, 0.5), life: fx.rand(0.5, 0.9), s0: 0.25, s1: 0.7,
             c0: [0.3, 0.31, 0.36], a: 0.14, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1 });
+          // 11-22 光效 v3:速度光线(身边一根根又细又长的光线往后掠过去)
+          for (let k = 0; k < 2; k += 1) {
+            const side = fx.rand(-1, 1) * fx.rand(0.5, 1.4);
+            fx.emit({ x: this.lx + fxn * fx.rand(0.5, 1.5) - fzn * side, y: fx.rand(0.25, 1.9), z: this.lz + fzn * fx.rand(0.5, 1.5) + fxn * side, vx: -fxn * fx.rand(18, 26), vy: 0, vz: -fzn * fx.rand(18, 26),
+              life: fx.rand(0.1, 0.16), s0: fx.rand(0.022, 0.034), s1: 0.012, c0: [1, 1, 1], c1: [0.7, 0.65, 1.0], a: 1.3, cell: FX2_CELL.spark, t2: true, stretch: 8, fadeIn: 0.05 });
+          }
           // 贴地溅起的火星(往后、往两边甩)
           for (let k = 0; k < 2; k += 1) {
             const side = fx.rand() < 0.5 ? -1 : 1;
@@ -4298,6 +4310,14 @@ class Dungeon {
           const r = fx.rand(1.0, 2.4);
           fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.1, 0.6), z: this.lz + Math.sin(a) * r, vx: Math.sin(a) * 7, vy: fx.rand(1.5, 3.2), vz: -Math.cos(a) * 7,
             life: fx.rand(0.25, 0.45), s0: 0.014, s1: 0.004, c0: [0.8, 0.92, 1], c1: [0.45, 0.65, 1], a: 0.6, cell: FX_CELL.streak, drag: 1.2, stretch: 3 });
+        }
+        // 11-22 光效 v3:旋风里卷着转的发光白屑(参考视频「360° 半月」绕人飞旋的白色碎屑),转着往外甩
+        for (let k = 0; k < 3; k += 1) {
+          const a = fx.rand(0, Math.PI * 2);
+          const r = fx.rand(1.1, 2.1);
+          const sp = fx.rand(5, 8);
+          fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.4, 1.7), z: this.lz + Math.sin(a) * r, vx: Math.sin(a) * sp + Math.cos(a) * 0.8, vy: fx.rand(0.2, 1.2), vz: -Math.cos(a) * sp + Math.sin(a) * 0.8,
+            life: fx.rand(0.4, 0.8), s0: fx.rand(0.032, 0.055), s1: 0.01, c0: [1, 1, 1], c1: [0.6, 0.8, 1.0], a: 1.5, cell: FX2_CELL.spark, t2: true, drag: 1.6, stretch: 1.8, fadeIn: 0.03 });
         }
         // 被旋风卷起来、绕着人转着往外甩的碎叶碎石(深色小片,打着转)
         for (let k = 0; k < 2; k += 1) {
@@ -4625,6 +4645,11 @@ class Dungeon {
     fx.emit({ x: px + ux * 0.05, y: py + uy * 0.05, z: pz + uz * 0.05, vx: ux * 0.02, vy: uy * 0.02, vz: uz * 0.02, life: heavy ? 0.2 : 0.14, s0: heavy ? 0.75 : 0.55, s1: heavy ? 0.95 : 0.7,
       c0: [1, 1, 1], c1: color, a: 0.95, cell: FX2_CELL.slash, t2: true, stretch: 0.01, fadeIn: 0.01 });
     fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.26 : 0.18, s0: 0.15, s1: heavy ? 1.6 : 1.0, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.55 : 0.4, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    // 11-22 光效 v3:接触点留几颗慢慢往上飘、渐暗的细碎光点(余辉),不是一闪就全没了
+    for (let i = 0; i < (heavy ? 6 : 3); i += 1) {
+      fx.emit({ x: px + fx.rand(-0.2, 0.2), y: py + fx.rand(-0.15, 0.25), z: pz + fx.rand(-0.2, 0.2), vx: ux * fx.rand(0.4, 1.4) + fx.rand(-0.35, 0.35), vy: fx.rand(0.3, 0.9), vz: uz * fx.rand(0.4, 1.4) + fx.rand(-0.35, 0.35),
+        life: fx.rand(0.45, 0.85), s0: fx.rand(0.04, 0.07), s1: 0.012, c0: [1, 1, 1], c1: color, a: 1.2, cell: FX2_CELL.glow, t2: true, drag: 2.4, fadeIn: 0.08 });
+    }
     if (heavy && this.act?.kind !== 'smash') {
       this.addShock(px, py, pz, 0.32, 0.22, 0.012);
     }
@@ -4651,6 +4676,33 @@ class Dungeon {
       if (fall) {
         m.c.play(fall, 0.1, false);
       }
+    }
+  }
+
+  /**
+   * 11-22 光效 v3(参考视频「剑气可视化」:挥剑时满屏飘着细碎发光的白屑):沿剑身外半段一路洒出白屑,顺着剑走的方向甩出去、很快停住慢慢灭;
+   * 偶尔一颗柔光点往上飘。只在刀光亮着的时候发(_base / _tip = 这一帧的剑根 / 剑尖)。
+   */
+  private swingFlecks(dt: number, color: [number, number, number]): void {
+    const fx = this.fx;
+    if (!fx) {
+      return;
+    }
+    const q = DUNGEON.tier === 'phone' ? 0.5 : 1;
+    this.fleckAcc += dt * 70 * q;
+    const n = Math.min(6, Math.floor(this.fleckAcc));
+    this.fleckAcc -= n;
+    for (let k = 0; k < n; k += 1) {
+      const s = fx.rand(0.4, 1.05);
+      const sp = fx.rand(2, 5.5) * s;
+      fx.emit({ x: _base.x + (_tip.x - _base.x) * s, y: _base.y + (_tip.y - _base.y) * s, z: _base.z + (_tip.z - _base.z) * s,
+        vx: this.tipVel.x * sp + fx.rand(-0.7, 0.7), vy: this.tipVel.y * sp * 0.4 + fx.rand(0.1, 1.0), vz: this.tipVel.z * sp + fx.rand(-0.7, 0.7),
+        life: fx.rand(0.35, 0.8), s0: fx.rand(0.032, 0.058), s1: 0.01, c0: [1, 1, 1], c1: color, a: 1.6, cell: FX2_CELL.spark, t2: true, drag: 3.2, stretch: 1.5, fadeIn: 0.02 });
+    }
+    if (fx.rand() < dt * 9 * q) {
+      const s = fx.rand(0.5, 1);
+      fx.emit({ x: _base.x + (_tip.x - _base.x) * s, y: _base.y + (_tip.y - _base.y) * s, z: _base.z + (_tip.z - _base.z) * s, vx: fx.rand(-0.3, 0.3), vy: fx.rand(0.15, 0.5), vz: fx.rand(-0.3, 0.3),
+        life: fx.rand(0.6, 1.0), s0: fx.rand(0.04, 0.07), s1: 0.015, c0: [1, 1, 1], c1: color, a: 0.8, cell: FX2_CELL.glow, t2: true, drag: 1, fadeIn: 0.12 });
     }
   }
 
@@ -4963,6 +5015,14 @@ class Dungeon {
     }
     // 气泡冲击环(透明的一圈,配合屏幕扭曲)
     fx.emit({ x, y: 1.0, z, life: 0.32, s0: 0.4, s1: 3.4, c0: [0.85, 0.92, 1.0], c1: [0.6, 0.75, 1.0], a: 0.16, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    // 11-22 光效 v3:旋涡上卷起的漫天白屑,跟着旋涡的转向(spin > 0)转着往外甩(参考视频「360° 半月」)
+    for (let k = 0; k < n(70); k += 1) {
+      const a = fx.rand(0, Math.PI * 2);
+      const r = fx.rand(0.8, 4.5);
+      const sp = fx.rand(3, 6.5) * (1.4 - r / 6);
+      fx.emit({ x: x + Math.cos(a) * r, y: fx.rand(0.15, 2.4), z: z + Math.sin(a) * r, vx: -Math.sin(a) * sp + Math.cos(a) * 1.2, vy: fx.rand(0.3, 1.6), vz: Math.cos(a) * sp + Math.sin(a) * 1.2,
+        life: fx.rand(0.7, 1.5), s0: fx.rand(0.03, 0.055), s1: 0.01, c0: [1, 1, 1], c1: [0.7, 0.85, 1.0], a: 1.4, cell: FX2_CELL.spark, t2: true, drag: 1.4, stretch: 1.6, fadeIn: 0.05 });
+    }
     // 空中飘散的白色闪点
     for (let k = 0; k < n(34); k += 1) {
       const a = fx.rand(0, Math.PI * 2);
@@ -5153,6 +5213,12 @@ class Dungeon {
         w.glow.x2 = w.x;
         w.glow.z2 = w.z;
       }
+      // 11-22 光效 v3:剑气身后拖着的速度光线(比剑气飞得慢一点,一根根落在后面)
+      if (dt > 0 && fx.rand() < 0.8) {
+        const side = fx.rand(-1.5, 1.5);
+        fx.emit({ x: w.x - w.dz * side - w.dx * 0.3, y: fx.rand(0.25, 1.25), z: w.z + w.dx * side - w.dz * 0.3, vx: w.dx * fx.rand(9, 13), vy: 0, vz: w.dz * fx.rand(9, 13),
+          life: fx.rand(0.12, 0.2), s0: 0.026, s1: 0.01, c0: [0.92, 1, 0.98], c1: WAVE_TEAL, a: 1.2, cell: FX2_CELL.spark, t2: true, stretch: 7, fadeIn: 0.05 });
+      }
       // 剑气边缘一路洒下的青色闪点
       if (dt > 0) {
         for (let k = 0; k < 2; k += 1) {
@@ -5338,6 +5404,9 @@ class Dungeon {
       this.tipPrev.set(_tip);
     }
     this.trail.push(_base, _tip, on && dt > 0, color);
+    if (on && dt > 0) {
+      this.swingFlecks(dt, color as [number, number, number]);
+    }
     this.trail.update(dt);
     // 突进:身体两侧拖出一条宽的光带(用同一种带子,两个端点取身体左右)
     const dashing = !!act && act.kind === 'dash' && act.t / act.dur > (act.move?.fx ? act.move.fx[0] : 0.2) && act.t / act.dur < (act.move?.fx ? act.move.fx[1] : 0.66);

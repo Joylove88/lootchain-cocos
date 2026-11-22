@@ -1,0 +1,129 @@
+// 3D 小样 · 技能特效专用着色器(2026-11-22,用户「光效还是不够酷炫和精致,不如视频里的那种」)。
+//
+// 原来特效用引擎的通用不受光材质:贴图(白色 + 透明度)× 顶点色,整片一个颜色,淡出就是整体变透明 —— 平、有「程序感」。
+// 这一份按专业游戏特效的常规做法:
+//   · 渐变上色:按形状的浓淡分层 —— 最浓处白热、往外是饱和的主色、最边缘是更深更浓的同色(颜色有层次);
+//   · 流动:一张可无缝平铺的噪声按世界坐标 + 时间滚动,形状被噪声调制,光的内部一直在翻涌;带状的特效再按噪声扭一下贴图坐标;
+//   · 溶解:顶点色的透明度当「寿命」—— 越接近消失,门槛越高,边缘先被噪声吃掉、碎成丝缕烧散,而不是整片变淡。
+// 两套:0 add = 加色(发光的东西);1 alpha = 半透明(云、雾、尘、碎石;颜色取贴图的明暗 × 顶点色,透明度一样走溶解)。
+CCEffect %{
+  techniques:
+  - name: add
+    passes:
+    - vert: fx-vs:vert
+      frag: fx-fs:frag
+      depthStencilState: &ds
+        depthTest: true
+        depthWrite: false
+      rasterizerState: &rs
+        cullMode: none
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: one
+          blendDst: one
+          blendSrcAlpha: zero
+          blendDstAlpha: one
+      properties: &props
+        mainTexture: { value: white }
+        noiseTexture: { value: grey }
+        fxParams: { value: [0.75, 0.004, 0.8, 3.0] }
+        noiseParams: { value: [0.45, 0.45, 0.35, -0.5] }
+  - name: alpha
+    passes:
+    - vert: fx-vs:vert
+      frag: fx-fs:frag
+      embeddedMacros: { FX_ALPHA: true }
+      depthStencilState: *ds
+      rasterizerState: *rs
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: zero
+          blendDstAlpha: one
+      properties: *props
+}%
+
+CCProgram fx-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec2 v_uv;
+  out vec4 v_color;
+  out vec3 v_wpos;
+
+  vec4 vert () {
+    vec4 wp = cc_matWorld * vec4(a_position, 1.0);
+    v_wpos = wp.xyz;
+    v_uv = a_texCoord;
+    v_color = a_color;
+    return cc_matViewProj * wp;
+  }
+}%
+
+CCProgram fx-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <legacy/output-standard>
+
+  in vec2 v_uv;
+  in vec4 v_color;
+  in vec3 v_wpos;
+
+  uniform sampler2D mainTexture;
+  uniform sampler2D noiseTexture;
+  uniform FxParams {
+    vec4 fxParams;      // x 溶解力度(0 = 不溶解)、y 扭曲(贴图坐标的偏移量)、z 白热核心强度、w 整体亮度(高动态,交给泛光)
+    vec4 noiseParams;   // xy 噪声缩放(每米几个周期)、zw 滚动速度(周期 / 秒)
+  };
+
+  // 加色那套的顶点色是「颜色 × 亮度」(亮度可以大于 1):按最大的通道把亮度分出来,只对颜色做 sRGB → 线性
+  // (和引擎通用材质的 SRGBToLinear 一样是平方),再乘回亮度。不转的话颜色发灰发白(第一版的毛病:红通道 0.3 → 应是 0.09)。
+  vec3 linColor (vec3 c) {
+    float k = max(max(c.r, c.g), max(c.b, 1e-4));
+    vec3 n = c / k;
+    return n * n * k;
+  }
+
+  vec4 frag () {
+    float t = cc_time.x;
+    // 噪声按世界坐标取(同一张图上的不同粒子各自不一样),再按时间往两个方向滚
+    vec2 nuv = v_wpos.xz * noiseParams.xy + vec2(v_wpos.y * 0.41, -v_wpos.y * 0.23);
+    vec2 n1 = texture(noiseTexture, nuv + noiseParams.zw * t).rg;
+    vec2 n2 = texture(noiseTexture, nuv * 1.9 - noiseParams.zw * t * 0.7 + 0.37).rg;
+    float nn = n1.x * 0.6 + n2.y * 0.4;
+    vec2 uv = v_uv + (vec2(n1.y, n2.x) - 0.5) * fxParams.y;
+    vec4 tex = texture(mainTexture, uv);
+    float shape = tex.a;
+    // 顶点透明度 +2 = 柔光类(雾、团光、烟尘、积云):不溶解、噪声也轻 —— 溶解会把软边切成一块块带亮边的「水滴」
+    float raw = v_color.a;
+    float soft = step(1.5, raw);
+    float life = clamp(raw - soft * 2.0, 0.0, 1.0);
+    float ero = fxParams.x * (1.0 - soft);
+    // 溶解:寿命越低门槛越高;形状先被噪声调制(浓处耐得住、淡处先散)
+    float thr = (1.0 - life) * ero;
+    float m = shape * mix(0.62 + 0.76 * nn, 0.8 + 0.4 * nn, soft);
+    float s = clamp((m - thr) / max(0.05, 1.0 - thr), 0.0, 1.0);
+    // 溶解的边上留一道细亮边(烧散的火线),只在正在消失的时候有
+    float rim = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.22, s)) * (1.0 - life) * ero;
+  #if FX_ALPHA
+    vec3 c = SRGBToLinear(tex.rgb) * SRGBToLinear(v_color.rgb);
+    return CCFragOutput(vec4(c, clamp(s * life, 0.0, 1.0)));
+  #else
+    vec3 base = linColor(v_color.rgb);
+    float kb = max(max(base.r, base.g), max(base.b, 1e-4));
+    vec3 deep = base * (base / kb) * 0.75;                  // 边缘:同色但更浓更暗(非主通道再压一遍)
+    vec3 col = mix(deep, base, smoothstep(0.0, 0.7, s)) * s;
+    col += vec3(kb) * pow(s, 4.0) * fxParams.z * (1.0 - soft * 0.6);   // 中心白热:跟着这一片的亮度走,暗的光不会冒白芯;柔光团少一点
+    col += base * rim * 2.0;
+    return CCFragOutput(vec4(col * fxParams.w * life * (1.5 - 0.5 * life), 1.0));
+  #endif
+  }
+}%

@@ -3,6 +3,7 @@ import type { G3DChar, MoveData } from './G3DChar';
 import { addMesh, DynMesh, material, tex } from './G3DKit';
 import { Sculpt, xform } from './G3DSculpt';
 import { ctxOf, makeCanvas } from './G3DTextures';
+import { fxMaterial } from './G3DFxShader';
 import { pfbm } from './G3DFieldTex';
 
 /**
@@ -505,13 +506,22 @@ export class BladeTrail {
   readonly mesh: DynMesh;
   readonly mat: Material;
   life = 0.27;
+  private fx = false;
   private samples: Sample[] = [];
   private last: { b: Vec3; t: Vec3 } | null = null;
 
   constructor(parent: Node, bounds: { min: [number, number, number]; max: [number, number, number] }, texture?: Texture2D) {
-    this.mat = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, 2);
-    this.mat.setProperty('mainTexture', texture ?? tex(paintTrail(), false, 2));
-    this.mat.setProperty('colorScale', new Vec3(3.4, 3.4, 3.4));
+    const trailTex = texture ?? tex(paintTrail(), false, 2);
+    // 11-22 特效专用着色器:渐变上色 + 噪声流动,旧的那头边缘先碎(顶点透明度 = 寿命);读不到着色器退回通用材质
+    const fxm = fxMaterial('add', trailTex, [0.6, 0.012, 0.45, 3.4], [0.7, 0.7, 0.5, -0.9]);
+    this.fx = !!fxm;
+    if (fxm) {
+      this.mat = fxm;
+    } else {
+      this.mat = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, 2);
+      this.mat.setProperty('mainTexture', trailTex);
+      this.mat.setProperty('colorScale', new Vec3(3.4, 3.4, 3.4));
+    }
     this.mesh = new DynMesh(parent, 'DgBladeTrail', this.mat, 4 * 260, 6 * 260, false, false, bounds);
   }
 
@@ -571,10 +581,12 @@ export class BladeTrail {
       }
       const ua = Math.min(1, a.age / this.life);
       const ub = Math.min(1, b.age / this.life);
-      const i0 = m.vert(a.bx, a.by, a.bz, ua, 1, a.r, a.g, a.b, 1);
-      m.vert(a.tx, a.ty, a.tz, ua, 0, a.r, a.g, a.b, 1);
-      m.vert(b.tx, b.ty, b.tz, ub, 0, b.r, b.g, b.b, 1);
-      m.vert(b.bx, b.by, b.bz, ub, 1, b.r, b.g, b.b, 1);
+      const la = this.fx ? 1 - ua * 0.85 : 1;
+      const lb = this.fx ? 1 - ub * 0.85 : 1;
+      const i0 = m.vert(a.bx, a.by, a.bz, ua, 1, a.r, a.g, a.b, la);
+      m.vert(a.tx, a.ty, a.tz, ua, 0, a.r, a.g, a.b, la);
+      m.vert(b.tx, b.ty, b.tz, ub, 0, b.r, b.g, b.b, lb);
+      m.vert(b.bx, b.by, b.bz, ub, 1, b.r, b.g, b.b, lb);
       m.tri(i0, i0 + 1, i0 + 2);
       m.tri(i0, i0 + 2, i0 + 3);
     }

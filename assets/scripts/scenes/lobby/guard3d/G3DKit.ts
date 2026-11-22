@@ -90,6 +90,11 @@ export class DynMesh {
   readonly idx: Uint16Array;
   nv = 0;
   ni = 0;
+  /**
+   * 半透明队列里的绘制先后(0 = 不管)。引擎排半透明物体:模型优先级 → 通道 → 深度 → 着色器编号;动态网格的包围盒常常一样大(深度相同),
+   * 最后就按着色器编号排 —— 换了材质先后就乱。要固定先后就给这个数(小的先画),每次 end() 时套到模型上(模型可能晚于构造才建出来)。
+   */
+  order = 0;
   private readonly maxV: number;
   private readonly maxI: number;
 
@@ -199,5 +204,9 @@ export class DynMesh {
     }
     this.mesh.updateSubMesh(0, this.geometry(false));
     this.mr.onGeometryChanged();   // 顶点 / 索引数变了要通知渲染那边,否则还按建的时候那 3 个顶点画
+    const md = this.order ? this.mr.model : null;
+    if (md && md.priority !== this.order) {
+      md.priority = this.order;
+    }
   }
 }

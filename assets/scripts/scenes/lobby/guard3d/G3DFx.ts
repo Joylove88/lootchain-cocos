@@ -1,7 +1,8 @@
-import { Material, Node, Texture2D, Vec3 } from 'cc';
+import { Material, Node, Texture2D, Vec3, Vec4 } from 'cc';
 import { DynMesh, material, tex } from './G3DKit';
 import { FX_CELL, fxUv, paintFxAtlas, paintRune, paintScorch } from './G3DSkins';
 import { FX2_CELL, fx2Uv, paintBrushStreak, paintFx2Atlas, paintInkWhirl } from './G3DFxTex';
+import { fxMaterial, fxShaderReady } from './G3DFxShader';
 import { mulberry32 } from './G3DTextures';
 
 /**
@@ -50,6 +51,14 @@ interface Blade { x: number; y0: number; z: number; h: number; w0: number; w1: n
 /** 光柱:从 (x,y0,z) 往上 h 米,宽 w(始终正对镜头的竖片)。 */
 interface Pillar { x: number; y0: number; z: number; h: number; w0: number; w1: number; age: number; life: number; color: [number, number, number]; a: number }
 
+/** 柔光类的格子(雾、团光、烟尘、积云):特效着色器里不做溶解(顶点透明度 +2 告诉着色器),溶解会把软边切成一块块带亮边的「水滴」。 */
+const SOFT1 = new Set<number>([FX_CELL.glow, FX_CELL.core, FX_CELL.smokeA, FX_CELL.smokeB]);
+const SOFT2 = new Set<number>([FX2_CELL.glow, FX2_CELL.fog, FX2_CELL.dust, FX2_CELL.cumulus]);
+const softCell = (t2: boolean, cell: number): boolean => (t2 ? SOFT2 : SOFT1).has(cell);
+
+/** 特效网格在半透明队列里的起始先后号(之后挨个 +1,共 8 个);刀光拖尾等要画在特效之上的,用 FX_ORDER_BASE + 10 起。 */
+export const FX_ORDER_BASE = 10;
+
 const _f = new Vec3();
 const _rt = new Vec3();
 const _up = new Vec3();
@@ -75,6 +84,8 @@ export class FxWorld {
    * 弱显卡上一编就是零点几秒 → 建好后头几帧往每张网格里塞一片看不见的小面片(透明度 0),让编译发生在载入阶段。
    */
   private warm = 4;
+  /** 加色 / 半透明网格用的是特效专用着色器(顶点色:加色 = 颜色 × 亮度 + 寿命;见 G3DFxShader)。 */
+  private readonly fxOn: boolean;
   /** 第二张(高清)图集。 */
   readonly atlas2: Texture2D;
   private readonly scorchMesh: DynMesh;
@@ -87,12 +98,30 @@ export class FxWorld {
   readonly mats: Material[] = [];
   /** 特效图集(别的模块要自己画条带时共用这一张)。 */
   readonly atlas: Texture2D;
+  /**
+   * 发光(旧图集、加色)的材质 / 地面符文的材质 —— 别的模块要借用时按名字取,别按 mats 的下标
+   * (11-22 加了第二张图集后下标整体后移,野外 3D 的刀光借 mats[3] 借成了半透明那张)。
+   */
+  readonly glowMat: Material;
+  readonly runeMat: Material;
   stats = { particles: 0, bolts: 0, decals: 0 };
 
   /** bounds = 特效会出现的范围(给动态网格当包围盒;不给 = 守卫战战场那么大)。 */
   constructor(parent: Node, bounds?: { min: [number, number, number]; max: [number, number, number] }) {
     const atlas: Texture2D = tex(paintFxAtlas(), false, 2);
     this.atlas = atlas;
+    this.fxOn = fxShaderReady();
+    // 11-22 特效专用着色器:渐变上色 + 噪声流动 + 边缘溶解(读不到着色器就退回下面的通用材质)
+    const mkFx = (technique: number, texture: Texture2D, scale: number, distort: number, noise: number): Material => {
+      const kind = technique === 2 ? 'add' : 'alpha';
+      const m = this.fxOn ? fxMaterial(kind, texture, kind === 'add' ? [0.72, distort, 0.4, scale] : [0.28, distort * 0.5, 0, 1],
+        kind === 'add' ? [noise, noise, 0.35, -0.55] : [noise * 0.7, noise * 0.7, 0.12, 0.08]) : null;
+      if (m) {
+        this.mats.push(m);
+        return m;
+      }
+      return mk(technique, texture, scale);
+    };
     const mk = (technique: number, texture: Texture2D, scale: number): Material => {
       const m = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, technique);
       m.setProperty('mainTexture', texture);
@@ -102,18 +131,41 @@ export class FxWorld {
     };
     // 顺序 = 画的先后:贴地的痕迹在最底下,其次烟,最后是发光的
     this.scorchMesh = new DynMesh(parent, 'ShowFxScorch', mk(3, tex(paintScorch(256), false, 2), 1), 64 * 4, 64 * 6, false, false, bounds);
-    this.runeMesh = new DynMesh(parent, 'ShowFxRune', mk(2, tex(paintRune(512), false, 4), 3.2), 16 * 4, 16 * 6, false, false, bounds);
-    this.alphaMesh = new DynMesh(parent, 'ShowFxAlpha', mk(3, atlas, 1), 900 * 4, 900 * 6, false, false, bounds);
+    this.runeMat = mk(2, tex(paintRune(512), false, 4), 3.2);
+    this.runeMesh = new DynMesh(parent, 'ShowFxRune', this.runeMat, 16 * 4, 16 * 6, false, false, bounds);
+    this.alphaMesh = new DynMesh(parent, 'ShowFxAlpha', mkFx(3, atlas, 1, 0.003, 0.5), 900 * 4, 900 * 6, false, false, bounds);
     this.atlas2 = tex(paintFx2Atlas(), false, 4);
-    this.alpha2Mesh = new DynMesh(parent, 'ShowFxAlpha2', mk(3, this.atlas2, 1), 700 * 4, 700 * 6, false, false, bounds);
-    this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6, false, false, bounds);
-    this.add2Mesh = new DynMesh(parent, 'ShowFxAdd2', mk(2, this.atlas2, 5), 2400 * 4, 2400 * 6, false, false, bounds);
-    this.flowMesh = new DynMesh(parent, 'ShowFxFlow', mk(2, tex(paintBrushStreak(), true, 4), 4), 3200, 4800, false, false, bounds);
+    this.alpha2Mesh = new DynMesh(parent, 'ShowFxAlpha2', mkFx(3, this.atlas2, 1, 0.004, 0.4), 700 * 4, 700 * 6, false, false, bounds);
+    this.glowMat = mkFx(2, atlas, 5, 0.003, 0.6);
+    this.addMesh = new DynMesh(parent, 'ShowFxAdd', this.glowMat, 5000 * 4, 5000 * 6, false, false, bounds);
+    this.add2Mesh = new DynMesh(parent, 'ShowFxAdd2', mkFx(2, this.atlas2, 5, 0.005, 0.45), 2400 * 4, 2400 * 6, false, false, bounds);
+    this.flowMesh = new DynMesh(parent, 'ShowFxFlow', mkFx(2, tex(paintBrushStreak(), true, 4), 4, 0.035, 0.5), 3200, 4800, false, false, bounds);
     this.inkMesh = new DynMesh(parent, 'ShowFxInk', mk(3, tex(paintInkWhirl(), false, 8), 1), 2600, 13000, false, false, bounds);
+    // 11-22 先后固定成创建顺序(痕迹 → 烟 → 发光 → 墨盘)。原来全是同一个通用材质,排序落到「着色器编号相同」→ 按创建顺序画;
+    // 换了特效专用着色器以后按编号排,墨盘(通用材质)被提前画,让后画的云雾 / 地面光盖成一片灰蓝。
+    [this.scorchMesh, this.runeMesh, this.alphaMesh, this.alpha2Mesh, this.addMesh, this.add2Mesh, this.flowMesh, this.inkMesh].forEach((m, i) => {
+      m.order = FX_ORDER_BASE + i;
+    });
   }
 
   rand(a = 0, b = 1): number {
     return a + (b - a) * this.rnd();
+  }
+
+  /** 整体调发光(旧图集)的亮度:通用材质改 colorScale,特效着色器改 fxParams.w(两者同一个刻度)。 */
+  setGlowScale(k: number): void {
+    const m = this.glowMat;
+    if (m.effectName === 'builtin-unlit' || !this.fxOn) {
+      m.setProperty('colorScale', new Vec3(k, k, k));
+      return;
+    }
+    const v = m.getProperty('fxParams') as Vec4 | null;
+    m.setProperty('fxParams', new Vec4(v ? v.x : 0.72, v ? v.y : 0.003, v ? v.z : 0.4, k));
+  }
+
+  /** 地面符文的亮度(一直是通用材质)。 */
+  setRuneScale(k: number): void {
+    this.runeMat.setProperty('colorScale', new Vec3(k, k, k));
   }
 
   emit(e: Emit): void {
@@ -291,13 +343,16 @@ export class FxWorld {
     const draw = (m: DynMesh, p: Particle): void => {
       const t = p.age / p.life;
       const s = p.s0 + (p.s1 - p.s0) * t;
-      const al = p.a * Math.min(1, p.age / Math.max(0.001, p.fadeIn * p.life)) * (1 - t * t);
+      const life = Math.min(1, p.age / Math.max(0.001, p.fadeIn * p.life)) * (1 - t * t);
+      const split = this.fxOn && p.add;          // 特效着色器的加色:亮度乘进颜色,透明度只放寿命
+      const cm = split ? p.a : 1;
+      const al = split ? life : p.a * life;
       if (al <= 0.003 || s <= 0.0005) {
         return;
       }
-      const r = p.r0 + (p.r1 - p.r0) * t;
-      const g = p.g0 + (p.g1 - p.g0) * t;
-      const b = p.b0 + (p.b1 - p.b0) * t;
+      const r = (p.r0 + (p.r1 - p.r0) * t) * cm;
+      const g = (p.g0 + (p.g1 - p.g0) * t) * cm;
+      const b = (p.b0 + (p.b1 - p.b0) * t) * cm;
       const uv = p.t2 ? fx2Uv(p.cell) : fxUv(p.cell);
       let ax: number; let ay: number; let az: number; let bx: number; let by: number; let bz: number;
       if (p.stretch > 0) {
@@ -326,7 +381,7 @@ export class FxWorld {
         py = Math.max(py, s * 0.65);
       }
       m.quad(p.x - ax - bx, py - ay - by, p.z - az - bz, p.x + ax - bx, py + ay - by, p.z + az - bz, p.x + ax + bx, py + ay + by, p.z + az + bz, p.x - ax + bx, py - ay + by, p.z - az + bz,
-        uv[0], uv[1], uv[2], uv[3], r, g, b, al);
+        uv[0], uv[1], uv[2], uv[3], r, g, b, this.fxOn && softCell(p.t2, p.cell) ? al + 2 : al);
     };
     for (const p of smoke) {
       draw(p.t2 ? alp2 : alp, p);
@@ -411,14 +466,18 @@ export class FxWorld {
       const grow = 1 - Math.pow(1 - Math.min(1, t * 2.2), 3);
       const r = d.r0 + (d.r1 - d.r0) * grow;
       const fadeOut = d.age <= d.hold ? 1 : 1 - (d.age - d.hold) / Math.max(0.001, d.life - d.hold);
-      const a = d.a * Math.min(1, d.age / Math.max(0.001, d.fadeIn)) * Math.max(0, fadeOut);
+      const dl = Math.min(1, d.age / Math.max(0.001, d.fadeIn)) * Math.max(0, fadeOut);
+      const dsplit = this.fxOn && (d.kind === 'atlas' || d.kind === 'fx2');
+      const a = dsplit ? dl : d.a * dl;
+      const dc = dsplit ? d.a : 1;
       const cs = Math.cos(d.rot) * r;
       const sn = Math.sin(d.rot) * r;
       const m = d.kind === 'scorch' ? sc : d.kind === 'rune' ? ru : d.kind === 'fx2' ? add2 : d.kind === 'fx2a' ? alp2 : add;
       const uv = d.kind === 'atlas' ? fxUv(d.cell) : d.kind === 'fx2' || d.kind === 'fx2a' ? fx2Uv(d.cell) : [0, 0, 1, 1];
       // 四个角(从上往下看逆时针):朝上的面
+      const dsoft = this.fxOn && d.kind !== 'scorch' && d.kind !== 'rune' && softCell(d.kind !== 'atlas', d.cell);
       m.quad(d.x - cs + sn, d.y, d.z + sn + cs, d.x + cs + sn, d.y, d.z - sn + cs, d.x + cs - sn, d.y, d.z - sn - cs, d.x - cs - sn, d.y, d.z + sn - cs,
-        uv[0], uv[1], uv[2], uv[3], d.color[0], d.color[1], d.color[2], a);
+        uv[0], uv[1], uv[2], uv[3], d.color[0] * dc, d.color[1] * dc, d.color[2] * dc, dsoft ? a + 2 : a);
     }
     add.end();
     alp.end();
@@ -444,7 +503,9 @@ export class FxWorld {
       a.x += a.vx * dt;
       a.z += a.vz * dt;
       const t = a.age / a.life;
-      const al = a.a * Math.min(1, a.age / Math.max(0.001, a.fadeIn)) * (1 - t * t);
+      const alife = Math.min(1, a.age / Math.max(0.001, a.fadeIn)) * (1 - t * t);
+      const al = this.fxOn ? alife : a.a * alife;
+      const ac = this.fxOn ? a.a : 1;
       const r = a.r0 + (a.r1 - a.r0) * (1 - (1 - t) * (1 - t));
       const rx = -a.fz;           // 右 = 前 × 上(俯视顺时针 90°)
       const rz = a.fx;
@@ -466,8 +527,8 @@ export class FxWorld {
         const ro = r + a.w * 0.25;
         const ri = Math.max(0.05, r - a.w);
         const uu = uv[0] + (uv[2] - uv[0]) * u;
-        const i0 = m.vert(a.x + dx * ro, a.y + dy * ro, a.z + dz * ro, uu, uv[1], a.color[0], a.color[1], a.color[2], al);
-        m.vert(a.x + dx * ri, a.y + dy * ri, a.z + dz * ri, uu, uv[3], a.color[0], a.color[1], a.color[2], al);
+        const i0 = m.vert(a.x + dx * ro, a.y + dy * ro, a.z + dz * ro, uu, uv[1], a.color[0] * ac, a.color[1] * ac, a.color[2] * ac, al);
+        m.vert(a.x + dx * ri, a.y + dy * ri, a.z + dz * ri, uu, uv[3], a.color[0] * ac, a.color[1] * ac, a.color[2] * ac, al);
         if (prev >= 0) {
           m.tri(prev, i0, i0 + 1);
           m.tri(prev, i0 + 1, prev + 1);
@@ -496,7 +557,9 @@ export class FxWorld {
       }
       b.rot += b.spin * dt;
       const t = b.age / b.life;
-      const al = b.a * Math.min(1, t * 6) * (1 - t * t);
+      const blife = Math.min(1, t * 6) * (1 - t * t);
+      const al = this.fxOn ? blife : b.a * blife;
+      const bc = this.fxOn ? b.a : 1;
       const r = b.r0 + (b.r1 - b.r0) * t;
       if (!m.room((SEG + REP + 2) * 4, SEG * 12)) {
         continue;
@@ -505,10 +568,10 @@ export class FxWorld {
       for (let layer = 0; layer < 2; layer += 1) {
         const rr = r * (layer ? 0.82 : 1);
         const rot = b.rot * (layer ? 0.8 : 1) + layer * 1.3;
-        const la = al * (layer ? 0.6 : 1);
-        const c0 = b.color[0];
-        const c1 = b.color[1];
-        const c2 = b.color[2];
+        const la = this.fxOn ? al : al * (layer ? 0.6 : 1);
+        const c0 = b.color[0] * bc * (this.fxOn && layer ? 0.6 : 1);
+        const c1 = b.color[1] * bc * (this.fxOn && layer ? 0.6 : 1);
+        const c2 = b.color[2] * bc * (this.fxOn && layer ? 0.6 : 1);
         // 每段贴图单独连成一串(段与段之间重复一对顶点,u 从 1 跳回 0,不会出现整段贴图倒着拉的接缝)
         for (let seg = 0; seg < REP; seg += 1) {
           let prev = -1;
@@ -547,11 +610,13 @@ export class FxWorld {
         continue;
       }
       const t = p.age / p.life;
-      const al = p.a * Math.min(1, t * 12) * (1 - t) * (1 - t);
+      const plife = Math.min(1, t * 12) * (1 - t) * (1 - t);
+      const al = this.fxOn ? plife : p.a * plife;
+      const pc = this.fxOn ? p.a : 1;
       const w = p.w0 + (p.w1 - p.w0) * t;
       const h = p.h * (0.6 + 0.4 * Math.min(1, t * 5));
       m.quad(p.x - hx * w, p.y0, p.z - hz * w, p.x + hx * w, p.y0, p.z + hz * w, p.x + hx * w, p.y0 + h, p.z + hz * w, p.x - hx * w, p.y0 + h, p.z - hz * w,
-        uv[0], uv[1], uv[2], uv[3], p.color[0], p.color[1], p.color[2], al);
+        uv[0], uv[1], uv[2], uv[3], p.color[0] * pc, p.color[1] * pc, p.color[2] * pc, al);
     }
   }
 
@@ -596,7 +661,9 @@ export class FxWorld {
         const w = st.w0 + (st.w1 - st.w0) * s;
         // 带子两头渐隐(头部一小截更亮)
         const local = (s - tail) / Math.max(0.001, head - tail);
-        const al = st.a * fade * Math.min(1, local * 5) * Math.min(1, (1 - local) * 8 + 0.15);
+        const slife = fade * Math.min(1, local * 5) * Math.min(1, (1 - local) * 8 + 0.15);
+        const al = this.fxOn ? slife : st.a * slife;
+        const sc = this.fxOn ? st.a : 1;
         const u = s * st.rep - st.age * st.scroll;
         let px: number; let py: number; let pz: number; let ox: number; let oy: number; let oz: number;
         if (st.kind === 'spiral') {
@@ -631,8 +698,8 @@ export class FxWorld {
           oz = hz * w;
           oy = 0;
         }
-        const i0 = m.vert(px - ox, py - oy, pz - oz, u, 1, c[0], c[1], c[2], al);
-        m.vert(px + ox, py + oy, pz + oz, u, 0, c[0], c[1], c[2], al);
+        const i0 = m.vert(px - ox, py - oy, pz - oz, u, 1, c[0] * sc, c[1] * sc, c[2] * sc, al);
+        m.vert(px + ox, py + oy, pz + oz, u, 0, c[0] * sc, c[1] * sc, c[2] * sc, al);
         if (prev >= 0) {
           m.tri(prev, i0, i0 + 1);
           m.tri(prev, i0 + 1, prev + 1);
@@ -713,7 +780,9 @@ export class FxWorld {
         continue;
       }
       const t = b.age / b.life;
-      const al = b.a * Math.min(1, t * 14) * (1 - t) * (1 - t * 0.5);
+      const kl = Math.min(1, t * 14) * (1 - t) * (1 - t * 0.5);
+      const al = this.fxOn ? kl : b.a * kl;
+      const kc = this.fxOn ? b.a : 1;
       const w = b.w0 + (b.w1 - b.w0) * Math.min(1, t * 2.5);
       // 从上往下「劈」出来:前 30% 的时间里下沿从高处落到地面
       const reveal = Math.min(1, t / 0.3);
@@ -728,7 +797,7 @@ export class FxWorld {
       const uBot = uv[2] - (uv[2] - uv[0]) * ((top - bottom) / b.h);
       const vL = b.flip ? uv[3] : uv[1];
       const vR = b.flip ? uv[1] : uv[3];
-      const c = b.color;
+      const c: [number, number, number] = [b.color[0] * kc, b.color[1] * kc, b.color[2] * kc];
       const i0 = m.vert(b.x - hx * w, bottom, b.z - hz * w, uBot, vL, c[0], c[1], c[2], al);
       m.vert(b.x + hx * w, bottom, b.z + hz * w, uBot, vR, c[0], c[1], c[2], al);
       m.vert(b.x + hx * w, top, b.z + hz * w, uTop, vR, c[0], c[1], c[2], al);

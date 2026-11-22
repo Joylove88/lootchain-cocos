@@ -1,4 +1,5 @@
 import { Camera, director, EffectAsset, gfx, Material, renderer, rendering, resources, sys, Vec4 } from 'cc';
+import { setFxEffect } from './G3DFxShader';
 import { keptMaterial, loadKit } from './G3DKit';
 
 /**
@@ -246,7 +247,17 @@ export function loadPost(done: () => void): void {
     return;
   }
   effectAsked = true;
-  let left = 2;
+  let left = 3;
+  // 11-22:技能特效专用着色器也在这里一起读(G3DFxShader;读不到就退回通用材质)
+  resources.load('effects/g3d-fx', EffectAsset, (error, asset) => {
+    if (error || !asset) {
+      console.warn('[f3d] load g3d-fx', error?.message);
+    } else {
+      asset.addRef();
+      setFxEffect(asset);
+    }
+    finish();
+  });
   const finish = (): void => {
     left -= 1;
     if (left > 0) {
