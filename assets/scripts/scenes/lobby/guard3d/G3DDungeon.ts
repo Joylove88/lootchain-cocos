@@ -462,7 +462,7 @@ class Dungeon {
   private shake = 0;
   private lastDt = 0;
   private realDt = 0;
-  private waves: Array<{ x: number; z: number; dx: number; dz: number; age: number; life: number; hit: Set<Mob>; trail?: { x2: number; z2: number } }> = [];
+  private waves: Array<{ x: number; z: number; dx: number; dz: number; age: number; life: number; hit: Set<Mob>; trail?: { x2: number; z2: number }; glow?: { x2: number; z2: number } }> = [];
   private waveMesh: DynMesh | null = null;
   private timers: Array<{ at: number; run: () => void }> = [];
   /** 这一招里每次判定的挥剑声放过没有;主角走了多远(攒够一步放一声脚步)。 */
@@ -4216,6 +4216,14 @@ class Dungeon {
       if (act.sx === undefined) {
         act.sx = this.lx;
         act.sz = this.lz;
+        // 起步:脚下一圈小尘浪 + 一小圈气浪,往后蹬的感觉
+        fx.decal('fx2', FX2_CELL.groundRing, this.lx, this.lz, 0.3, 1.9, 0.4, [0.62, 0.55, 1.0], 0.35, 0.02, 0.05, 0, 0.035);
+        this.addShock(this.lx, 0.5, this.lz, 0.3, 0.2, 0.01);
+        for (let k = 0; k < 6; k += 1) {
+          const a = Math.atan2(-fzn, -fxn) + fx.rand(-0.9, 0.9);
+          fx.emit({ x: this.lx, y: 0.15, z: this.lz, vx: Math.cos(a) * fx.rand(2, 4), vy: fx.rand(0.2, 0.6), vz: Math.sin(a) * fx.rand(2, 4), life: fx.rand(0.5, 0.8), s0: 0.3, s1: 0.9,
+            c0: [0.62, 0.64, 0.7], a: 0.2, cell: FX2_CELL.dust, t2: true, add: false, rot: fx.rand(0, 6), drag: 3, fadeIn: 0.05 });
+        }
       }
       // 突进:冲过去的路上碰到谁算谁(每只一次);身后拖尘土和一串细火星
       if (u > fxA && u < fxB) {
@@ -4237,6 +4245,12 @@ class Dungeon {
           }
           fx.emit({ x: this.lx - fxn * 0.3, y: 0.15, z: this.lz - fzn * 0.3, vx: fx.rand(-0.5, 0.5), vy: fx.rand(0.2, 0.7), vz: fx.rand(-0.5, 0.5), life: fx.rand(0.5, 0.9), s0: 0.25, s1: 0.7,
             c0: [0.3, 0.31, 0.36], a: 0.14, cell: FX_CELL.smokeA, add: false, rot: fx.rand(0, 6), drag: 1 });
+          // 贴地溅起的火星(往后、往两边甩)
+          for (let k = 0; k < 2; k += 1) {
+            const side = fx.rand() < 0.5 ? -1 : 1;
+            fx.emit({ x: this.lx - fxn * 0.2, y: 0.08, z: this.lz - fzn * 0.2, vx: -fxn * fx.rand(3, 6) - fzn * side * fx.rand(1.5, 3.5), vy: fx.rand(0.8, 2.2), vz: -fzn * fx.rand(3, 6) + fxn * side * fx.rand(1.5, 3.5),
+              life: fx.rand(0.2, 0.4), s0: 0.04, s1: 0.01, c0: [1, 0.9, 0.7], c1: [0.62, 0.55, 1.0], a: 1, cell: FX2_CELL.spark, t2: true, grav: 1, drag: 1.2, stretch: 2.4, fadeIn: 0.01 });
+          }
         }
       }
       if (!act.fired && u >= (m?.fire ?? 0.62)) {
@@ -4285,6 +4299,14 @@ class Dungeon {
           fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.1, 0.6), z: this.lz + Math.sin(a) * r, vx: Math.sin(a) * 7, vy: fx.rand(1.5, 3.2), vz: -Math.cos(a) * 7,
             life: fx.rand(0.25, 0.45), s0: 0.014, s1: 0.004, c0: [0.8, 0.92, 1], c1: [0.45, 0.65, 1], a: 0.6, cell: FX_CELL.streak, drag: 1.2, stretch: 3 });
         }
+        // 被旋风卷起来、绕着人转着往外甩的碎叶碎石(深色小片,打着转)
+        for (let k = 0; k < 2; k += 1) {
+          const a = fx.rand(0, Math.PI * 2);
+          const r = fx.rand(1.2, 2.0);
+          fx.emit({ x: this.lx + Math.cos(a) * r, y: fx.rand(0.2, 1.4), z: this.lz + Math.sin(a) * r, vx: Math.sin(a) * fx.rand(4, 7) + Math.cos(a) * 1.2, vy: fx.rand(0.6, 2.0), vz: -Math.cos(a) * fx.rand(4, 7) + Math.sin(a) * 1.2,
+            life: fx.rand(0.5, 0.9), s0: fx.rand(0.04, 0.08), s1: fx.rand(0.03, 0.06), c0: k ? [0.22, 0.2, 0.16] : [0.3, 0.28, 0.22], a: 0.95, cell: FX2_CELL.debris, t2: true, add: false,
+            grav: 0.4, drag: 1.2, rot: fx.rand(0, 6), spin: fx.rand(-14, 14), fadeIn: 0.05 });
+        }
         if (fx.rand() < 0.5) {
           const a = fx.rand(0, Math.PI * 2);
           fx.emit({ x: this.lx + Math.cos(a) * 1.6, y: 0.12, z: this.lz + Math.sin(a) * 1.6, vx: Math.cos(a) * 2.2 + Math.sin(a) * 2, vy: fx.rand(0.2, 0.6), vz: Math.sin(a) * 2.2 - Math.cos(a) * 2,
@@ -4296,13 +4318,20 @@ class Dungeon {
         act.fired = true;
         sfx.play('wave');
         // 地上跟着铺的青色笔触痕迹:终点每帧挪到剑气所在处(剑气飞到哪铺到哪),散了以后从起点那头褪掉
-        const trail = fx.streak({ kind: 'line', x: this.lx + fxn * 0.3, z: this.lz + fzn * 0.3, x2: this.lx + fxn * 1.0, z2: this.lz + fzn * 1.0, y0: 0.06, w0: 0.55, w1: 0.95,
-          life: 1.3, grow: 0.01, len: 1, scroll: -5, rep: 4, color: WAVE_TEAL, a: 0.85 });
-        this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set(), trail });
+        const trail = fx.streak({ kind: 'line', x: this.lx + fxn * 0.3, z: this.lz + fzn * 0.3, x2: this.lx + fxn * 1.0, z2: this.lz + fzn * 1.0, y0: 0.06, w0: 0.8, w1: 1.3,
+          life: 1.3, grow: 0.01, len: 1, scroll: -5, rep: 4, color: WAVE_TEAL, a: 0.95 });
+        // 痕迹底下再垫一层更宽、更淡的光(低机位看地面透视压得很扁,窄的一条看不出来)
+        const glow = fx.streak({ kind: 'line', x: this.lx + fxn * 0.3, z: this.lz + fzn * 0.3, x2: this.lx + fxn * 1.0, z2: this.lz + fzn * 1.0, y0: 0.05, w0: 1.6, w1: 2.2,
+          life: 1.0, grow: 0.01, len: 1, scroll: -2, rep: 1.5, color: [0.25, 0.75, 0.68], a: 0.35 });
+        this.waves.push({ x: this.lx + fxn * 1.0, z: this.lz + fzn * 1.0, dx: fxn, dz: fzn, age: 0, life: 0.62, hit: new Set(), trail, glow });
         // 11-22 精致化:一道和剑气同速往前飞的宽月牙(前沿锐利、后面拖一层带细丝的雾)+ 出手处一颗星芒
-        fx.arc({ x: this.lx + fxn * 0.2, y: 1.1, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 1.0, r1: 1.6, w: 1.2, span: 2.5, tilt: 0.1, life: 0.62, color: WAVE_TEAL, a: 1.25, fadeIn: 0.03 });
+        // 出手:贴地横扫出去的一道宽弧带(参考视频里那条又宽又厚、贴着地面扫出去的青色能量带)
+        fx.arc({ x: this.lx, y: 0.3, z: this.lz, fx: fxn, fz: fzn, r0: 1.0, r1: 2.6, w: 1.6, span: 3.0, tilt: 0, life: 0.38, color: WAVE_TEAL, a: 1.0, fadeIn: 0.02 });
+        fx.arc({ x: this.lx, y: 0.32, z: this.lz, fx: fxn, fz: fzn, r0: 0.9, r1: 2.3, w: 0.5, span: 2.6, tilt: 0, life: 0.3, color: [0.85, 1.0, 0.98], a: 0.9, fadeIn: 0.02 });
+        // 飞出去的剑气:放大、压到膝盖到腰的高度
+        fx.arc({ x: this.lx + fxn * 0.2, y: 0.75, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 1.3, r1: 2.1, w: 1.6, span: 2.7, tilt: 0.06, life: 0.62, color: WAVE_TEAL, a: 1.3, fadeIn: 0.03 });
         // 11-22 推广大招的做法(参考视频里贴地横扫的青色剑气):地上的青色笔触痕迹见下面 waves.push 那里
-        fx.arc({ x: this.lx + fxn * 0.2, y: 1.1, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 0.8, r1: 1.3, w: 0.5, span: 2.1, tilt: 0.1, life: 0.55, color: [0.95, 0.95, 1.0], a: 0.9, fadeIn: 0.03 });
+        fx.arc({ x: this.lx + fxn * 0.2, y: 0.78, z: this.lz + fzn * 0.2, fx: fxn, fz: fzn, vx: fxn * 15, vz: fzn * 15, r0: 1.1, r1: 1.75, w: 0.55, span: 2.3, tilt: 0.06, life: 0.55, color: [0.92, 1.0, 0.98], a: 0.95, fadeIn: 0.03 });
         fx.emit({ x: this.lx + fxn * 1.2, y: 1.15, z: this.lz + fzn * 1.2, life: 0.14, s0: 0.4, s1: 1.3, c0: [1, 1, 1], c1: WAVE_TEAL, a: 0.75, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), fadeIn: 0.01 });
         this.shake = Math.max(this.shake, 0.07);
       }
@@ -5119,6 +5148,18 @@ class Dungeon {
       if (w.trail) {
         w.trail.x2 = w.x;
         w.trail.z2 = w.z;
+      }
+      if (w.glow) {
+        w.glow.x2 = w.x;
+        w.glow.z2 = w.z;
+      }
+      // 剑气边缘一路洒下的青色闪点
+      if (dt > 0) {
+        for (let k = 0; k < 2; k += 1) {
+          const side = fx.rand(-1.6, 1.6);
+          fx.emit({ x: w.x - w.dz * side + fx.rand(-0.2, 0.2), y: fx.rand(0.3, 1.3), z: w.z + w.dx * side + fx.rand(-0.2, 0.2), vx: w.dx * fx.rand(-2, 1), vy: fx.rand(0.2, 1.2), vz: w.dz * fx.rand(-2, 1),
+            life: fx.rand(0.4, 0.8), s0: fx.rand(0.04, 0.08), s1: 0.015, c0: [0.8, 1.0, 0.95], a: 0.9, cell: FX2_CELL.flare, t2: true, rot: fx.rand(0, 3), drag: 1.5, fadeIn: 0.1 });
+        }
       }
       const out = this.blocked(w.x, w.z, 0.2) && !(w.x > DAIS.x - 0.5 && w.x < X1 - 0.5 && Math.abs(w.z) < Z1 - 0.9);
       for (const m of this.mobs) {

@@ -320,7 +320,12 @@ export class FxWorld {
         ax = _rt.x * cs + _up.x * sn; ay = _rt.y * cs + _up.y * sn; az = _rt.z * cs + _up.z * sn;
         bx = -_rt.x * sn + _up.x * cs; by = -_rt.y * sn + _up.y * cs; bz = -_rt.z * sn + _up.z * cs;
       }
-      m.quad(p.x - ax - bx, p.y - ay - by, p.z - az - bz, p.x + ax - bx, p.y + ay - by, p.z + az - bz, p.x + ax + bx, p.y + ay + by, p.z + az + bz, p.x - ax + bx, p.y - ay + by, p.z - az + bz,
+      // 贴地的云 / 雾 / 尘(半透明的大面片)长大后下半截会插进地面,被地面切出直边,看着像一块块灰色碎玻璃 → 按当前大小往上抬
+      let py = p.y;
+      if (p.t2 && !p.add && (p.cell === FX2_CELL.cumulus || p.cell === FX2_CELL.fog || p.cell === FX2_CELL.dust)) {
+        py = Math.max(py, s * 0.65);
+      }
+      m.quad(p.x - ax - bx, py - ay - by, p.z - az - bz, p.x + ax - bx, py + ay - by, p.z + az - bz, p.x + ax + bx, py + ay + by, p.z + az + bz, p.x - ax + bx, py - ay + by, p.z - az + bz,
         uv[0], uv[1], uv[2], uv[3], r, g, b, al);
     };
     for (const p of smoke) {
