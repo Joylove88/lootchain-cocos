@@ -4664,7 +4664,7 @@ class Dungeon {
       fx.emit({ x: px + ux * 0.05, y: py + uy * 0.05, z: pz + uz * 0.05, vx: ux * 0.02, vy: uy * 0.02, vz: uz * 0.02, life: heavy ? 0.2 : 0.14, s0: heavy ? 0.75 : 0.55, s1: heavy ? 0.95 : 0.7,
         c0: [1, 1, 1], c1: color, a: 0.95, cell: FX2_CELL.slash, t2: true, stretch: 0.01, fadeIn: 0.01 });
       // 光效 v6:冲击环收小收淡(原来重击 1.6 米、正对镜头,两只怪各一个看着像两个大「O」)
-      fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.22 : 0.16, s0: 0.12, s1: heavy ? 1.1 : 0.8, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.42 : 0.34, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+      fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.15 : 0.12, s0: 0.1, s1: heavy ? 0.85 : 0.6, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.32 : 0.28, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
     }
     // 11-22 光效 v3:接触点留几颗慢慢往上飘、渐暗的细碎光点(余辉),不是一闪就全没了
     for (let i = 0; i < (heavy ? 6 : 3); i += 1) {

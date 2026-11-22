@@ -57,6 +57,8 @@ interface Pillar { x: number; y0: number; z: number; h: number; w0: number; w1: 
 const SOFT1 = new Set<number>([FX_CELL.glow, FX_CELL.core, FX_CELL.smokeA, FX_CELL.smokeB]);
 const SOFT2 = new Set<number>([FX2_CELL.glow, FX2_CELL.fog, FX2_CELL.dust, FX2_CELL.cumulus]);
 const softCell = (t2: boolean, cell: number): boolean => (t2 ? SOFT2 : SOFT1).has(cell);
+/** 本色类的格子(营火的火焰):特效着色器里不加白芯(顶点透明度 +4)。 */
+const plainCell = (t2: boolean, cell: number): boolean => !t2 && (cell === FX_CELL.flameA || cell === FX_CELL.flameB);
 
 /** 特效网格在半透明队列里的起始先后号(之后挨个 +1,共 8 个);刀光拖尾等要画在特效之上的,用 FX_ORDER_BASE + 10 起。 */
 export const FX_ORDER_BASE = 10;
@@ -400,7 +402,7 @@ export class FxWorld {
         py = Math.max(py, s * 0.65);
       }
       m.quad(p.x - ax - bx, py - ay - by, p.z - az - bz, p.x + ax - bx, py + ay - by, p.z + az - bz, p.x + ax + bx, py + ay + by, p.z + az + bz, p.x - ax + bx, py - ay + by, p.z - az + bz,
-        p.flip ? uv[2] : uv[0], uv[1], p.flip ? uv[0] : uv[2], uv[3], r, g, b, this.fxOn && softCell(p.t2, p.cell) ? al + 2 : al);
+        p.flip ? uv[2] : uv[0], uv[1], p.flip ? uv[0] : uv[2], uv[3], r, g, b, !this.fxOn ? al : softCell(p.t2, p.cell) ? al + 2 : plainCell(p.t2, p.cell) ? al + 4 : al);
     };
     for (const p of smoke) {
       draw(p.t2 ? alp2 : alp, p);

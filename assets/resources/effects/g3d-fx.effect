@@ -107,13 +107,16 @@ CCProgram fx-fs %{
     vec4 tex = texture(mainTexture, uv);
     float shape = tex.a;
     // 顶点透明度 +2 = 柔光类(雾、团光、烟尘、积云):不溶解、噪声也轻 —— 溶解会把软边切成一块块带亮边的「水滴」
+    // 顶点透明度 +4 = 本色类(营火的火焰):不加白芯、噪声也轻(白芯把营火烧成一团过曝的白)
     float raw = v_color.a;
+    float plain = step(3.5, raw);
+    raw -= plain * 4.0;
     float soft = step(1.5, raw);
     float life = clamp(raw - soft * 2.0, 0.0, 1.0);
     float ero = fxParams.x * (1.0 - soft);
     // 溶解:寿命越低门槛越高;形状先被噪声调制(浓处耐得住、淡处先散)
     float thr = (1.0 - life) * ero;
-    float m = shape * mix(0.62 + 0.76 * nn, 0.8 + 0.4 * nn, soft);
+    float m = shape * mix(mix(0.62 + 0.76 * nn, 0.8 + 0.4 * nn, soft), 0.85 + 0.3 * nn, plain);
     float s = clamp((m - thr) / max(0.05, 1.0 - thr), 0.0, 1.0);
     // 溶解的边上留一道细亮边(烧散的火线),只在正在消失的时候有
     float rim = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.22, s)) * (1.0 - life) * ero;
@@ -124,9 +127,12 @@ CCProgram fx-fs %{
   #else
     vec3 base = linColor(v_color.rgb);
     float kb = max(max(base.r, base.g), max(base.b, 1e-4));
-    vec3 deep = base * (base / kb) * 0.75;                  // 边缘:同色但更浓更暗(非主通道再压一遍)
+    vec3 nb = base / kb;                                     // 色相(主通道 = 1)
+    vec3 deep = base * nb * 0.75;                            // 边缘:同色但更浓更暗(非主通道再压一遍)
     vec3 col = mix(deep, base, smoothstep(0.0, 0.7, s)) * s;
-    col += vec3(kb) * pow(s, 4.0) * fxParams.z * (1.0 - soft * 0.6);   // 中心白热:跟着这一片的亮度走,暗的光不会冒白芯;柔光团少一点
+    // 中心白热:跟着这一片的亮度走,暗的光不会冒白芯;柔光团少一点。
+    // 光效 v7:白芯带四成五的本色(火 = 暖白、冰 = 青白、刀光 = 淡紫白)—— 纯白芯把营火烧成一团过曝的白,各色特效也都发白
+    col += mix(vec3(1.0), nb, 0.45) * kb * pow(s, 4.0) * fxParams.z * (1.0 - soft * 0.6) * (1.0 - plain);
     col += base * rim * 2.0;
     return CCFragOutput(vec4(col * fxParams.w * life * (1.5 - 0.5 * life) * gfade, 1.0));
   #endif
