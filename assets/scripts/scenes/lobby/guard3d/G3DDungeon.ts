@@ -4250,7 +4250,7 @@ class Dungeon {
           const dz = mob.z - this.lz;
           if (Math.hypot(dx, dz) < 1.25 + mob.radius && dx * fxn + dz * fzn > -0.3) {
             act.hit.add(mob);
-            this.damage(mob, 3, true, fxn, fzn, [0.62, 0.55, 1.0], fxn, 0, fzn);
+            this.damage(mob, 3, true, fxn, fzn, [0.62, 0.55, 1.0], -fzn, 0.1, fxn);
           }
         }
         if (dt > 0) {
@@ -4627,7 +4627,8 @@ class Dungeon {
   }
 
   /** 一只怪挨了一下:掉血、受击、往后退一点、特效;血没了就倒。 */
-  private damage(m: Mob, dmg: number, heavy: boolean, nx: number, nz: number, color: [number, number, number], tx: number, ty: number, tz: number): void {
+  /** aoe = 范围伤害(大招落地一圈):每只怪的命中特效收着放 —— 不炸星芒 / 刀痕 / 冲击环,火星减半(落点自己的爆发已经够亮,三只怪各炸一团会叠成主角两边的白「翅膀」)。 */
+  private damage(m: Mob, dmg: number, heavy: boolean, nx: number, nz: number, color: [number, number, number], tx: number, ty: number, tz: number, aoe = false): void {
     const fx = this.fx!;
     sfx.play('hit', { heavy, ...this.heard(m.x, m.z) });
     m.hp -= dmg;
@@ -4649,19 +4650,22 @@ class Dungeon {
     // 一道很快的切痕:顺着刀的方向掠过去的一条亮线
     fx.emit({ x: px - ux * 0.5, y: py - uy * 0.5, z: pz - uz * 0.5, vx: ux * 16, vy: uy * 16, vz: uz * 16, life: 0.075, s0: heavy ? 0.075 : 0.05, s1: 0.012, c0: [1, 1, 1], c1: color, a: 0.95, cell: FX_CELL.streak, stretch: 5, fadeIn: 0.01 });
     // 火星:顺着刀的方向甩出去,带一点散;重击多一些
-    const n = heavy ? 26 : 13;
+    const n = aoe ? 10 : heavy ? 26 : 13;
     for (let i = 0; i < n; i += 1) {
       const sp = fx.rand(3, heavy ? 10 : 7);
       fx.emit({ x: px, y: py, z: pz, vx: ux * sp + nx * fx.rand(0, 3) + fx.rand(-2, 2), vy: uy * sp + fx.rand(0.5, 3.5), vz: uz * sp + nz * fx.rand(0, 3) + fx.rand(-2, 2),
         life: fx.rand(0.18, 0.5), s0: fx.rand(0.012, 0.022), s1: 0.004, c0: i % 4 === 0 ? [1, 0.9, 0.7] : [0.92, 0.96, 1], c1: i % 4 === 0 ? [1, 0.45, 0.12] : color, cell: FX_CELL.streak, grav: 1, drag: 1.1, stretch: 2.4 });
     }
     // 接触点一下很短的白闪(小,不糊成一团)
-    fx.emit({ x: px, y: py, z: pz, life: 0.07, s0: heavy ? 0.26 : 0.18, s1: heavy ? 0.52 : 0.34, c0: [1, 1, 1], a: 0.4, cell: FX_CELL.star, rot: fx.rand(0, 3), fadeIn: 0.01 });
+    fx.emit({ x: px, y: py, z: pz, life: 0.07, s0: heavy ? 0.26 : 0.18, s1: heavy ? 0.52 : 0.34, c0: [1, 1, 1], a: aoe ? 0.25 : 0.4, cell: FX_CELL.star, rot: fx.rand(0, 3), fadeIn: 0.01 });
     // 11-22 精致化:星芒(带两道横向光芒)、顺着刀走的一道弯刀痕、一圈很快散开的小冲击环
-    fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.16 : 0.11, s0: heavy ? 0.4 : 0.28, s1: heavy ? 1.3 : 0.85, c0: [1, 1, 1], c1: color, a: heavy ? 0.85 : 0.65, cell: FX2_CELL.flare, t2: true, rot: fx.rand(-0.3, 0.3), fadeIn: 0.01 });
-    fx.emit({ x: px + ux * 0.05, y: py + uy * 0.05, z: pz + uz * 0.05, vx: ux * 0.02, vy: uy * 0.02, vz: uz * 0.02, life: heavy ? 0.2 : 0.14, s0: heavy ? 0.75 : 0.55, s1: heavy ? 0.95 : 0.7,
-      c0: [1, 1, 1], c1: color, a: 0.95, cell: FX2_CELL.slash, t2: true, stretch: 0.01, fadeIn: 0.01 });
-    fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.26 : 0.18, s0: 0.15, s1: heavy ? 1.6 : 1.0, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.55 : 0.4, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    if (!aoe) {
+      fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.16 : 0.11, s0: heavy ? 0.4 : 0.28, s1: heavy ? 1.3 : 0.85, c0: [1, 1, 1], c1: color, a: heavy ? 0.85 : 0.65, cell: FX2_CELL.flare, t2: true, rot: fx.rand(-0.3, 0.3), fadeIn: 0.01 });
+      fx.emit({ x: px + ux * 0.05, y: py + uy * 0.05, z: pz + uz * 0.05, vx: ux * 0.02, vy: uy * 0.02, vz: uz * 0.02, life: heavy ? 0.2 : 0.14, s0: heavy ? 0.75 : 0.55, s1: heavy ? 0.95 : 0.7,
+        c0: [1, 1, 1], c1: color, a: 0.95, cell: FX2_CELL.slash, t2: true, stretch: 0.01, fadeIn: 0.01 });
+      // 光效 v6:冲击环收小收淡(原来重击 1.6 米、正对镜头,两只怪各一个看着像两个大「O」)
+      fx.emit({ x: px, y: py, z: pz, life: heavy ? 0.22 : 0.16, s0: 0.12, s1: heavy ? 1.1 : 0.8, c0: [0.9, 0.9, 1], c1: color, a: heavy ? 0.42 : 0.34, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });
+    }
     // 11-22 光效 v3:接触点留几颗慢慢往上飘、渐暗的细碎光点(余辉),不是一闪就全没了
     for (let i = 0; i < (heavy ? 6 : 3); i += 1) {
       fx.emit({ x: px + fx.rand(-0.2, 0.2), y: py + fx.rand(-0.15, 0.25), z: pz + fx.rand(-0.2, 0.2), vx: ux * fx.rand(0.4, 1.4) + fx.rand(-0.35, 0.35), vy: fx.rand(0.3, 0.9), vz: uz * fx.rand(0.4, 1.4) + fx.rand(-0.35, 0.35),
@@ -5245,7 +5249,7 @@ class Dungeon {
       const d = Math.hypot(dx, dz);
       if (d - m.radius < 3.0) {
         any = true;
-        this.damage(m, 5, true, dx / (d || 1), dz / (d || 1), color, dx / (d || 1), 0.9, dz / (d || 1));
+        this.damage(m, 5, true, dx / (d || 1), dz / (d || 1), color, dx / (d || 1), 0.9, dz / (d || 1), true);
         // 离落点近的再推开一截(落点上不站怪)
         const push = Math.max(0, 1.5 + m.radius - d);
         if (push > 0 && !this.blocked(m.x + (dx / (d || 1)) * push, m.z + (dz / (d || 1)) * push, m.radius * 0.7)) {
@@ -5347,7 +5351,7 @@ class Dungeon {
         }
         if (Math.hypot(m.x - w.x, m.z - w.z) < 1.15 + m.radius) {
           w.hit.add(m);
-          this.damage(m, 3, true, w.dx, w.dz, color, w.dx, 0.2, w.dz);
+          this.damage(m, 3, true, w.dx, w.dz, color, -w.dz, 0.12, w.dx);
           this.hitStop = Math.max(this.hitStop, 0.05);
           this.shake = Math.max(this.shake, 0.08);
         }
@@ -5388,8 +5392,13 @@ class Dungeon {
           if (!mesh.room(2, 6)) {
             break;
           }
+          // 光效 v6:月牙的宽度原来沿前进方向展开 —— 镜头在背后时正好侧着看,两片只剩两根细线交叉成「X」;
+          // 改成主要朝镜头那一面展开(月牙所在面里、垂直于弯的方向),带一点往后的进深,从背后看是两道两头尖、带亮边的交叉剑气
+          const ox = (rx * Math.cos(tr) * 0.85 - w.dx * 0.4) * th;
+          const oy = -Math.sin(tr) * 0.85 * th;
+          const oz = (rz * Math.cos(tr) * 0.85 - w.dz * 0.4) * th;
           const i0 = mesh.vert(fxp, fyp, fzp, 0.04, 0, color[0] * al, color[1] * al, color[2] * al, 1);
-          mesh.vert(fxp - w.dx * th, fyp, fzp - w.dz * th, 0.04, 1, color[0] * al, color[1] * al, color[2] * al, 1);
+          mesh.vert(fxp + ox, fyp + oy, fzp + oz, 0.04, 1, color[0] * al, color[1] * al, color[2] * al, 1);
           if (prev >= 0) {
             mesh.tri(prev, prev + 1, i0 + 1);
             mesh.tri(prev, i0 + 1, i0);

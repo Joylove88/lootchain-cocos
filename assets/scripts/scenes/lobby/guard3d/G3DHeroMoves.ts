@@ -611,6 +611,8 @@ export class BladeTrail {
     }
     const m = this.mesh;
     m.begin();
+    // 光效 v6:越旧越浓(c → c 和 c² 按年龄混,非主通道往下压,尾巴更饱和更深)
+    const deep = (c: number, u: number): number => c * (1 - 0.45 * u) + c * c * 0.45 * u;
     for (let i = 1; i < s.length; i += 1) {
       const a = s[i - 1];
       const b = s[i];
@@ -621,10 +623,12 @@ export class BladeTrail {
       const ub = Math.min(1, b.age / this.life);
       const la = this.fx ? 1 - ua * 0.85 : 1;
       const lb = this.fx ? 1 - ub * 0.85 : 1;
-      const i0 = m.vert(a.bx, a.by, a.bz, ua, 1, a.r, a.g, a.b, la);
-      m.vert(a.tx, a.ty, a.tz, ua, 0, a.r, a.g, a.b, la);
-      m.vert(b.tx, b.ty, b.tz, ub, 0, b.r, b.g, b.b, lb);
-      m.vert(b.bx, b.by, b.bz, ub, 1, b.r, b.g, b.b, lb);
+      const ar = deep(a.r, ua); const ag = deep(a.g, ua); const ab = deep(a.b, ua);
+      const br = deep(b.r, ub); const bg = deep(b.g, ub); const bb = deep(b.b, ub);
+      const i0 = m.vert(a.bx, a.by, a.bz, ua, 1, ar, ag, ab, la);
+      m.vert(a.tx, a.ty, a.tz, ua, 0, ar, ag, ab, la);
+      m.vert(b.tx, b.ty, b.tz, ub, 0, br, bg, bb, lb);
+      m.vert(b.bx, b.by, b.bz, ub, 1, br, bg, bb, lb);
       m.tri(i0, i0 + 1, i0 + 2);
       m.tri(i0, i0 + 2, i0 + 3);
     }
