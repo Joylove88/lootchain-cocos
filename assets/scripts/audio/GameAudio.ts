@@ -27,6 +27,9 @@ class GameAudioManager {
   private readonly lastPlayedAt = new Map<string, number>();
   /** 全屏视频(序幕)播放中:BGM / 音效全压住,结束后补播最后要求的 BGM。 */
   private held = false;
+  /** 11-22 换曲淡出淡入(野外按图换曲,硬切太突兀):进行中的音量渐变 + 正在切往的曲子。 */
+  private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  private switchingTo = '';
 
   /** 序幕等 DOM 视频自带原声,播放期间压住游戏音频。 */
   setHold(held: boolean): void {
@@ -35,6 +38,7 @@ class GameAudioManager {
     }
     this.held = held;
     if (held) {
+      this.cancelFade();
       this.currentBgmKey = '';
       this.bgmSource?.stop();
     } else {
@@ -81,7 +85,7 @@ class GameAudioManager {
     });
   }
 
-  /** 循环播放 BGM;重复同 key 调用是幂等的。 */
+  /** 循环播放 BGM;重复同 key 调用是幂等的。正在放别的曲子时先淡出(0.6 秒)再淡入新曲(1.2 秒)。 */
   bgm(key: string): void {
     if (!key) {
       return;
@@ -90,31 +94,74 @@ class GameAudioManager {
     if (this.held || !this.bgmEnabled()) {
       return;
     }
-    if (this.currentBgmKey === key && this.bgmSource?.playing) {
+    if ((this.currentBgmKey === key && this.bgmSource?.playing) || this.switchingTo === key) {
       return;
     }
     this.withClip(`audio/bgm/${key}`, (clip) => {
       const source = this.ensureSources()?.bgm;
-      if (!source) {
-        return;
+      if (!source || this.pendingBgmKey !== key) {
+        return; // 加载期间又要求了别的曲子:以最后一次为准
       }
-      source.stop();
-      source.clip = clip;
-      source.loop = true;
-      source.volume = BGM_VOLUME;
-      try {
-        source.play();
-        this.currentBgmKey = key;
-      } catch (error) {
-        // Web 自动播放策略:等首次用户手势(sfx 路径)重试。
-        void error;
+      const start = (): void => {
+        this.switchingTo = '';
+        source.stop();
+        source.clip = clip;
+        source.loop = true;
+        source.volume = 0;
+        try {
+          source.play();
+          this.currentBgmKey = key;
+        } catch (error) {
+          // Web 自动播放策略:等首次用户手势(sfx 路径)重试。
+          void error;
+          source.volume = BGM_VOLUME;
+          return;
+        }
+        this.fadeTo(source, BGM_VOLUME, 1200);
+      };
+      if (source.playing && this.currentBgmKey && this.currentBgmKey !== key) {
+        this.switchingTo = key;
+        this.fadeTo(source, 0, 600, () => {
+          if (this.switchingTo === key) {
+            start();
+          }
+        });
+      } else {
+        start();
       }
     });
   }
 
   stopBgm(): void {
+    this.cancelFade();
     this.currentBgmKey = '';
     this.bgmSource?.stop();
+  }
+
+  private fadeTo(source: AudioSource, target: number, ms: number, done?: () => void): void {
+    this.cancelFade(false);
+    const from = source.volume;
+    const t0 = Date.now();
+    this.fadeTimer = setInterval(() => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      if (source.isValid) {
+        source.volume = from + (target - from) * k;
+      }
+      if (k >= 1) {
+        this.cancelFade(false);
+        done?.();
+      }
+    }, 30);
+  }
+
+  private cancelFade(clearSwitch = true): void {
+    if (this.fadeTimer) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = null;
+    }
+    if (clearSwitch) {
+      this.switchingTo = '';
+    }
   }
 
   private resumePendingBgm(): void {

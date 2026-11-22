@@ -364,6 +364,8 @@ export interface WorldMapDef {
   exits: WorldMapExit[];
   /** 野外战斗背景(ui/battle 下的名字)。 */
   battleBg?: string;
+  /** 11-22 本图背景音乐(resources/audio/bgm 下的键,ACE-Step 生成的无缝循环);没填的图放大厅曲 bgm_lobby。 */
+  bgm?: string;
   /** 环境动效:飘落树叶 + 云影(LobbyTownAmbient)。 */
   ambient?: boolean;
   /**
@@ -595,6 +597,7 @@ const VILLAGE_BASE = {
 
 const VILLAGE: WorldMapDef = {
   code: 'VILLAGE',
+  bgm: 'bgm_field_village',
   ambient: true,
   actorTint: [255, 244, 228],
   name: '晨风村',
@@ -716,6 +719,7 @@ const WOODS_HALF_H = WOODS_V4_SIZE.height / 2 - 50;
  */
 const WOODS: WorldMapDef = {
   code: 'WOODS',
+  bgm: 'bgm_field_woods',
   actorTint: [236, 242, 226],
   ambient: true,
   cameraZoom: 1.4,
@@ -818,6 +822,7 @@ const GRAY_HALF_H = GRAY_V4_SIZE.height / 2 - 50;
  */
 const GRAY: WorldMapDef = {
   code: 'GRAY',
+  bgm: 'bgm_field_gray',
   name: '灰岩荒原',
   levelText: 'Lv.10-20',
   actorTint: [240, 236, 228],
@@ -907,6 +912,7 @@ const DEAD_HALF_H = DEAD_V4_SIZE.height / 2 - 50;
  */
 const DEADWOOD: WorldMapDef = {
   code: 'DEADWOOD',
+  bgm: 'bgm_field_deadwood',
   name: '枯木林',
   levelText: 'Lv.20-30',
   actorTint: [236, 232, 224],
@@ -961,6 +967,11 @@ const DEADWOOD: WorldMapDef = {
 export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY, DEADWOOD };
 // 自验 / 坐标导出脚本读地图定义用(tools/qa/export_world_geometry.py,docs/55)
 (globalThis as unknown as { __lootchainWorldMaps?: unknown }).__lootchainWorldMaps = WORLD_MAPS;
+
+/** 大厅 / 野外当前该放的背景音乐:野外图有自己的曲子就放它,其余(主城等)放大厅曲。 */
+export function worldMapBgmKey(code: WorldMapCode): string {
+  return worldMapDef(code).bgm ?? 'bgm_lobby';
+}
 
 export function worldMapDef(code: WorldMapCode | null | undefined): WorldMapDef {
   return (code && WORLD_MAPS[code]) || CITY;

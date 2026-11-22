@@ -71,7 +71,7 @@ import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapNpc, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapBgmKey, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapNpc, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -777,6 +777,8 @@ export class LobbyTownRenderer {
     this.claimAllLoot();
     this.mapCode = code;
     this.autoPath = null;
+    // 11-22 按图换背景音乐(野外四图各一首,其余放大厅曲;GameAudio 里淡出淡入)
+    gameAudio.bgm(worldMapBgmKey(code));
     this.pendingSpawn = spawn ?? { ...worldMapDef(code).spawn };
     // 11-08 林地放大后,旧版下线续点 / 落点可能落在水面 / 树脚:就近找可走点,找不到回出生点
     if (spawn && !this.walkable(spawn.x, spawn.y)) {

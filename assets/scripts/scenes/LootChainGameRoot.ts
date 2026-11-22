@@ -161,7 +161,7 @@ import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMa
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
 import { currentLobbyProtagonistHero, currentLobbyProtagonistLeader, heroPackPrefixes, LOBBY_FORMATION_MAX, resolveFieldParty, setProtagonistQilingPortrait, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
-import { WORLD_MAPS, WORLD_NPC_SERVICE, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode, type WorldNpcService } from './lobby/LobbyWorldMaps';
+import { WORLD_MAPS, WORLD_NPC_SERVICE, worldMapAssetPaths, worldMapBgmKey, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode, type WorldNpcService } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
@@ -1370,7 +1370,7 @@ export class LootChainGameRoot extends Component {
         gameAudio.bgm(this.resolveCurrentBattleBgmKey());
       } else if (previousView === 'battle') {
         // 从战斗退到布阵/结算等功能页也切回大厅曲(不只回大厅那一条路)。
-        gameAudio.bgm('bgm_lobby');
+        gameAudio.bgm(this.lobbyBgmKey());
       }
     }
     // 所有视图入口集中在这里，resize 或状态变化时按 currentView 重绘。
@@ -1566,7 +1566,7 @@ export class LootChainGameRoot extends Component {
         this.remountEvolutionPick(townLayout);
         this.renderRealmLayers(townLayout);
       }
-      gameAudio.bgm('bgm_lobby');
+      gameAudio.bgm(this.lobbyBgmKey());
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
         this.ownedHeroCardArtPrefetched = true;
         this.scheduleOnce(() => void this.prefetchOwnedHeroCardArt(), 3);
@@ -1579,7 +1579,7 @@ export class LootChainGameRoot extends Component {
     this.renderLobbyHud(layout);
     this.remountLobbyQuestDialogIfOpen(layout);
     // 大厅 BGM(音效底铺 2026-09-04):Web 自动播放被拦时,首次点击自动补播(GameAudio 内处理)。
-    gameAudio.bgm('bgm_lobby');
+    gameAudio.bgm(this.lobbyBgmKey());
     // 本会话第一次进大厅:稍后后台拉玩家已有英雄的名册卡面立绘(都是会用到的),首开名册基本不用等。
     if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
       this.ownedHeroCardArtPrefetched = true;
@@ -1849,6 +1849,11 @@ export class LootChainGameRoot extends Component {
   }
 
   /** 当前战斗的场景 BGM 键(关卡码来源与 isGuardBattleActive 同口径)。 */
+  /** 11-22 大厅 / 野外该放的背景音乐:人在野外图就放那张图的曲子(LobbyWorldMaps.bgm),其余放大厅曲。 */
+  private lobbyBgmKey(): string {
+    return worldMapBgmKey(this.lobbyTownRenderer.currentMapCode());
+  }
+
   private resolveCurrentBattleBgmKey(): string {
     const battleState = this.currentLobbyBattleState();
     return LobbyGuardBattleRenderer.resolveBattleBgmKey(battleState.start?.stageCode || battleState.stageCode || this.selectedLobbyStageCode);

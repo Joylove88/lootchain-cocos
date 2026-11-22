@@ -51,8 +51,8 @@ export const CORE_PREFIXES = [
   'ui/hero/ai/refine_panel_bg', 'ui/hero/ai/avatar',
   // 训练场幼鼠
   'spine/monster/mini_rat', 'monster/mini_rat',
-  // 音效 + 大厅背景音乐;启动就读的大厅海报(不在 ui/ 下)
-  'audio/sfx', 'audio/ui', 'audio/bgm/bgm_lobby', 'lobby/lobby_bg_poster',
+  // 音效 + 大厅背景音乐 + 晨风村背景音乐(11-22,新号一进来就在村里,约 1.1MB);启动就读的大厅海报(不在 ui/ 下)
+  'audio/sfx', 'audio/ui', 'audio/bgm/bgm_lobby', 'audio/bgm/bgm_field_village', 'lobby/lobby_bg_poster',
   // 村里 HUD 直接能打开、没有加载门的弹窗:商店 / 任务 / 个人资料 / 主角 / 背包 / 装备图标
   'ui/shop', 'ui/mission', 'ui/profile', 'ui/protagonist', 'ui/bag', 'ui/equip',
   // UiRefKit 通用金框 / 页签 / 关闭钮(村里各弹窗都用)
@@ -63,7 +63,7 @@ export const CORE_PREFIXES = [
 export const BACKGROUND_ORDER = [
   // 出村:村外林地 + 林地怪(woods4 = 11-08 多层地表材质 / 遮罩)
   // 11-21 起林地是整图重绘图块(woods_paint);woods4 的多层地表材质只在 ?fieldpaint=0 时用
-  'ui/world/woods_paint', 'ui/world/woods3', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods', 'ui/world/woods4',
+  'ui/world/woods_paint', 'ui/world/woods3', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods', 'ui/world/woods4', 'audio/bgm/bgm_field_woods',
   'spine/monster/small_spider', 'spine/monster/medium_dog', 'spine/monster/medium_bear', 'monster/',
   // 村里剧情会带去的功能页:召唤(祭司)/ 英雄养成 + 锻造(铁匠)/ 背包任务商店
   'ui/gacha', 'spine/gacha', 'ui/hero', 'ui/hero-detail', 'ui/hero-roster', 'ui/forge', 'ui/equip', 'ui/bag', 'ui/shop', 'ui/mission',
