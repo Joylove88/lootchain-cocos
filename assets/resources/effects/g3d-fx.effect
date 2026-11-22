@@ -29,6 +29,7 @@ CCEffect %{
         noiseTexture: { value: grey }
         fxParams: { value: [0.75, 0.004, 0.8, 3.0] }
         noiseParams: { value: [0.45, 0.45, 0.35, -0.5] }
+        fxGround: { value: [-100, 0.6, 0, 0] }
   - name: alpha
     passes:
     - vert: fx-vs:vert
@@ -82,6 +83,7 @@ CCProgram fx-fs %{
   uniform FxParams {
     vec4 fxParams;      // x 溶解力度(0 = 不溶解)、y 扭曲(贴图坐标的偏移量)、z 白热核心强度、w 整体亮度(高动态,交给泛光)
     vec4 noiseParams;   // xy 噪声缩放(每米几个周期)、zw 滚动速度(周期 / 秒)
+    vec4 fxGround;      // x 地面高度、y 渐隐高度:柔光类(雾 / 烟尘 / 积云)贴近地面这一段渐隐 —— 大面片插进地面切出的直线叠多了像一片片三角折面
   };
 
   // 加色那套的顶点色是「颜色 × 亮度」(亮度可以大于 1):按最大的通道把亮度分出来,只对颜色做 sRGB → 线性
@@ -98,7 +100,9 @@ CCProgram fx-fs %{
     vec2 nuv = v_wpos.xz * noiseParams.xy + vec2(v_wpos.y * 0.41, -v_wpos.y * 0.23);
     vec2 n1 = texture(noiseTexture, nuv + noiseParams.zw * t).rg;
     vec2 n2 = texture(noiseTexture, nuv * 1.9 - noiseParams.zw * t * 0.7 + 0.37).rg;
-    float nn = n1.x * 0.6 + n2.y * 0.4;
+    // 第三层细噪声(周期约为第一层的五分之一):大地面光环的碎边原来是一块块水渍样的锯齿,加上它碎成细丝
+    float n3 = texture(noiseTexture, nuv * 5.3 + vec2(0.61, 0.17) + noiseParams.zw * t * 1.6).r;
+    float nn = n1.x * 0.45 + n2.y * 0.3 + n3 * 0.25;
     vec2 uv = v_uv + (vec2(n1.y, n2.x) - 0.5) * fxParams.y;
     vec4 tex = texture(mainTexture, uv);
     float shape = tex.a;
@@ -113,9 +117,10 @@ CCProgram fx-fs %{
     float s = clamp((m - thr) / max(0.05, 1.0 - thr), 0.0, 1.0);
     // 溶解的边上留一道细亮边(烧散的火线),只在正在消失的时候有
     float rim = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.22, s)) * (1.0 - life) * ero;
+    float gfade = mix(1.0, smoothstep(fxGround.x, fxGround.x + fxGround.y, v_wpos.y), soft);
   #if FX_ALPHA
     vec3 c = SRGBToLinear(tex.rgb) * SRGBToLinear(v_color.rgb);
-    return CCFragOutput(vec4(c, clamp(s * life, 0.0, 1.0)));
+    return CCFragOutput(vec4(c, clamp(s * life * gfade, 0.0, 1.0)));
   #else
     vec3 base = linColor(v_color.rgb);
     float kb = max(max(base.r, base.g), max(base.b, 1e-4));
@@ -123,7 +128,7 @@ CCProgram fx-fs %{
     vec3 col = mix(deep, base, smoothstep(0.0, 0.7, s)) * s;
     col += vec3(kb) * pow(s, 4.0) * fxParams.z * (1.0 - soft * 0.6);   // 中心白热:跟着这一片的亮度走,暗的光不会冒白芯;柔光团少一点
     col += base * rim * 2.0;
-    return CCFragOutput(vec4(col * fxParams.w * life * (1.5 - 0.5 * life), 1.0));
+    return CCFragOutput(vec4(col * fxParams.w * life * (1.5 - 0.5 * life) * gfade, 1.0));
   #endif
   }
 }%

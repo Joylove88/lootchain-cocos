@@ -4026,6 +4026,7 @@ class Dungeon {
       this.moonDisc.setWorldPosition(cp.x + CITY_MOON_SKY[0] / dl, cp.y + CITY_MOON_SKY[1] / dl, cp.z + CITY_MOON_SKY[2] / dl);
     }
     this.stepGlints();
+    fx.setGround(this.floorY(this.lx, this.lz));
     fx.update(dt, camNode);
   }
 
@@ -4709,6 +4710,16 @@ class Dungeon {
       a: glow ? 1.4 : 0.92, cell: FX2_CELL.petal, t2: true, add: glow, rot: fx.rand(0, Math.PI * 2), spin: fx.rand(-10, 10), grav: 0.1, drag: 2.4, fadeIn: 0.05 });
   }
 
+  /** 镜头朝向的水平方向 × d(往主角背后、离镜头远的那一侧挪):云雾往那边放就不会挡在主角前面把人糊白。 */
+  private camBack(d: number): [number, number] {
+    const f = this.cam?.node.forward;
+    if (!f) {
+      return [0, 0];
+    }
+    const l = Math.hypot(f.x, f.z) || 1;
+    return [(f.x / l) * d, (f.z / l) * d];
+  }
+
   /** 泛光脉冲:把泛光强度往上加 peak(场景原值约 0.55),按真实时间 life 秒收回;叠加时只在更强时替换。 */
   private bloomPulse(peak: number, life: number): void {
     if (!this.post) {
@@ -5031,14 +5042,15 @@ class Dungeon {
     for (let k = 0; k < n(12); k += 1) {
       const a = (k / n(12)) * Math.PI * 2 + fx.rand(-0.12, 0.12);
       const sp = fx.rand(5.5, 9);
-      fx.emit({ x: x + Math.cos(a) * 0.9, y: fx.rand(0.15, 0.45), z: z + Math.sin(a) * 0.9, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp,
+      fx.emit({ x: x + Math.cos(a) * 1.5, y: fx.rand(0.15, 0.45), z: z + Math.sin(a) * 1.5, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp,
         life: fx.rand(1.5, 2.3), s0: fx.rand(0.5, 0.8), s1: fx.rand(2.0, 2.7), c0: [0.86, 0.9, 0.97], c1: [0.62, 0.68, 0.78], a: 0.2, cell: FX2_CELL.fog, t2: true, add: false,
         rot: fx.rand(0, 6), spin: fx.rand(-0.4, 0.4), drag: 2.3, fadeIn: 0.04 });
     }
-    // 气雾:中间往上冒的一股
+    // 气雾:中间往上冒的一股(光效 v5:挪到主角背后、淡一点,不糊在人身上)
+    const [mx, mz] = this.camBack(1.0);
     for (let k = 0; k < n(6); k += 1) {
-      fx.emit({ x: x + fx.rand(-0.5, 0.5), y: fx.rand(0.3, 1.0), z: z + fx.rand(-0.5, 0.5), vx: fx.rand(-0.6, 0.6), vy: fx.rand(1.4, 2.8), vz: fx.rand(-0.6, 0.6),
-        life: fx.rand(1.4, 2.0), s0: 0.6, s1: fx.rand(1.8, 2.4), c0: [0.88, 0.92, 0.98], c1: [0.6, 0.66, 0.76], a: 0.13, cell: FX2_CELL.fog, t2: true, add: false,
+      fx.emit({ x: x + mx + fx.rand(-0.5, 0.5), y: fx.rand(0.3, 1.0), z: z + mz + fx.rand(-0.5, 0.5), vx: fx.rand(-0.6, 0.6), vy: fx.rand(1.4, 2.8), vz: fx.rand(-0.6, 0.6),
+        life: fx.rand(1.4, 2.0), s0: 0.6, s1: fx.rand(1.8, 2.4), c0: [0.88, 0.92, 0.98], c1: [0.6, 0.66, 0.76], a: 0.1, cell: FX2_CELL.fog, t2: true, add: false,
         rot: fx.rand(0, 6), spin: fx.rand(-0.3, 0.3), drag: 1.6, fadeIn: 0.06 });
     }
     // 水汽丝:贴地往外冲的气流(加色、淡,沿速度拉长)
@@ -5075,18 +5087,20 @@ class Dungeon {
       } });
     }
     fx.decal('fx2', FX2_CELL.glow, x + fxn * 3.6, z + fzn * 3.6, 0.6, 1.4, 0.9, [0.55, 0.75, 1.0], 0.25, 0.05, 0.2, 0, 0.032);
-    // 开天斩落下来的风:一串积云从高处砸下来、到地面散开
+    // 开天斩落下来的风:一串积云从高处砸下来、到地面散开(光效 v5:挪到主角背后 1.2 米,不再把人整个包进白云里)
+    const [bx, bz] = this.camBack(1.2);
     for (let k = 0; k < n(9); k += 1) {
       const y = 1.2 + k * 1.25;
-      fx.emit({ x: x + fx.rand(-0.35, 0.35), y, z: z + fx.rand(-0.35, 0.35), vx: fx.rand(-0.8, 0.8), vy: -fx.rand(4, 7), vz: fx.rand(-0.8, 0.8), life: fx.rand(0.7, 1.1),
+      fx.emit({ x: x + bx + fx.rand(-0.35, 0.35), y, z: z + bz + fx.rand(-0.35, 0.35), vx: fx.rand(-0.8, 0.8), vy: -fx.rand(4, 7), vz: fx.rand(-0.8, 0.8), life: fx.rand(0.7, 1.1),
         s0: 0.8 + k * 0.05, s1: fx.rand(2.0, 2.8), c0: [0.95, 0.97, 1.0], c1: [0.78, 0.82, 0.9], a: 0.42, cell: FX2_CELL.cumulus, t2: true, add: false, drag: 3, fadeIn: 0.03 });
     }
     // 往外滚的云浪:贴地一圈积云,先快后慢、边走边胀
     for (let k = 0; k < n(16); k += 1) {
-      const a = (k / n(16)) * Math.PI * 2 + fx.rand(-0.15, 0.15);
-      const sp = fx.rand(4.5, 7.5);
-      fx.emit({ x: x + Math.cos(a) * 1.0, y: fx.rand(0.35, 0.7), z: z + Math.sin(a) * 1.0, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.5), vz: Math.sin(a) * sp, life: fx.rand(1.4, 2.0),
-        s0: fx.rand(0.7, 1.0), s1: fx.rand(2.3, 3.0), c0: [0.97, 0.98, 1.0], c1: [0.76, 0.8, 0.88], a: 0.5, cell: FX2_CELL.cumulus, t2: true, add: false, drag: 2.6, fadeIn: 0.04 });
+      const a = (k / n(16)) * Math.PI * 2 + fx.rand(-0.3, 0.3);
+      const sp = fx.rand(3.8, 8.0);
+      const r0 = fx.rand(1.4, 2.1);
+      fx.emit({ x: x + Math.cos(a) * r0, y: fx.rand(0.35, 0.8), z: z + Math.sin(a) * r0, vx: Math.cos(a) * sp, vy: fx.rand(0.1, 0.6), vz: Math.sin(a) * sp, life: fx.rand(1.3, 2.1),
+        s0: fx.rand(0.5, 1.2), s1: fx.rand(1.7, 3.5), c0: [0.97, 0.98, 1.0], c1: [0.76, 0.8, 0.88], a: 0.42, cell: FX2_CELL.cumulus, t2: true, add: false, drag: fx.rand(2.2, 3.0), fadeIn: 0.1 });
     }
     // 气泡冲击环(透明的一圈,配合屏幕扭曲)
     fx.emit({ x, y: 1.0, z, life: 0.32, s0: 0.4, s1: 3.4, c0: [0.85, 0.92, 1.0], c1: [0.6, 0.75, 1.0], a: 0.16, cell: FX2_CELL.ring, t2: true, fadeIn: 0.01 });

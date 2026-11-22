@@ -189,7 +189,9 @@ export function paintFx2Atlas(): Cv {
     const y = v * 2 - 1;
     const n = fbm(u * 5 + 1.3, v * 5 + 4.4, 4, 909);
     const dd = cumDensity(x, y) + (n - 0.5) * 0.28;
-    return sat(sstep(0.0, 0.28, dd) * sat((1 - Math.hypot(x, y)) * 3));
+    // 11-22 光效 v5:底部柔和收掉 —— 贴地的云面片下半截会插进地面,切出的直线一片片叠起来像鱼鳞 / 碎玻璃
+    const base = 1 - sstep(0.22, 0.7, y + (n - 0.5) * 0.12);
+    return sat(sstep(0.0, 0.46, dd) * sat((1 - Math.hypot(x, y)) * 3) * base);
   };
   // 15 花瓣屑(11-22 光效 v4,参考视频「剑气可视化」满天飘的白色碎屑):两头尖、微微弯的一片,边缘柔,外面一圈很淡的光
   cells[FX2_CELL.petal] = (u, v) => {
@@ -211,7 +213,7 @@ export function paintFx2Atlas(): Cv {
     const n = fbm(u * 7 + 8.1, v * 7 + 2.2, 3, 707);
     // 越往上越亮;每个小云团自己的上沿再亮一点(用往上挪一点的密度差当法线)
     const up = cumDensity(x, y - 0.08) - cumDensity(x, y + 0.08);
-    return sat(0.6 + 0.3 * (1 - v) + up * 1.4 + (n - 0.5) * 0.18);
+    return sat(0.62 + 0.3 * (1 - v) + up * 0.7 + (n - 0.5) * 0.14);
   };
   for (let cy = 0; cy < FX2_N; cy += 1) {
     for (let cx = 0; cx < FX2_N; cx += 1) {

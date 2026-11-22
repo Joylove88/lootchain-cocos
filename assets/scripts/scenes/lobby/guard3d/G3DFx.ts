@@ -16,6 +16,8 @@ interface Particle {
   age: number; life: number; s0: number; s1: number;
   r0: number; g0: number; b0: number; r1: number; g1: number; b1: number; a: number;
   cell: number; add: boolean; grav: number; drag: number; rot: number; spin: number; stretch: number; fadeIn: number; t2: boolean;
+  /** 贴图左右镜像(柔光类随机给,避免一片云全是同一个样子)。 */
+  flip: boolean;
 }
 export interface Emit {
   x: number; y: number; z: number; vx?: number; vy?: number; vz?: number;
@@ -163,6 +165,22 @@ export class FxWorld {
     m.setProperty('fxParams', new Vec4(v ? v.x : 0.72, v ? v.y : 0.003, v ? v.z : 0.4, k));
   }
 
+  private groundY = -100;
+
+  /** 地面高度(特效着色器里柔光类贴近地面渐隐用;变化超过 3 厘米才更新材质)。 */
+  setGround(y: number): void {
+    if (!this.fxOn || Math.abs(y - this.groundY) < 0.03) {
+      return;
+    }
+    this.groundY = y;
+    const v = new Vec4(y, 0.6, 0, 0);
+    for (const m of this.mats) {
+      if (m.effectName !== 'builtin-unlit') {
+        m.setProperty('fxGround', v);
+      }
+    }
+  }
+
   /** 地面符文的亮度(一直是通用材质)。 */
   setRuneScale(k: number): void {
     this.runeMat.setProperty('colorScale', new Vec3(k, k, k));
@@ -177,6 +195,7 @@ export class FxWorld {
       x: e.x, y: e.y, z: e.z, vx: e.vx ?? 0, vy: e.vy ?? 0, vz: e.vz ?? 0, age: 0, life: e.life, s0: e.s0, s1: e.s1 ?? e.s0,
       r0: e.c0[0], g0: e.c0[1], b0: e.c0[2], r1: c1[0], g1: c1[1], b1: c1[2], a: e.a ?? 1,
       cell: e.cell, add: e.add !== false, grav: e.grav ?? 0, drag: e.drag ?? 0, rot: e.rot ?? 0, spin: e.spin ?? 0, stretch: e.stretch ?? 0, fadeIn: e.fadeIn ?? 0.08, t2: !!e.t2,
+      flip: !!e.t2 && SOFT2.has(e.cell) && this.rnd() < 0.5,
     });
   }
 
@@ -381,7 +400,7 @@ export class FxWorld {
         py = Math.max(py, s * 0.65);
       }
       m.quad(p.x - ax - bx, py - ay - by, p.z - az - bz, p.x + ax - bx, py + ay - by, p.z + az - bz, p.x + ax + bx, py + ay + by, p.z + az + bz, p.x - ax + bx, py - ay + by, p.z - az + bz,
-        uv[0], uv[1], uv[2], uv[3], r, g, b, this.fxOn && softCell(p.t2, p.cell) ? al + 2 : al);
+        p.flip ? uv[2] : uv[0], uv[1], p.flip ? uv[0] : uv[2], uv[3], r, g, b, this.fxOn && softCell(p.t2, p.cell) ? al + 2 : al);
     };
     for (const p of smoke) {
       draw(p.t2 ? alp2 : alp, p);
