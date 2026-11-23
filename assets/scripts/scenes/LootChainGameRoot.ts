@@ -7885,7 +7885,9 @@ export class LootChainGameRoot extends Component {
     if (dialog.mode === 'train') {
       // §14 即时战斗:稻草靶就立在训练场里,直接上去打(打坏几秒后重立)
       this.closeWorldDialog();
-      this.setStatus('稻草靶就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
+      // 11-22 策划通玩:手机上只报键位等于没教 → 开练后按步骤圈住真实按钮教(普攻 → 技能 → 翻滚,LobbyTownRenderer.startTrainingCoach)
+      this.lobbyTownRenderer.startTrainingCoach();
+      this.setStatus(isPhoneDesign() ? '稻草靶就在训练场里 · 照提示点右下角的按钮出招' : '稻草靶就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
       return;
     }
     if (dialog.mode === 'claim' && quest.code === 'V10' && !this.realmReachedLianhun()) {

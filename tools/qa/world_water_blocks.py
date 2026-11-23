@@ -27,6 +27,25 @@ PIT_ASSETS = ('gray4_quarry_pit', 'dead4_bog_pool', 'city4_pond')
 CREEK_ASSETS = ('dead4_creek',)
 # 桥面(按贴图不透明像素留空):石桥 / 树根桥
 BRIDGE_ASSETS = ('bridge', 'dead4_root_tangle')
+# 11-23 策划通玩:地面整图重绘(11-21)后,有的路比旧贴地件宽、河岸往南退了,旧像素算出的挡块压在看得见的路上。
+# 这些范围(世界坐标 x0, y0, x1, y1)里的挡块格清掉 —— 格中心落在范围里就清。对位法:tools/qa/walk_debug_shot.py 截碰撞叠加图。
+CLEAR_ZONES = {
+    'VILLAGE': [
+        (-1420, 490, -1040, 570),  # 祭坛土路:祭司莉娅脚下(V04 进出都被挡,只剩约 18 宽一条缝)
+        (-1200, 450, -1040, 490),  # 同一条路往东,河岸石头从 y≈445 才开始
+        (-960, 410, -880, 450),    # 桥头往祭坛的路面
+        (-800, 370, -720, 410),
+        # 11-23 全图排查(tools/qa/water_block_audit.py)补的路边格:木桥西头到祭坛这段,土路一直铺到岸石边
+        (-560, 210, -440, 290),    # 木桥西头桥台边
+        (-760, 330, -680, 370),
+        (-640, 290, -600, 330),
+        (-1240, 450, -1200, 490),  # 祭坛土路南沿(上一刀收窄剩下的半块)
+        (-1080, 410, -1040, 450),
+    ],
+    'WOODS': [
+        (-2260, -1540, -2010, -1374),  # 瀑布下方浅溪南岸:溪水往北收窄了,旧挡块还压在溪南的草地和小路上
+    ],
+}
 
 
 def alpha_pixels(a):
@@ -132,6 +151,12 @@ def blocks_for(d):
     blocked = {k for k in blocked if sum(n in blocked for n in n4(k)) >= 1}
     cand = {n for k in blocked for n in n4(k)} - blocked - deck
     blocked |= {k for k in cand if sum(n in blocked for n in n4(k)) >= 3}
+    zones = CLEAR_ZONES.get(d.get('code'), [])
+    if zones:
+        def cleared(k):
+            cx, cy = k[0] * CELL - map_w / 2 + CELL / 2, k[1] * CELL - map_h / 2 + CELL / 2
+            return any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in zones)
+        blocked = {k for k in blocked if not cleared(k)}
     rects = []
     for gy in sorted({k[1] for k in blocked}):
         xs = sorted(k[0] for k in blocked if k[1] == gy)

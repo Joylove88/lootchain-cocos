@@ -668,6 +668,8 @@ export class LobbyTownRenderer {
   /** 自动寻路的终点 + 卡住检测(每 0.6 秒看一次挪了多远;几乎没动就从当前位置重新寻路,连着 3 次还不行就放弃)。 */
   private autoGoal: { x: number; y: number } | null = null;
   private autoProbe = { x: 0, y: 0, at: 0, replans: 0 };
+  /** 这条自动寻路是在战斗中点的(玩家要撤):不因「在战斗中」取消;脱战 2 秒后清掉。 */
+  private autoWalkInCombat = false;
   private minimapBottomY = 0;
   private lastPlayerLevel = 0;
   private trackerBottomY = 0;
@@ -702,6 +704,20 @@ export class LobbyTownRenderer {
   private trial: RealmTrialRun | null = null;
   private leaderHp = 0;
   private leaderMaxHp = 0;
+  /**
+   * 11-22 训练场逐步教学(docs/57 V02 战斗按键教学的轻量版;策划通玩:手机上教官只说 J / K / L / I / Shift,开练后屏幕没有任何提示)。
+   * 普攻 ×3 → 技能 ×1 → 翻滚 ×1,做到一步才进下一步;光圈圈住真实按钮 + 一句说明,手机说「点哪个按钮」,电脑同时写键位。
+   */
+  private coach: { step: number; count: number } | null = null;
+  private coachNode: Node | null = null;
+  private coachScale = 1;
+  /**
+   * 11-22 脱困(策划通玩:训练场角落把人困住,没有任何出路提示):玩家推着方向(不是自动寻路)却 1.5 秒基本没挪,
+   * 摇杆上方冒「卡住了?点此回到出生点」。只送出生点:服务端 warp 只认传送阵 / 出口 / 出生点附近(FieldPositionRegistry)。
+   */
+  private stuckWatch: { x: number; y: number; since: number } | null = null;
+  private unstuckNode: Node | null = null;
+  private unstuckShownAt = 0;
   private leaderDead = false;
   private lastHurtAt = 0;
   private comboStep = 0;
@@ -748,6 +764,8 @@ export class LobbyTownRenderer {
   private killStacksUntil = 0;
   private lastStandReadyAt = 0;
   private lastCombatAt = 0;
+  /** 上一次脱战的时刻:之后要有新动静(怪追上来 / 又打到怪)才重新进战斗,见 stepCombat。 */
+  private combatEndedAt = 0;
   private companionHits: Array<{ at: number; target: TownMonster; damage: number; heavy: boolean; actor?: TownActor; skillFx?: boolean }> = [];
   private lockTarget: TownMonster | null = null;
   private lockRing: Graphics | null = null;
@@ -2535,7 +2553,18 @@ export class LobbyTownRenderer {
       return new TownPathfinder(left, bottom, scene.walk.cols * cell, rows * cell, (px, py) => this.walkable(px, py), cell);
     }
     const w = this.def.walk;
-    return new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+    // 11-22:可进入场地(训练场)的栅栏带子比寻路格细,这些范围里的边在搜索时就用真实碰撞细查
+    const zones = this.def.buildings.filter((b) => b.walkMask).map((b) => {
+      const xs = b.walkMask!.outline.map((p) => b.x + p[0]);
+      const ys = b.walkMask!.outline.map((p) => b.y + p[1]);
+      return { l: Math.min(...xs) - 60, r: Math.max(...xs) + 60, b: Math.min(...ys) - 60, t: Math.max(...ys) + 60 };
+    });
+    const probe = zones.length
+      ? (ax: number, ay: number, bx: number, by: number): boolean => zones.some((z) => Math.max(ax, bx) >= z.l && Math.min(ax, bx) <= z.r && Math.max(ay, by) >= z.b && Math.min(ay, by) <= z.t)
+      : null;
+    // 这类图格子也收到 40:训练场门口通道往场里拐的那一段只有一格多宽,80 的格子中心一个落在武器棚角、一个落在右侧石墩,
+    // 场里场外在网格上断开(出生点 / 任务寻路进不去,场里也出不来)。walkable 一次约 0.5 微秒,晨风村 40 格建图约 6 毫秒
+    return new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py), zones.length ? 40 : undefined, probe);
   }
 
   /**
@@ -2555,6 +2584,7 @@ export class LobbyTownRenderer {
     this.autoPath = path && path.length > 0 ? path : null;
     this.autoGoal = this.autoPath ? { x, y } : null;
     this.autoProbe = { x: leader.x, y: leader.y, at: Date.now(), replans: 0 };
+    this.autoWalkInCombat = this.inCombat;
     return !!this.autoPath;
   }
 
@@ -2687,6 +2717,11 @@ export class LobbyTownRenderer {
       if (scene && path.length > 1 && dist > 10 && this.pathfinder && !this.pathfinder.clear(leader.x, leader.y, path[1].x, path[1].y)) {
         break;
       }
+      // 11-23 普通地图同理:从现在站的位置直线去下一个折点,前 240 用真实碰撞查过得去才换,否则接着走到折点跟前。
+      // 荒原峡谷石桥西头实测:人在桥面南沿、离折点 40 就奔东边下一个折点,被桥下峡谷挡块的西角卡住来回抖,重算 3 次后放弃
+      if (!scene && path.length > 1 && dist > 10 && !this.segmentWalkable(leader.x, leader.y, path[1].x, path[1].y, 240)) {
+        break;
+      }
       path.shift();
     }
     if (!path || path.length === 0) {
@@ -2700,6 +2735,21 @@ export class LobbyTownRenderer {
     return { x: dx / len, y: dy / len };
   }
 
+  /** 从 a 往 b 的直线上前 maxLen(每 12 一个点)都能站人。 */
+  private segmentWalkable(ax: number, ay: number, bx: number, by: number, maxLen: number): boolean {
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 1) {
+      return true;
+    }
+    const reach = Math.min(len, maxLen);
+    for (let s = 12; s <= reach; s += 12) {
+      if (!this.walkable(ax + ((bx - ax) * s) / len, ay + ((by - ay) * s) / len)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private stepLeader(dt: number): void {
     const leader = this.leader;
     if (!leader || !leader.node.isValid) {
@@ -2708,8 +2758,9 @@ export class LobbyTownRenderer {
     let v = this.inputVector();
     const nowMs = Date.now();
     // 自动寻路:玩家一推摇杆 / 按方向键就取消;没输入时沿折点走
-    // 进战斗(被怪拉住)也停寻路,免得一路拖着怪走
-    if (v.x !== 0 || v.y !== 0 || this.inCombat) {
+    // 进战斗(被怪拉住)也停寻路,免得一路拖着怪走;但战斗中玩家自己再点的寻路 = 要撤,照走
+    // (11-23 策划通玩:原先战斗中每帧都取消,隔着拒马 / 栅栏打不着的怪一直挂着「战斗中」,点寻路毫无反应)
+    if (v.x !== 0 || v.y !== 0 || (this.inCombat && !this.autoWalkInCombat)) {
       this.autoPath = null;
     } else if (this.autoPath && this.autoPath.length > 0) {
       this.watchAutoWalk(leader, nowMs);
@@ -2776,6 +2827,7 @@ export class LobbyTownRenderer {
       this.pushTrail(leader);
     }
     const moving = wantMove && !blocked;
+    this.watchStuck(leader, wantMove && !this.autoPath, nowMs);
     if (nowMs < this.actionUntil) {
       return;
     }
@@ -5531,6 +5583,15 @@ export class LobbyTownRenderer {
     this.host.applyImageButtonFeedback(button, 1.05, 0.95);
   }
 
+  /**
+   * 底部条上显示的等级。主角等级跟玩家等级走,但英雄名册只在进英雄页 / 养成后才重拉,
+   * 同一局里做任务升级后队长身上还是登录时那份数据(11-22 策划通玩:Lv.3 了底部还显示 Lv.1)→ 主角取玩家等级。
+   * 野外战斗数值每次遇敌都以服务端下发为准,不受这份缓存影响。
+   */
+  private displayLevel(hero: LobbyHeroItemVO): number {
+    return hero.protagonist ? Math.max(hero.level, this.host.currentLobbyProfile().playerLevel ?? 0) : hero.level;
+  }
+
   /** docs/51 §4:主界面不放经验条;玩家升级时屏幕中上方弹「Lv.X ↑」2 秒。 */
   private renderLevelToast(hud: Node, layout: UiLayout): void {
     const level = this.host.currentLobbyProfile().playerLevel ?? 0;
@@ -5834,6 +5895,7 @@ export class LobbyTownRenderer {
     if (!this.leader || this.leaderDead || !this.combatMap()) {
       return;
     }
+    this.coachNote('attack');
     if (this.leaderBusy(now)) {
       // 出招前 120ms 内的连点算手抖不缓冲;之后按的进缓冲,到取消点自动接下一段
       if (now - this.leaderActionStart > 120) {
@@ -5896,6 +5958,7 @@ export class LobbyTownRenderer {
     if (now < this.skillReadyAt[index]) {
       return;
     }
+    this.coachNote('skill');
     const spec = LobbyTownRenderer.SKILLS[index];
     this.skillReadyAt[index] = now + this.skillCdMs(index);
     this.comboUntil = 0;
@@ -6062,6 +6125,7 @@ export class LobbyTownRenderer {
     if (!leader || this.leaderDead || now < this.dodgeReadyAt || now < this.dashUntil) {
       return;
     }
+    this.coachNote('dodge');
     const v = this.inputVector();
     const len = Math.hypot(v.x, v.y);
     this.dashDir = len > 0.1 ? { x: v.x / len, y: v.y / len } : { x: leader.facing, y: 0 };
@@ -7058,7 +7122,7 @@ export class LobbyTownRenderer {
     }
     this.ensureLeaderRing(target);
     if (this.leaderBar && this.leaderBar.name.isValid) {
-      this.leaderBar.name.string = `${safeText(target.hero.heroName)} Lv.${target.hero.level}`;
+      this.leaderBar.name.string = `${safeText(target.hero.heroName)} Lv.${this.displayLevel(target.hero)}`;
       this.leaderBar.key = '';
       this.drawLeaderHp();
     }
@@ -7111,10 +7175,37 @@ export class LobbyTownRenderer {
     }
     this.ensureLeaderStats();
     const now = Date.now();
-    this.inCombat = this.monsters.some((monster) => !monster.dead && this.encounters.has(monster.camp.stageCode)
-      && Math.hypot(monster.x - leader.x, monster.y - leader.y) < COMPANION_LEASH_DIST + 300);
+    // 「战斗中」只算真在打的怪:正追着队员的,或 6 秒内挨过打 / 出过手的(11-23 策划通玩:原先已交战怪群里
+    // 只要有一只活怪在 900 内就算,隔着拒马的远程怪、追丢后回营地游走的怪会把人一直锁在战斗里 —— 不能传送、采集、寻路)。
+    // 进战斗要有新动静(有怪正追着队员 / 脱战后又打到了怪);「刚挨过打 / 刚出过手」只用来续着正在打的仗 ——
+    // 不然脱战后、5 秒内出过手的怪逛回 900 内,会凭旧记录闪回战斗中一两秒,把玩家刚点的寻路打断(11-23 引擎实测)。
+    const wasInCombat = this.inCombat;
+    let fresh = false;
+    let lingering = false;
+    for (const monster of this.monsters) {
+      if (monster.dead || !this.encounters.has(monster.camp.stageCode)
+        || Math.hypot(monster.x - leader.x, monster.y - leader.y) >= COMPANION_LEASH_DIST + 300) {
+        continue;
+      }
+      const recentHit = now - monster.lastHitAt < 6000;
+      if (monster.victim || (recentHit && monster.lastHitAt > this.combatEndedAt)) {
+        fresh = true;
+        break;
+      }
+      if (recentHit || now < monster.nextAttackAt + 5000) {
+        lingering = true;
+      }
+    }
+    this.inCombat = fresh || (wasInCombat && lingering);
     if (this.inCombat) {
       this.lastCombatAt = now;
+    } else {
+      if (wasInCombat) {
+        this.combatEndedAt = now;
+      }
+      if (now - this.lastCombatAt > 2000) {
+        this.autoWalkInCombat = false;
+      }
     }
     // 到点的打击
     if (this.pendingHits.length > 0) {
@@ -8306,6 +8397,186 @@ export class LobbyTownRenderer {
       mk('LobbyFieldRealmUlt', 1560, 470, 104, true, REALM_ULT.icon, 0.72, 'U', () => this.leaderRealmUlt(), -4);
       this.prewarmRealmUlt();
     }
+    this.coachScale = P.S(100) / 100;
+    this.mountCoach();
+  }
+
+  /** 推着方向却几乎没挪动 1.5 秒 → 冒脱困按钮;走开 80 以上或挂了 8 秒自动收起。 */
+  private watchStuck(leader: TownActor, pushing: boolean, nowMs: number): void {
+    const shown = !!this.unstuckNode?.isValid;
+    const watch = this.stuckWatch;
+    if (shown && (!watch || Math.hypot(leader.x - watch.x, leader.y - watch.y) > 80 || nowMs - this.unstuckShownAt > 8000)) {
+      this.hideUnstuck();
+      return;
+    }
+    if (shown) {
+      return;
+    }
+    if (!pushing || this.trial || this.leaderDead) {
+      this.stuckWatch = null;
+      return;
+    }
+    if (!watch || Math.hypot(leader.x - watch.x, leader.y - watch.y) > 24) {
+      this.stuckWatch = { x: leader.x, y: leader.y, since: nowMs };
+      return;
+    }
+    if (nowMs - watch.since > 1500) {
+      this.showUnstuck(nowMs);
+    }
+  }
+
+  private showUnstuck(nowMs: number): void {
+    const hud = this.hudNode;
+    const layout = this.hudLayout;
+    if (!hud || !hud.isValid || !layout) {
+      return;
+    }
+    const P = townProtoFrame(layout);
+    const field = this.def.camps.length > 0;
+    const w = P.S(360);
+    const h = P.S(58);
+    const node = this.host.addChildPlainNode(hud, 'LobbyUnstuck', P.L(field ? 250 : 245), P.Y(field ? 500 : 535), w, h);
+    const bg = node.addComponent(Graphics);
+    bg.fillColor = rgba(14, 18, 26, 230);
+    bg.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    bg.fill();
+    bg.lineWidth = Math.max(1.5, P.S(2));
+    bg.strokeColor = rgba(227, 196, 138, 235);
+    bg.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    bg.stroke();
+    const label = this.host.addChildLabel(node, 'Text', '卡住了?点此回到出生点', 0, 0, P.S(23), rgba(255, 238, 200), new Size(w - P.S(28), h - P.S(8)));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    node.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
+      event.propagationStopped = true;
+      this.unstuck();
+    }, this);
+    this.host.applyImageButtonFeedback(node, 1.05, 0.95);
+    this.unstuckNode = node;
+    this.unstuckShownAt = nowMs;
+  }
+
+  private hideUnstuck(): void {
+    if (this.unstuckNode?.isValid) {
+      this.unstuckNode.destroy();
+    }
+    this.unstuckNode = null;
+    this.stuckWatch = null;
+  }
+
+  /** 全队送回本图出生点(先报 warp = 合法瞬移,docs/55)。 */
+  private unstuck(): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    const dest = { ...this.def.spawn };
+    this.host.reportWorldPosition?.('warp', this.mapCode, Math.round(dest.x), Math.round(dest.y));
+    this.posSent = { x: dest.x, y: dest.y, at: Date.now() };
+    [leader, ...this.followers].forEach((actor, index) => {
+      actor.x = dest.x - leader.facing * index * FOLLOW_SPACING;
+      actor.y = dest.y;
+      actor.node.setPosition(actor.x, actor.y, 0);
+    });
+    this.trail = [new Vec2(dest.x, dest.y)];
+    this.autoPath = null;
+    this.autoGoal = null;
+    this.applyCamera(true);
+    this.hideUnstuck();
+    this.spawnFloater(dest.x, dest.y + 270, '已回到出生点', rgba(170, 230, 255), 26);
+  }
+
+  /** 训练场教官「开始训练」后由 GameRoot 调:从普攻那一步开始教。 */
+  startTrainingCoach(): void {
+    this.coach = { step: 0, count: 0 };
+    this.mountCoach();
+  }
+
+  /** 出招计数:只认当前这一步要教的动作(技能在真放出去时才算,冷却中按了不算)。 */
+  private coachNote(kind: 'attack' | 'skill' | 'dodge'): void {
+    const coach = this.coach;
+    if (!coach || (['attack', 'skill', 'dodge'] as const)[coach.step] !== kind) {
+      return;
+    }
+    coach.count += 1;
+    if (coach.count < (coach.step === 0 ? 3 : 1)) {
+      this.mountCoach();
+      return;
+    }
+    coach.step += 1;
+    coach.count = 0;
+    if (coach.step >= 3) {
+      this.coach = null;
+      const leader = this.leader;
+      if (leader) {
+        this.spawnFloater(leader.x, leader.y + 270, '好身手!去打倒 3 个稻草靶', rgba(255, 226, 150), 30);
+      }
+    }
+    this.mountCoach();
+  }
+
+  /** 按当前步骤重挂教学层(光圈 + 说明条);离开晨风村 / 教完就收掉。战斗按钮每次重建后都会重挂,界面刷新不会丢。 */
+  private mountCoach(): void {
+    if (this.coachNode?.isValid) {
+      this.coachNode.destroy();
+    }
+    this.coachNode = null;
+    if (this.coach && this.mapCode !== 'VILLAGE') {
+      this.coach = null;
+    }
+    const coach = this.coach;
+    if (!coach) {
+      return;
+    }
+    const names = coach.step === 0 ? ['LobbyFieldAttack'] : coach.step === 1 ? ['LobbyFieldSkill0', 'LobbyFieldSkill1', 'LobbyFieldSkill2'] : ['LobbyFieldDodge'];
+    const targets = this.combatButtons.filter((button) => button.node.isValid && names.indexOf(button.node.name) >= 0);
+    const hud = targets[0]?.node.parent;
+    if (!hud || !hud.isValid) {
+      return;
+    }
+    const k = this.coachScale;
+    const root = this.host.addChildPlainNode(hud, 'TrainingCoach', 0, 0, 10, 10);
+    this.coachNode = root;
+    for (const target of targets) {
+      const pos = target.node.position;
+      const ringNode = this.host.addChildPlainNode(root, 'CoachRing', pos.x, pos.y, target.size * 1.6, target.size * 1.6);
+      const ring = ringNode.addComponent(Graphics);
+      ring.lineWidth = Math.max(3, 5 * k);
+      ring.strokeColor = rgba(255, 214, 120, 255);
+      ring.circle(0, 0, target.size * 0.66);
+      ring.stroke();
+      ring.lineWidth = Math.max(2, 2.5 * k);
+      ring.strokeColor = rgba(255, 240, 200, 150);
+      ring.circle(0, 0, target.size * 0.74);
+      ring.stroke();
+      const fade = ringNode.addComponent(UIOpacity);
+      tween(ringNode).to(0.55, { scale: new Vec3(1.16, 1.16, 1) }, { easing: 'sineOut' }).to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineIn' }).union().repeatForever().start();
+      tween(fade).to(0.55, { opacity: 140 }).to(0.55, { opacity: 255 }).union().repeatForever().start();
+    }
+    const phone = isPhoneDesign();
+    const text = coach.step === 0
+      ? `${phone ? '点这个大剑按钮普攻' : '按 J(或点大剑按钮)普攻'} · 连点 3 下打出连招  ${coach.count}/3`
+      : coach.step === 1
+        ? (phone ? '点任意一个技能按钮,放出技能' : '按 K / L / I(或点技能按钮)放技能')
+        : (phone ? '点这个按钮翻滚 · 看到敌人读条就翻滚躲开' : '按 Shift(或点这个按钮)翻滚 · 敌人读条时翻滚躲开');
+    // 说明条放在战斗簇左上方,不压按钮
+    const anchor = targets[0].node.position;
+    const w = 560 * k;
+    const h = 58 * k;
+    const bx = anchor.x - w / 2 - targets[0].size * 0.2;
+    const by = anchor.y + targets[0].size * (coach.step === 1 ? 1.35 : 1.05);
+    const bubble = this.host.addChildPlainNode(root, 'CoachTip', bx, by, w, h);
+    const bg = bubble.addComponent(Graphics);
+    bg.fillColor = rgba(14, 18, 26, 225);
+    bg.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    bg.fill();
+    bg.lineWidth = Math.max(1.5, 2 * k);
+    bg.strokeColor = rgba(227, 196, 138, 230);
+    bg.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    bg.stroke();
+    const label = this.host.addChildLabel(bubble, 'Text', text, 0, 0, 24 * k, rgba(255, 244, 222), new Size(w - 40 * k, h - 8 * k));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
   }
 
   /** 就绪光圈节点(香槟柔光环,默认透明);挂在调用处当前子节点之上、圆盘之下由调用顺序保证。 */
@@ -8417,7 +8688,7 @@ export class LobbyTownRenderer {
     mountGlassSlice(this.host as never, node, 'Groove', GLASS_SLICES.hudCapsuleDim, 0, 0, w + P.S(8), h + P.S(8), (h + P.S(8)) / 48);
     const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, w, h).addComponent(Graphics);
     const hero = leader.hero;
-    const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${hero.level}`, -w / 2 - P.S(15), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
+    const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${this.displayLevel(hero)}`, -w / 2 - P.S(15), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
     const realmTitle = this.host.realmTitle?.() ?? '';
     if (realmTitle) {
       // docs/60 §4.5:名字旁显示境界(香槟小字,压在名字上方)
