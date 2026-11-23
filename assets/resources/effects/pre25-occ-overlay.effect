@@ -1,0 +1,116 @@
+// 主城 v4 手绘(2026-11-23):人物被建筑 / 树 / 墙挡住 —— 不改人物自己的材质(队伍、NPC 是 2D 骨骼,一个个换材质太脆),
+// 改成把「挡在人物前面的那部分画面」再画一遍盖在人物上面:每块手绘图配一个这种精灵(和地面块同位置同大小,画在人物层之上),
+// 只有块里有人物时才打开(Pre25Actors.occOverlay)。
+// 片元:颜色取这块手绘图;3D 渲染时存下的遮挡块(o_*:r / g 两个 8 位 = 视深,b = 立物不透明度)告诉我们这里的立物离镜头多远;
+// 人物当竖直的板,板上这一点的视深 = 脚底视深 − (脚的图片 y − 这一点的图片 y)·tan(俯角)/每米像素(同 pre25-actor);
+// 片元落在某个人物的包围盒里、且这里的立物比人物这一点离镜头更近(差过判定余量)→ 画出来盖住人物,否则丢弃。
+// 盖住时不是全不透明(cnt.y):被挡住的人物淡淡地透出来,斜视角下房顶常盖住一段街,人得找得到自己。
+// 一块手绘图 = 2 × 2 个遮挡块(手绘图按 v4 渲染的一半精度出,一块 1024 = 渲染 2048 像素 = 两个 1024 的遮挡块)。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: occ-vs:vert
+      frag: occ-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        occ0: { value: white }
+        occ1: { value: white }
+        occ2: { value: white }
+        occ3: { value: white }
+        xf: { value: [0, 0, 1, 0] }
+        blk: { value: [0, 0, 1024, 0] }
+        prm: { value: [1, 240, 0.0083, 0.35] }
+        cnt: { value: [0, 0.8, 0, 0] }
+}%
+
+CCProgram occ-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+  out vec2 wp;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    wp = a_position.xy;
+    return pos;
+  }
+}%
+
+CCProgram occ-fs %{
+  precision highp float;
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+  in vec2 wp;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D occ0;
+  uniform sampler2D occ1;
+  uniform sampler2D occ2;
+  uniform sampler2D occ3;
+  uniform Pre25Occ {
+    vec4 xf;        // 世界坐标 → 整图像素(v4 渲染精度):ix = (wx - xf.x) * xf.z,iy = (xf.y - wy) * xf.z
+    vec4 blk;       // 2 × 2 遮挡块:左上角那块的整图像素 (x, y)、块边长 z
+    vec4 prm;       // near、far(视深编码)、tan(俯角) / 每米像素、判定余量(米)
+    vec4 cnt;       // x = 人物个数、y = 盖住人物时的不透明度
+    vec4 box[12];   // 人物包围盒(整图像素,左上原点):x0, y0, x1, y1
+    vec4 ft[12];    // x = 脚的整图 y(站高处时是抬高后的),y = 脚的视深(米)
+  };
+
+  vec4 frag () {
+    vec2 ip = vec2((wp.x - xf.x) * xf.z, (xf.y - wp.y) * xf.z);
+    vec2 lp = (ip - blk.xy) / blk.z;
+    if (lp.x < 0.0 || lp.y < 0.0 || lp.x >= 2.0 || lp.y >= 2.0) {
+      discard;
+    }
+    vec2 f = fract(lp);
+    vec4 o;
+    if (lp.x < 1.0) {
+      o = lp.y < 1.0 ? texture(occ0, f) : texture(occ2, f);
+    } else {
+      o = lp.y < 1.0 ? texture(occ1, f) : texture(occ3, f);
+    }
+    if (o.b < 0.02) {
+      discard;
+    }
+    float od = prm.x + (o.r + o.g / 255.0) * (prm.y - prm.x);
+    float hide = 0.0;
+    for (int i = 0; i < 12; i++) {
+      if (float(i) >= cnt.x) {
+        break;
+      }
+      vec4 b = box[i];
+      if (ip.x >= b.x && ip.x <= b.z && ip.y >= b.y && ip.y <= b.w) {
+        float cd = ft[i].y - (ft[i].x - ip.y) * prm.z;
+        hide = max(hide, smoothstep(0.0, prm.w, cd - od));
+      }
+    }
+    hide *= o.b;
+    if (hide < 0.01) {
+      discard;
+    }
+    vec4 c = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0) * color;
+    c.a *= hide * cnt.y;
+    return c;
+  }
+}%

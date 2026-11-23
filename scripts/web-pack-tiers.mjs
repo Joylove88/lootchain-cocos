@@ -70,6 +70,8 @@ export const BACKGROUND_ORDER = [
   // 战斗界面 / 音乐
   'ui/battle', 'audio/',
   // 主城、其余地图、玩法页(spine/npc = 主城 NPC 骨骼,跟着地图素材一起下)
+  // 11-23 主城换成 v4 布局手绘版:手绘图块(约 37MB,进图加载门也认它)+ 3D 渲染存下的遮挡块(人走到房子后面被挡,没下到时只是暂时不挡)
+  'pre25/city_paint', 'pre25/city/o_',
   'ui/world/', 'spine/npc/', 'ui/raid', 'ui/crystal', 'ui/guard', 'ui/daily', 'ui/codex', 'ui/formation', 'ui/profile', 'ui/adventure',
   // 其余英雄 / 怪物骨骼,最后是技能特效
   'spine/hero/', 'spine/monster/', 'ui/', 'spine/effect/',
@@ -79,6 +81,12 @@ export const BACKGROUND_ORDER = [
 // 这些只有带 ?g3d…=1 开关的地址才会用到,出包时临时放进 resources;不进清单 = 普通玩家首访和后台都不会下它们,
 // 用到时由引擎直接向服务器取(离线缓存脚本对清单外的文件是「先缓存、没有就走网络」)。
 // pre25/:预渲染 2.5D 第 0 期的地图块和主角图集(只有 ?pre25=1 用到,2026-11-18)。
-export const ON_DEMAND_PREFIXES = ['g3d_', 'pre25/'];
+// 11-23 起 v4 布局手绘版是默认主城:pre25/city_paint(手绘块)和 pre25/city/o_(遮挡块)要正常下载,
+// 只有 3D 版自己的色块 / 鸟瞰 / 水面遮罩和预渲染主角还按需取;旧月夜主城的整城图(标准 / 高清两套)只在 ?citymoon=1 对比时用,也改按需取。
+export const ON_DEMAND_PREFIXES = [
+  'g3d_', 'pre25/hero_m', 'pre25/city/c_', 'pre25/city/overview', 'pre25/city/water_mask',
+  'ui/world/citymoon/base_', 'ui/world/citymoon/mask_', 'ui/world/citymoon/tree_', 'ui/world/citymoon/cloth_', 'ui/world/citymoon/water_',
+  'ui/world/citymoon/overview', 'ui/world/citymoon_hd/',
+];
 
 export const CORE_EXTRA_FILE = 'scripts/web-pack-core-extra.json';

@@ -49,6 +49,12 @@ ROOT_JS = ("let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n
 BUSY = cm.BUSY
 CLEAR = cm.CLEAR
 TP = cm.TP
+# 手绘版主城的瞬移:世界坐标(月夜版的 TP 按月夜整图像素换算,换城后不能用);报 warp 让服务端坐标对上
+WARP_WORLD = ("const X = {x}, Y = {y}; [t.leader, ...t.followers].forEach((a, i) => { a.x = X - i * 40; a.y = Y; a.node.setPosition(a.x, a.y, 0); });"
+              " t.trail = [new cc.Vec2(X, Y)]; t.autoPath = null; t.autoGoal = null; t.applyCamera(true);"
+              " if (t.host.reportWorldPosition) t.host.reportWorldPosition('warp', t.mapCode, X, Y); return 1;")
+# 主城是哪一版(城里那一段探针写入,下载统计那一段按它判断该下哪些图)
+city_state = {'painted': False}
 
 CITY_PROBE = r"""
   const props = t.def.props || [];
@@ -57,7 +63,10 @@ CITY_PROBE = r"""
   t.world.walk(n => { const s = n.getComponent(cc.Sprite); if (!s || !n.activeInHierarchy) return; sprites++;
     const m = s.customMaterial || s.getSharedMaterial(0); const name = (m && (m.effectName || (m.effectAsset && m.effectAsset.name))) || 'none'; fx[name] = (fx[name] || 0) + 1; });
   const tex = []; t.groundRoot.children.slice(0, 40).forEach(n => { const s = n.getComponent(cc.Sprite); if (s && s.spriteFrame && s.spriteFrame.texture && tex.length < 3) tex.push([s.spriteFrame.texture.width, s.spriteFrame.texture.height]); });
-  return JSON.stringify({ map: t.def.code, hdAssets: props.filter(p => /citymoon_hd\//.test(p.asset || '')).length, stdAssets: props.filter(p => /citymoon\//.test(p.asset || '')).length,
+  // 11-23 起默认主城是 v4 布局手绘版(Pre25City + Pre25Actors):没有月夜那套底图贴地件,看 __pre25.info()(painted / 已载图块 / 遮挡层)
+  const p25 = globalThis.__pre25 ? globalThis.__pre25.info() : null;
+  return JSON.stringify({ map: t.def.code, painted: !!(p25 && p25.painted), p25,
+    hdAssets: props.filter(p => /citymoon_hd\//.test(p.asset || '')).length, stdAssets: props.filter(p => /citymoon\//.test(p.asset || '')).length,
     tileScale: tiles.scale, tileBase0: (tiles.base || [])[0], baseTex: tex, sprites, effects: fx, strips: t.entityRoot.children.filter(n => n.name.startsWith('SceneStrip_')).length,
     npcs: t.npcNodes.length, glows: t.scene.glows.length, walkers: t.scene.walkers.map(w => !!w.skeleton), drawCalls: cc.director.root.device.numDrawCalls,
     mem: navigator.deviceMemory, ua: navigator.userAgent.slice(0, 60) });
@@ -337,19 +346,36 @@ async def main():
                 print('city reach', reach, flush=True)
                 try:
                     pr, rc = json.loads(probe), json.loads(reach)
+                    city_state['painted'] = bool(pr.get('painted'))
                     want_hd = 'cityHd=0' not in base.PAGE
-                    art_ok = (pr['hdAssets'] > 0) == want_hd
+                    if city_state['painted']:
+                        p25 = pr.get('p25') or {}
+                        art_ok = p25.get('chunks', 0) > 0 and p25.get('occEffect') and not p25.get('failed')
+                        art = f"painted chunks={p25.get('chunks')} loads={p25.get('chunkLoads')} occ={p25.get('occ')} overlays={p25.get('overlays')}"
+                    else:
+                        art_ok = (pr['hdAssets'] > 0) == want_hd
+                        art = f"hd={pr['hdAssets']} std={pr['stdAssets']}"
                     stage('city', in_city and art_ok and not rc['unreachable'] and not rc['blocked'],
-                          f"hd={pr['hdAssets']} std={pr['stdAssets']} tex={pr['baseTex']} reach={rc['total'] - len(rc['unreachable'])}/{rc['total']} blocked={rc['blocked']} effects={pr['effects']}")
+                          f"{art} tex={pr['baseTex']} reach={rc['total'] - len(rc['unreachable'])}/{rc['total']} blocked={rc['blocked']} effects={pr['effects']}")
                 except Exception as e:
                     stage('city', False, f'probe parse {e}')
                 await shot('10_city_arrive')
-                points = json.loads(await ev(cm.POINTS))
-                for name, px, py in [p for p in points if p[0] in ('tour_11_c', 'tour_01_n', 'tour_12_e', 'tour_21_s', 'tour_10_w', 'npc_vendor', 'exit_south', 'exit_east') or p[0].startswith('exit_')]:
-                    await ev(TP.replace('{x}', str(px)).replace('{y}', str(py)))
-                    await asyncio.sleep(2.5)
-                    print(name, (px, py), 'drawCalls', await ev("return cc.director.root.device.numDrawCalls;"), flush=True)
-                    await shot('11_' + name)
+                if city_state['painted']:
+                    # 手绘版:巡一圈地图页的地点(城门那两个就是出口圈,不去,出口另有往返测试)
+                    places = json.loads(await ev("return JSON.stringify(t.def.places.filter(p => !/门$/.test(p.name)).map(p => [p.name, Math.round(p.x), Math.round(p.y)]));"))
+                    for name, x, y in places:
+                        await ev(WARP_WORLD.replace('{x}', str(x)).replace('{y}', str(y)))
+                        await asyncio.sleep(2.5)
+                        print(name, (x, y), 'drawCalls', await ev("return cc.director.root.device.numDrawCalls;"),
+                              await ev("return JSON.stringify(globalThis.__pre25 ? globalThis.__pre25.info() : null);"), flush=True)
+                        await shot('11_' + name)
+                else:
+                    points = json.loads(await ev(cm.POINTS))
+                    for name, px, py in [p for p in points if p[0] in ('tour_11_c', 'tour_01_n', 'tour_12_e', 'tour_21_s', 'tour_10_w', 'npc_vendor', 'exit_south', 'exit_east') or p[0].startswith('exit_')]:
+                        await ev(TP.replace('{x}', str(px)).replace('{y}', str(py)))
+                        await asyncio.sleep(2.5)
+                        print(name, (px, py), 'drawCalls', await ev("return cc.director.root.device.numDrawCalls;"), flush=True)
+                        await shot('11_' + name)
 
             # ── 主城两个出口往返:踩进出口圈 → 到对面图 → 踩对面图回主城的出口 → 回到主城,落点要能站、离门内落点不远 ──
             if 'exits' in ONLY:
@@ -498,7 +524,12 @@ async def main():
                                               'gotFiles': len(have), 'gotMB': round(sum(size[p] for p in have) / 1048576, 1), 'citymoon_hd': len(hd), 'citymoon_std_art': len(std)}), flush=True)
                 want_hd = 'cityHd=0' not in base.PAGE
                 if 'city' in ONLY:
-                    stage('city art tier', (len(hd) > 0 and len(std) == 0) if want_hd else (len(std) > 0 and len(hd) == 0), f'hd={len(hd)} std={len(std)}')
+                    if city_state['painted']:
+                        # 手绘版主城:月夜那两套整城图都不该下(按需取),手绘图块要下到
+                        paint = [p for p in have if res[p].startswith('pre25/city_paint')]
+                        stage('city art tier', len(hd) == 0 and len(std) == 0 and len(paint) > 0, f'paint={len(paint)} moon_hd={len(hd)} moon_std={len(std)}')
+                    else:
+                        stage('city art tier', (len(hd) > 0 and len(std) == 0) if want_hd else (len(std) > 0 and len(hd) == 0), f'hd={len(hd)} std={len(std)}')
             except Exception as e:
                 print('download tally failed', e, str(cached)[:200], flush=True)
             pump.cancel()

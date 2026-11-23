@@ -7,8 +7,11 @@ import { FIELD_PAINT, type FieldPaintDef } from './LobbyFieldPaintData';
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
-import { CITY_PRE25, CITY_PRE25_ENTRY, pre25Enabled } from './pre25/Pre25City';
-/** 预渲染 2.5D 主城(第 0 期实验,默认关;?pre25=1 换上):主城定义和别的图进主城的落点一起换。 */
+import { CITY_PRE25, CITY_PRE25_ENTRY, PRE25_PAINTED, pre25Enabled } from './pre25/Pre25City';
+/**
+ * 主城用哪一版:11-23 起 v4 布局手绘版(Pre25City,有手绘图块时)就是默认,?citymoon=1 退回 11-12 月夜版对比;
+ * 没有手绘块时是 11-19 的预渲染 2.5D 实验(默认关,?pre25=1 换上)。主城定义和别的图进主城的落点一起换。
+ */
 export const PRE25_ON = pre25Enabled();
 const CITY_ENTRY = PRE25_ON ? CITY_PRE25_ENTRY : CITY_MOON_ENTRY;
 import { DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
@@ -784,6 +787,7 @@ const WOODS: WorldMapDef = {
 
 /**
  * 主城:11-11 重做成月夜整图场景(定义在 LobbyCityMoon.ts)。旧的 v4 主城(14000×7000、逐栋立物,LobbyCityLayout / city_v4_gen)已下线。
+ * 11-23 用户看线上月夜主城「目前的不行」→ 换成 v4 布局(主轴 / 上城高台 / 弯河三桥)的白天手绘版(pre25/Pre25City.ts),见 PRE25_ON。
  */
 const CITY: WorldMapDef = PRE25_ON ? CITY_PRE25 : CITY_MOON;
 
@@ -1055,6 +1059,10 @@ export function worldMapPackPrefixes(code: WorldMapCode): string[] {
   const paint = fieldPaintDef(code);
   if (paint) {
     set.add(paint.dir);
+  }
+  // 11-23 主城 v4 手绘版:手绘图块目录(Pre25Actors 按镜头加载)整目录随主城下到本地;遮挡块(pre25/city/o_)不拦,没下到时只是暂时不挡人
+  if (code === 'CITY' && PRE25_ON && PRE25_PAINTED) {
+    set.add('pre25/city_paint');
   }
   // 骨骼 NPC / 整图场景里走动的人:骨骼目录也算进这张图
   for (const npc of def.npcs) {

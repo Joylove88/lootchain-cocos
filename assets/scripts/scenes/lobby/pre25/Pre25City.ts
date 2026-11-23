@@ -1,6 +1,7 @@
 import type { WorldMapDef, WorldMapNpc, WorldMapProp, WorldNpcCode, WorldSceneDef } from '../LobbyWorldMaps';
 import { TOWN_GROUND_ASSET, TOWN_GROUND_TILE, TOWN_LAMP_ASSET } from '../LobbyTownConfig';
 import { PRE25_CITY_DATA } from './Pre25CityData';
+import { PRE25_PAINT } from './Pre25PaintData';
 
 /**
  * 预渲染 2.5D 主城(整体 3D 化方案第 0 期,2026-11-18;默认关,地址带 ?pre25=1 或 localStorage.lcPre25 = '1' 才换上)。
@@ -14,7 +15,20 @@ import { PRE25_CITY_DATA } from './Pre25CityData';
  */
 const D = PRE25_CITY_DATA;
 const [IW, IH] = D.px;
-const U = D.unit;
+/**
+ * 手绘版(11-23 用户看完原型选「A · v4 布局」):3D 渲染块只当底稿,逐块按守卫战背景的画法重画成白天手绘
+ * (tools/qa/city_v4_paint.py,成品精度 = 渲染的一半,一块 1024 = 渲染 2048 像素)。有手绘块就用它们,
+ * 人物换回游戏里的 2D 队伍(不再换成预渲染主角),遮挡改成「挡在人前面的那部分画面再盖一遍」(Pre25Actors.occOverlay)。
+ * 几何(可走格、高度、NPC、出口)和 3D 版完全一样,只是整城在游戏里缩成一半(见 CITY_SCALE)。
+ */
+export const PRE25_PAINTED = PRE25_PAINT.tiles.length > 0;
+/**
+ * 手绘版整城缩成一半(世界单位):v4 是按真人尺寸摆的城(人 1.8 米),游戏里的 2D 队伍只有它一半高 ——
+ * 11-23 实机第一版按原尺寸放,一座桥就占满整屏、房子是人的十倍高,手绘图还被放大到一个像素 2.4 个屏幕像素(糊)。
+ * 缩一半后房子约是人的 4 倍高(和旧主城差不多),一屏看到的城是原来 4 倍,画面每像素约 1.2 个屏幕像素。
+ */
+const CITY_SCALE = PRE25_PAINTED ? 0.5 : 1;
+const U = D.unit * CITY_SCALE;
 const P = (D.pitch * Math.PI) / 180;
 /** 镜头水平朝向(度):0 = 正对东边;-45 = 往东北斜着看(11-18 用户选的视角 D)。 */
 const YAW = ((((D as any).yaw as number | undefined) ?? 0) * Math.PI) / 180;
@@ -23,9 +37,18 @@ const HX = Math.cos(YAW);
 const HZ = Math.sin(YAW);
 const DIR = 'pre25/city';
 
-/** 开关:只在网页端看地址参数 / 本地存储(原生没有地址,恒关)。 */
+/**
+ * 开关:手绘版有图块时它就是默认主城(地址带 ?citymoon=1 或 localStorage.lcCityMoon = '1' 退回 11-12 的月夜主城,对比用;
+ * 原生 / node 工具链没有地址,就是手绘版);没有手绘块时是 11-19 的 3D 渲染实验,只在网页端带 ?pre25=1 / lcPre25 才换上。
+ */
 export function pre25Enabled(): boolean {
   try {
+    if (PRE25_PAINTED) {
+      if (typeof location !== 'undefined' && /[?&]citymoon=1\b/.test(location.search)) {
+        return false;
+      }
+      return !(typeof localStorage !== 'undefined' && localStorage.getItem('lcCityMoon') === '1');
+    }
     if (typeof location !== 'undefined' && /[?&]pre25=1\b/.test(location.search)) {
       return true;
     }
@@ -135,6 +158,17 @@ export const PRE25_CHUNKS = CHUNKS.map(([r, c]) => ({
   r, c, path: `${DIR}/c_${r}_${c}/spriteFrame`,
   x: ((c + 0.5) * D.chunk - IW / 2) * U, y: (IH / 2 - (r + 0.5) * D.chunk) * U, size: D.chunk * U,
 }));
+const PAINT_DIR = 'pre25/city_paint';
+const PAINT_SPAN = PRE25_PAINT.tile / PRE25_PAINT.scale;
+export const PRE25_PAINT_TILES = PRE25_PAINT.tiles.map(([r, c]) => ({
+  r, c, path: `${PAINT_DIR}/p_${r}_${c}/texture`,
+  x: ((c + 0.5) * PAINT_SPAN - IW / 2) * U, y: (IH / 2 - (r + 0.5) * PAINT_SPAN) * U, size: PAINT_SPAN * U,
+  /** 这块盖住的 2 × 2 个遮挡块里左上那块的行列。 */
+  occR: Math.round((r * PAINT_SPAN) / D.chunk), occC: Math.round((c * PAINT_SPAN) / D.chunk),
+}));
+export const PRE25_PAINT_SPAN = PAINT_SPAN;
+/** 水流遮罩(pre25/city_paint/flow,整图补成 grid 列 × 行块后的 1/8)和它的格数:图块 (r, c) 在遮罩里占 (c / 列, r / 行, 1 / 列, 1 / 行)。 */
+export const PRE25_PAINT_FLOW = { path: `${PAINT_DIR}/flow/texture`, cols: PRE25_PAINT.grid[0], rows: PRE25_PAINT.grid[1], tile: PRE25_PAINT.tile };
 const PROPS: WorldMapProp[] = [];
 
 // ── NPC:旧主城的站立图,按整城平面摆在各自的街区(3D 场景坐标,米;X 往东、Z 往南;见 tools/proto3d/pre25/city_plan.py)──
@@ -154,7 +188,8 @@ const NPCS: Array<[WorldNpcCode, string, string, number, number, 1 | -1]> = [
   ['CHILD', '小汤姆', 'city4_npc_child', -30, 30, 1],
   ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', 92, 4, -1],
   ['GUARD_E', '城门卫兵', 'city4_npc_guard', 112.8, 2.3, -1],
-  ['GUARD_S', '城门卫兵', 'city4_npc_guard', -62, 76.5, 1],
+  // 11-24 手绘版整城缩一半后,原位置(-62, 76.5)正挡在南门门洞进城的路线上、身前就是门楼墙 → 挪到门洞东侧路灯旁的石板地上
+  ['GUARD_S', '城门卫兵', 'city4_npc_guard', -59.4, 77.1, 1],
 ];
 const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, X, Z, flip]) => ({ code, name, asset: CITY4(art), ...pre25Ground(X, Z), height: 215, flip }));
 
@@ -172,10 +207,11 @@ const SCENE: WorldSceneDef = {
   strips: [],
   walk: { cell: D.walk.cell, cols: D.walk.cols, rows: D.walk.rows as unknown as string[] },
   dot: 'ui/world/citymoon/fx_dot/spriteFrame',
-  glows: GLOWS,
+  // 手绘版是白天:不要灯晕、不要夜里的冷雾
+  glows: PRE25_PAINTED ? [] : GLOWS,
   flames: [],
   smokes: [],
-  mist: { tint: [150, 176, 220], alpha: 14 },
+  mist: PRE25_PAINTED ? undefined : { tint: [150, 176, 220], alpha: 14 },
   walkers: [],
   idlers: [],
 };
@@ -187,10 +223,14 @@ export const CITY_PRE25: WorldMapDef = {
   code: 'CITY',
   name: '主城',
   levelText: '',
-  actorTint: [214, 222, 246],
-  ambient: false,
-  // 视角 D(地图每米 120 像素、一个地图像素 1.42 世界单位):1080 高的电脑屏上一个地图像素约 1 个屏幕像素,和用户挑的样图一样近
-  cameraZoom: 1.7,
+  // 3D 版是月夜冷调;手绘版白天不给人物染色
+  actorTint: PRE25_PAINTED ? undefined : [214, 222, 246],
+  // 手绘版:飘叶 + 镜头附近的云影 + 浮尘 + 近景树冠(LobbyTownAmbient 的加强层,月夜主城同款),画面不是一张静止的画
+  ambient: PRE25_PAINTED,
+  ambientDepth: PRE25_PAINTED,
+  // 视角 D(地图每米 120 像素、一个地图像素 1.42 世界单位):1080 高的电脑屏上一个地图像素约 1 个屏幕像素,和用户挑的样图一样近。
+  // 手绘版换回 2D 队伍,镜头和野外一样(1.4):人物和野外一样大,一屏看到的城也多一些
+  cameraZoom: PRE25_PAINTED ? 1.4 : 1.7,
   width: MAP_W,
   height: MAP_H,
   walk: { left: -MAP_W / 2 + 12, right: MAP_W / 2 - 12, bottom: -MAP_H / 2 + 12, top: MAP_H / 2 - 12 },
@@ -227,7 +267,7 @@ export const CITY_PRE25: WorldMapDef = {
     { key: 'to_gray', label: '前往 · 灰岩荒原', ...pre25Ground(114, 6), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
   ],
   scene: SCENE,
-  minimapArt: `${DIR}/overview/spriteFrame`,
+  minimapArt: PRE25_PAINTED ? `${PAINT_DIR}/overview/spriteFrame` : `${DIR}/overview/spriteFrame`,
 };
 
 /** 别的地图通往主城的落点(出口圈里面一点)。 */
