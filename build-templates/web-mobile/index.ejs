@@ -56,6 +56,92 @@
         <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
       </div>
     </div>
+  <!-- 2026-11-24 用户线上黑屏:浏览器拿不到 WebGL(引擎报 16405「不支持 WebGL2」+ 16333「不支持 WebGL」,建画布时 getExtension of null),
+       游戏代码还没跑、画面全黑没有任何说明 → 引擎启动前先用临时画布试一次 WebGL2 / WebGL1,都拿不到就盖一层提示页;
+       引擎真正建画布时才失败(报那两个错误码 / getExtension of null)也弹同一个提示页。 -->
+  <style>
+    #lcNoGL { position: fixed; inset: 0; z-index: 2147483000; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 35%, #1b2130 0%, #0b0d12 70%); color: #e8e3d6; padding: 16px; box-sizing: border-box;
+      font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+    #lcNoGL .card { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; box-sizing: border-box; padding: 22px 26px 24px; border-radius: 14px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45); }
+    #lcNoGL .mark { text-align: center; letter-spacing: 0.6em; font-size: 22px; color: #fff; margin: 0 0 2px; padding-left: 0.6em; }
+    #lcNoGL .sub { text-align: center; letter-spacing: 0.5em; font-size: 11px; color: #d8b26a; margin: 0 0 16px; padding-left: 0.5em; }
+    #lcNoGL h2 { font-size: 20px; margin: 0 0 8px; color: #fff; font-weight: 600; }
+    #lcNoGL p { font-size: 15px; line-height: 1.6; margin: 0 0 10px; color: #cfc8b8; }
+    #lcNoGL ol { font-size: 15px; line-height: 1.65; margin: 0 0 16px; padding-left: 1.3em; color: #e8e3d6; }
+    #lcNoGL b { color: #e9c983; font-weight: 600; }
+    #lcNoGL button { display: block; margin: 0 auto; min-width: 180px; padding: 10px 22px; font-size: 16px; border-radius: 999px; cursor: pointer;
+      color: #1a1408; background: linear-gradient(#ecd29a, #c9a35a); border: 1px solid #f3dca8; font-family: inherit; }
+    #lcNoGL .code { text-align: center; font-size: 12px; color: #8a8576; margin: 10px 0 0; }
+    /* 手机横屏(高 ≤ 420):去副标题、收留白和行距,正文字号不缩,一屏放得下不出滚动条 */
+    @media (max-height: 420px) {
+      #lcNoGL { padding: 8px; }
+      #lcNoGL .card { padding: 12px 20px 12px; }
+      #lcNoGL .mark { font-size: 18px; margin-bottom: 8px; }
+      #lcNoGL .sub { display: none; }
+      #lcNoGL h2 { font-size: 18px; margin-bottom: 4px; }
+      #lcNoGL p, #lcNoGL ol { line-height: 1.45; margin-bottom: 8px; }
+      #lcNoGL button { padding: 7px 20px; }
+      #lcNoGL .code { margin-top: 6px; }
+    }
+  </style>
+  <script>
+    (function () {
+      var shown = false;
+      function show(reason) {
+        if (shown) { return; }
+        shown = true;
+        window.__lcNoWebGL = reason || true;
+        var build = function () {
+          var d = document.createElement('div');
+          d.id = 'lcNoGL';
+          d.innerHTML = '<div class="card"><div class="mark">LOOTCHAIN</div><div class="sub">SILENT GODS</div>'
+            + '<h2>游戏画面无法显示</h2>'
+            + '<p>你的浏览器现在无法启用 WebGL（显卡加速），游戏画面出不来。按下面的顺序试一下：</p>'
+            + '<ol><li><b>完全关闭浏览器</b>（所有窗口，包括在后台运行的）后重新打开。</li>'
+            + '<li>打开浏览器设置，开启<b>「使用图形加速功能（如果可用）」</b>，然后重启浏览器。</li>'
+            + '<li>还不行的话，换用最新版 <b>Chrome 或 Edge</b>，或更新显卡驱动。</li></ol>'
+            + '<button type="button" onclick="location.reload()">重新加载</button>'
+            + '<div class="code">WebGL 不可用' + (typeof reason === 'string' ? '（' + reason + '）' : '') + '</div></div>';
+          document.body.appendChild(d);
+        };
+        if (document.body) { build(); } else { document.addEventListener('DOMContentLoaded', build); }
+      }
+      // 1) 引擎启动前:临时画布试 WebGL2 → WebGL1,试完立刻释放上下文(不占浏览器的上下文名额)
+      try {
+        var c = document.createElement('canvas');
+        var gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
+        if (!gl) {
+          show('precheck');
+        } else {
+          var lose = gl.getExtension('WEBGL_lose_context');
+          if (lose) { lose.loseContext(); }
+        }
+      } catch (e) {
+        show('precheck-error');
+      }
+      // 2) 兜底:引擎建画布时才失败(错误码 16333 / 16405,或 getExtension of null)
+      var looksLikeNoGL = function (text) {
+        return /Error 16333|Error 16405|reading 'getExtension'|reading "getExtension"/.test(String(text || ''));
+      };
+      var origError = console.error;
+      console.error = function () {
+        try {
+          for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            if (looksLikeNoGL(a && a.message ? a.message : a)) { show('engine'); break; }
+          }
+        } catch (e) { /* 只是检测,别影响原来的输出 */ }
+        return origError.apply(console, arguments);
+      };
+      window.addEventListener('error', function (ev) { if (looksLikeNoGL(ev && ev.message)) { show('engine'); } });
+      window.addEventListener('unhandledrejection', function (ev) {
+        var r = ev && ev.reason;
+        if (looksLikeNoGL(r && r.message ? r.message : r)) { show('engine'); }
+      });
+    })();
+  </script>
   <%- include(cocosTemplate, {}) %>
 </body>
 </html>
