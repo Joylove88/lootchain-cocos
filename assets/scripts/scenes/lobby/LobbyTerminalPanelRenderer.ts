@@ -1,4 +1,4 @@
-import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Node, resources, Size, Sprite, SpriteFrame, UITransform } from 'cc';
+import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Node, resources, Size, Sprite, SpriteFrame, tween, UITransform, Vec3 } from 'cc';
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import { TERMINAL_ASSETS, TOWN_HUD_PROTO, type TownProtoFrame } from './LobbyTownHudProto';
 import { buildHeroHeadCropFrame, resolveHeroAvatarPath } from './HeroHeadCrop';
@@ -17,6 +17,10 @@ export interface LobbyTerminalPanelHost extends LobbyHudHost {
   terminalExploreSummary?(): { text: string; dot: boolean } | null;
   /** 名片货币「+」:关终端开对应商店页(记下来源,商店「<」回终端)。 */
   runLobbyTerminalShop?(kind: 'stamina' | 'gold' | 'diamond'): void;
+  /** docs/57 §11:该格还没开放时返回开放条件(「Lv.12 开放」);已开放返回 null。 */
+  terminalFeatureLock?(key: LobbyTerminalAction): string | null;
+  /** docs/57 §11:刚开放、还没点进去过的格子挂「新」角标。 */
+  terminalFeatureFresh?(key: LobbyTerminalAction): boolean;
 }
 
 /** 功能格(原型 proto_terminal_b2):列左沿 630 / 856 / 1083 / 1309 / 1536,宽 210;行顶 105 / 326 / 537,高 205 / 195 / 195。 */
@@ -26,6 +30,12 @@ const TILE_KEYS: LobbyTerminalAction[][] = [
   ['raid', 'daily', 'crystal', 'codex', 'quest'],
   ['shop', 'guild', 'idle', 'worldmap', 'rank'],
 ];
+/** 底图上烤好的格子名(锁格时盖住重画成灰字用)。 */
+const TILE_NAMES: Partial<Record<LobbyTerminalAction, string>> = {
+  heroes: '英雄', formation: '编队', bag: '背包', forge: '锻造', gacha: '召唤',
+  raid: '矿境掠夺', daily: '秘境试炼', crystal: '守卫水晶', codex: '图鉴', quest: '任务',
+  shop: '商店', guild: '佣兵公会', idle: '野外探索', worldmap: '世界地图', rank: '排行',
+};
 const TILE_X0 = [630, 856, 1083, 1309, 1536];
 const TILE_W = 210;
 const TILE_Y0 = [105, 326, 537];
@@ -198,7 +208,16 @@ export class LobbyTerminalPanelRenderer {
         // 格子随拉伸行变高:点击区按拉伸后的上下沿算
         const hitNode = this.hit(root, `Tile_${key}`, x0 + TILE_W / 2, y0 + TILE_H[r] / 2, TILE_W, (P.Y(y0) - P.Y(y0 + TILE_H[r])) / P.u, P, () => this.host.runLobbyTerminalAction(key));
         hitNode.setPosition(hitNode.position.x, (P.Y(y0) + P.Y(y0 + TILE_H[r])) / 2, 0);
-        if (dots[key]) {
+        const lock = this.host.terminalFeatureLock?.(key) ?? null;
+        if (lock) {
+          // docs/57 §11:没开放的格子压暗 + 右上线描锁 + 底部开放条件;点了只提示(GameRoot 拦)
+          this.lockTile(root, key, x0, y0, TILE_H[r], lock, P);
+          return;
+        }
+        if (this.host.terminalFeatureFresh?.(key)) {
+          // 刚开放、还没点进去过:右上「新」角标(盖住红点位置)
+          this.freshTag(root, key, x0 + 181, y0 + 27, P);
+        } else if (dots[key]) {
           // 原型红点在格右上 (+181, +27)
           this.dot(root, x0 + 181, y0 + 27, P);
         }
@@ -209,7 +228,7 @@ export class LobbyTerminalPanelRenderer {
     }
     // 「野外探索」格(第 3 行第 3 格):标题下方一行香槟小字(静态图标题底边约 y 700,格底 732);
     // 按标题位置往下 16 定位,不跨过格底的拉伸行(y 712)
-    if (explore?.text) {
+    if (explore?.text && !this.host.terminalFeatureLock?.('idle')) {
       const label = this.host.addChildLabel(root, 'ExploreSummary', explore.text, P.C(TILE_X0[2] + TILE_W / 2), P.Y(TILE_Y0[2] + 163) - P.S(16), P.S(18), rgba(227, 196, 138),
         new Size(P.S(TILE_W - 20), P.S(24)), HorizontalTextAlignment.CENTER);
       label.overflow = Label.Overflow.SHRINK;
@@ -223,6 +242,69 @@ export class LobbyTerminalPanelRenderer {
     for (const [key, px] of buttons) {
       this.hit(root, `Btn_${key}`, px, 790, 124, 64, P, () => this.host.runLobbyTerminalAction(key));
     }
+  }
+
+  /**
+   * 未开放格:按格子圆角矩形压一层暗玻璃(静态底图上的图标 / 名字跟着变暗)+ 右上白色线描小锁 + 底部灰白开放条件。
+   * 格子随拉伸行变高,上下沿按拉伸后的坐标算。
+   */
+  private lockTile(root: Node, key: LobbyTerminalAction, x0: number, y0: number, tileH: number, text: string, P: TownProtoFrame): void {
+    const top = P.Y(y0 + 6);
+    const bottom = P.Y(y0 + tileH - 6);
+    const w = P.S(TILE_W - 12);
+    const h = top - bottom;
+    const shade = this.host.addChildPlainNode(root, `LockShade_${key}`, P.C(x0 + TILE_W / 2), (top + bottom) / 2, w, h).addComponent(Graphics);
+    shade.fillColor = rgba(8, 10, 16, 160);
+    shade.roundRect(-w / 2, -h / 2, w, h, P.S(16));
+    shade.fill();
+    // 下半截深色玻璃条盖住底图自带的格子名(否则开放条件和格子名叠成重影),再画「灰色格子名 + 小号开放条件」两行
+    const bandTop = P.Y(y0 + 126);
+    const bandH = bandTop - bottom;
+    const band = this.host.addChildPlainNode(root, `LockBand_${key}`, P.C(x0 + TILE_W / 2), (bandTop + bottom) / 2, w, bandH).addComponent(Graphics);
+    band.fillColor = rgba(14, 16, 22, 245);
+    const r = P.S(16);
+    band.moveTo(-w / 2, bandH / 2);
+    band.lineTo(w / 2, bandH / 2);
+    band.lineTo(w / 2, -bandH / 2 + r);
+    band.quadraticCurveTo(w / 2, -bandH / 2, w / 2 - r, -bandH / 2);
+    band.lineTo(-w / 2 + r, -bandH / 2);
+    band.quadraticCurveTo(-w / 2, -bandH / 2, -w / 2, -bandH / 2 + r);
+    band.close();
+    band.fill();
+    const name = this.host.addChildLabel(root, `LockName_${key}`, TILE_NAMES[key] ?? '', P.C(x0 + TILE_W / 2), bandTop - bandH * 0.36, P.S(24), rgba(150, 154, 164),
+      new Size(P.S(TILE_W - 24), P.S(32)), HorizontalTextAlignment.CENTER);
+    name.overflow = Label.Overflow.SHRINK;
+    // 线描挂锁(B 风格:白色细线、无发光):锁身圆角矩形 + 锁梁半圆 + 锁孔
+    const lock = this.host.addChildPlainNode(root, `LockGlyph_${key}`, P.C(x0 + 178), P.Y(y0 + 30), P.S(30), P.S(36)).addComponent(Graphics);
+    const lw = Math.max(1.5, P.S(2.6));
+    lock.lineWidth = lw;
+    lock.strokeColor = rgba(232, 234, 240, 235);
+    const bw = P.S(22);
+    const bh = P.S(16);
+    lock.roundRect(-bw / 2, -P.S(14), bw, bh, P.S(3));
+    lock.stroke();
+    lock.arc(0, -P.S(14) + bh, P.S(7), 0, Math.PI, true);
+    lock.stroke();
+    lock.fillColor = rgba(232, 234, 240, 235);
+    lock.circle(0, -P.S(14) + bh / 2, P.S(2.2));
+    lock.fill();
+    const label = this.host.addChildLabel(root, `LockText_${key}`, text, P.C(x0 + TILE_W / 2), bottom + bandH * 0.28, P.S(16), rgba(200, 182, 146),
+      new Size(P.S(TILE_W - 20), P.S(24)), HorizontalTextAlignment.CENTER);
+    label.overflow = Label.Overflow.SHRINK;
+  }
+
+  /** 「新」角标:香槟胶囊 + 深色字,轻微呼吸(B 风格不发光)。 */
+  private freshTag(root: Node, key: LobbyTerminalAction, px: number, py: number, P: TownProtoFrame): void {
+    const w = P.S(44);
+    const h = P.S(28);
+    const node = this.host.addChildPlainNode(root, `FreshTag_${key}`, P.C(px - 6), P.Y(py), w, h);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(227, 196, 138, 255);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.fill();
+    const label = this.host.addChildLabel(node, 'Text', '新', 0, P.S(1), P.S(18), rgba(40, 30, 16), new Size(w, h), HorizontalTextAlignment.CENTER);
+    label.isBold = true;
+    tween(node).repeatForever(tween<Node>().to(0.7, { scale: new Vec3(1.1, 1.1, 1) }).to(0.7, { scale: new Vec3(1, 1, 1) })).start();
   }
 
   /** 原型红点:r 12 纯红(B 风格无描边)。 */

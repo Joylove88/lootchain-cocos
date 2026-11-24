@@ -60,26 +60,56 @@ export class LobbyTopHudRenderer {
     const badges = this.host.currentLobbyBadges?.() ?? null;
     const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
     const idle = this.host.currentIdleSummary?.() ?? null;
-    // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤)
-    const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable;
-    const items: Array<{ key: string; label: string; icon: string; px: number; hot: boolean; strong: boolean; onTap: () => void }> = [
-      { key: 'summon', label: '召唤', icon: TOWN_HUD_ASSETS.icSummon, px: 1465, hot: !!badges && (badges.gachaFree || badges.gachaTicketTen), strong: false, onTap: () => this.host.openLobbyGachaScene() },
-      { key: 'shop', label: '商店', icon: TOWN_HUD_ASSETS.icShop, px: 1572, hot: false, strong: false, onTap: () => this.host.openLobbyShopDialog?.('gold') },
-      { key: 'mail', label: '邮件', icon: TOWN_HUD_ASSETS.icMail, px: 1682, hot: unread > 0, strong: false, onTap: () => this.host.openLobbyMailPanel?.() },
-      { key: 'terminal', label: '终端', icon: TOWN_HUD_ASSETS.icTerminal, px: 1792, hot: terminalHot, strong: true, onTap: () => this.host.openLobbyTerminalPanel?.() },
+    // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤),或有刚开放还没点过的功能(docs/57 §11)
+    const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable || !!this.host.lobbyHasFreshFeature?.();
+    const evolutionPending = this.host.evolutionPendingCount?.() ?? 0;
+    // 从右往左排:终端 / 邮件 / 商店 / 召唤 / 进化(没开放的召唤 / 商店不显示,后面的往右补位;原型间距 ≈ 110)
+    const items: Array<{ key: string; label: string; icon: string; hot: boolean; strong: boolean; count?: number; onTap: () => void }> = [
+      { key: 'terminal', label: '终端', icon: TOWN_HUD_ASSETS.icTerminal, hot: terminalHot, strong: true, onTap: () => this.host.openLobbyTerminalPanel?.() },
+      { key: 'mail', label: '邮件', icon: TOWN_HUD_ASSETS.icMail, hot: unread > 0, strong: false, onTap: () => this.host.openLobbyMailPanel?.() },
     ];
+    if (!this.host.lobbyFeatureLocked?.('shop')) {
+      items.push({ key: 'shop', label: '商店', icon: TOWN_HUD_ASSETS.icShop, hot: false, strong: false, onTap: () => this.host.openLobbyShopDialog?.('gold') });
+    }
+    if (!this.host.lobbyFeatureLocked?.('gacha')) {
+      items.push({ key: 'summon', label: '召唤', icon: TOWN_HUD_ASSETS.icSummon, hot: !!badges && (badges.gachaFree || badges.gachaTicketTen), strong: false, onTap: () => this.host.openLobbyGachaScene() });
+    }
+    if (evolutionPending > 0 && this.host.openEvolutionPickFromHud) {
+      // docs/58 进化抉择(11-24 策划通玩:每级都弹太打断)→ 没选的攒在这里,数字 = 待选次数
+      items.push({ key: 'evolution', label: '进化', icon: '', hot: false, strong: false, count: evolutionPending, onTap: () => this.host.openEvolutionPickFromHud?.() });
+    }
+    const SLOTS = [1792, 1682, 1572, 1465, 1355];
     let mounted = 0;
-    for (const item of items) {
+    items.forEach((item, index) => {
       const d = P.S(item.strong ? 78 : 72);
-      const node = this.addChildPlainNode(group, `LobbySystemIcon_${item.key}`, P.R(item.px), P.Y(66), d, d);
+      const node = this.addChildPlainNode(group, `LobbySystemIcon_${item.key}`, P.R(SLOTS[index] ?? 1355 - (index - 4) * 110), P.Y(66), d, d);
       mountRingBase(this.host, node, d * 1.12, item.strong);
       mounted += 1;
-      this.addFitIcon(node, item.icon, P.S(40));
+      if (item.icon) {
+        this.addFitIcon(node, item.icon, P.S(40));
+      } else {
+        this.drawEvolutionGlyph(node, P.S(40));
+      }
       const text = this.addChildLabel(node, 'Label', item.label, 0, -P.S(49), P.S(20), rgba(246, 236, 214), new Size(P.S(80), P.S(26)));
       text.enableOutline = true;
       text.outlineColor = rgba(0, 0, 0, 230);
       text.outlineWidth = Math.max(1, P.S(2));
-      if (item.hot) {
+      if (item.count && item.count > 0) {
+        // 数字角标:红底白字(待选次数)+ 轻微呼吸,提醒但不打断
+        const badge = this.addChildPlainNode(node, 'LobbyCountBadge', P.S(27), P.S(27), P.S(30), P.S(30));
+        const bg = badge.addComponent(Graphics);
+        bg.fillColor = rgba(206, 28, 34, 255);
+        bg.circle(0, 0, P.S(12.5));
+        bg.fill();
+        bg.strokeColor = rgba(70, 8, 8, 255);
+        bg.lineWidth = Math.max(1, P.S(1.5));
+        bg.circle(0, 0, P.S(12.5));
+        bg.stroke();
+        const num = this.addChildLabel(badge, 'Num', item.count > 99 ? '99+' : String(item.count), 0, P.S(1), P.S(item.count > 9 ? 14 : 17), rgba(255, 255, 255), new Size(P.S(30), P.S(24)));
+        num.isBold = true;
+        num.overflow = Label.Overflow.SHRINK;
+        tween(badge).repeatForever(tween<Node>().to(0.8, { scale: new Vec3(1.12, 1.12, 1) }).to(0.8, { scale: new Vec3(1, 1, 1) })).start();
+      } else if (item.hot) {
         // 原型红点是圆点(旧顶栏的菱形红点不用)
         const dot = this.addChildPlainNode(node, 'LobbyRedDot', P.S(27), P.S(27), P.S(22), P.S(22)).addComponent(Graphics);
         dot.fillColor = rgba(206, 28, 34, 255);
@@ -93,8 +123,36 @@ export class LobbyTopHudRenderer {
       node.addComponent(Button);
       node.on(Button.EventType.CLICK, item.onTap, this);
       this.applyImageButtonFeedback(node, 1.08, 0.94);
-    }
+    });
     return mounted > 0;
+  }
+
+  /** 「进化」钮图形(无素材,程序画):白色线描四芒星 + 中心小菱形,和其它白色线描图标同一路。 */
+  private drawEvolutionGlyph(parent: Node, box: number): void {
+    const g = this.addChildPlainNode(parent, 'Icon', 0, 0, box, box).addComponent(Graphics);
+    const r = box * 0.5;
+    const n = r * 0.3;
+    g.lineWidth = Math.max(1.5, box * 0.065);
+    g.lineJoin = Graphics.LineJoin.ROUND;
+    g.strokeColor = rgba(242, 242, 242, 255);
+    g.moveTo(0, r);
+    g.lineTo(n, n);
+    g.lineTo(r, 0);
+    g.lineTo(n, -n);
+    g.lineTo(0, -r);
+    g.lineTo(-n, -n);
+    g.lineTo(-r, 0);
+    g.lineTo(-n, n);
+    g.close();
+    g.stroke();
+    g.fillColor = rgba(227, 196, 138, 255);
+    const c = r * 0.2;
+    g.moveTo(0, c);
+    g.lineTo(c, 0);
+    g.lineTo(0, -c);
+    g.lineTo(-c, 0);
+    g.close();
+    g.fill();
   }
 
   /** 图标按原比例塞进 box × box。 */

@@ -113,6 +113,11 @@ export class LobbyHudRenderer {
     town.renderHud(layout, this.resolveTownGuideTarget());
   }
 
+  /** 只重画右上系统钮(进化待选数 / 功能开放变化时由根节点局部重挂)。 */
+  renderTownTop(layout: UiLayout): void {
+    this.topHudRenderer.render(layout);
+  }
+
   /** 跑图模式下引导指向的建筑:硬引导按步骤查表,走完后轮到软引导(装备 → 水晶 → 每日副本)。 */
   resolveTownGuideTarget(): TownGuideTarget | null {
     const profile = this.host.currentLobbyProfile();

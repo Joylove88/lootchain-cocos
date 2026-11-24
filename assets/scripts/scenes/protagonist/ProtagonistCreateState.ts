@@ -12,10 +12,26 @@ const NAME_MAX_LENGTH = 12;
 
 const RESERVED_NAME_WORDS = ['官方', '客服', '管理员', '系统', '运营', 'gm', 'admin', 'lootchain'];
 
-/** docs/60 选择主角:随机起名池(骰子 / 默认名);只是建议,重名时后端会拦,玩家再摇或自己改。 */
+/**
+ * docs/60 选择主角:随机起名池(骰子 / 默认名);只是建议,重名时后端会拦。
+ * 11-23 策划通玩:默认名「玄策」撞名(原来每个性别只有 16 个,老号一多默认名基本都被占了)→ 精选池扩到 40 个,
+ * 精选名都试过了再用首字 × 次字拼;自动起的名字撞名时创建流程会自动换一个重试(ProtagonistCreateFlow)。
+ */
 const RANDOM_NAMES: Record<ProtagonistGender, readonly string[]> = {
-  male: ['凌夜', '苍澜', '墨尘', '寒川', '烬羽', '云逸', '北辰', '玄策', '朔风', '青锋', '沧溟', '暮川', '长歌', '承影', '少游', '临渊'],
-  female: ['霜月', '晚晴', '星落', '若雪', '清歌', '绯烟', '洛璃', '云裳', '月汐', '紫苑', '初晴', '疏影', '琉音', '夜岚', '昭华', '听澜'],
+  male: ['凌夜', '苍澜', '墨尘', '寒川', '烬羽', '云逸', '北辰', '玄策', '朔风', '青锋', '沧溟', '暮川', '长歌', '承影', '少游', '临渊',
+    '夜阑', '星河', '逐风', '听雪', '惊鸿', '慕白', '照野', '怀瑾', '昭明', '归尘', '破晓', '孤城', '霁川', '远山', '青崖', '墨渊',
+    '清晏', '景行', '怀远', '拾舟', '江寒', '秋白', '临川', '望岳'],
+  female: ['霜月', '晚晴', '星落', '若雪', '清歌', '绯烟', '洛璃', '云裳', '月汐', '紫苑', '初晴', '疏影', '琉音', '夜岚', '昭华', '听澜',
+    '凝霜', '念雪', '青黛', '落樱', '绮罗', '素心', '微澜', '萤火', '晚照', '星遥', '云岫', '雪鸢', '映月', '书瑶', '清欢', '南絮',
+    '月笙', '烟萝', '霁月', '沐晴', '知微', '初雪', '扶摇', '语汐'],
+};
+const NAME_HEADS: Record<ProtagonistGender, readonly string[]> = {
+  male: ['凌', '苍', '墨', '寒', '云', '北', '玄', '朔', '青', '沧', '暮', '长', '临', '夜', '星', '霁', '远', '清', '孤', '归', '照', '惊', '逐', '听'],
+  female: ['霜', '晚', '星', '若', '清', '绯', '洛', '云', '月', '紫', '初', '疏', '琉', '夜', '昭', '听', '凝', '念', '雪', '青', '落', '绮', '素', '微'],
+};
+const NAME_TAILS: Record<ProtagonistGender, readonly string[]> = {
+  male: ['澜', '尘', '川', '羽', '逸', '辰', '策', '风', '锋', '溟', '歌', '影', '渊', '河', '雪', '鸿', '白', '野', '明', '晓', '城', '舟', '山', '崖', '行', '衡', '岳'],
+  female: ['月', '晴', '落', '雪', '歌', '烟', '璃', '裳', '汐', '苑', '影', '音', '岚', '华', '澜', '霜', '语', '溪', '黛', '萝', '瑶', '笙', '宁', '鸢'],
 };
 
 /** 主角色创建页状态。当前以服务端创建为准，本地存储只保留预览镜像，不能当成正式数据。 */
@@ -70,15 +86,20 @@ export class ProtagonistCreateState {
     };
   }
 
-  /** 骰子:换一个该性别的随机名(不与当前名相同)。 */
-  rollName(): void {
+  /** 骰子:换一个该性别的随机名(不与当前名相同;avoid = 本次已撞名的,自动重试时传)。 */
+  rollName(avoid?: ReadonlySet<string>): void {
     this.formState = {
       ...this.formState,
-      protagonistName: this.randomName(this.formState.selectedGender, this.formState.protagonistName),
+      protagonistName: this.randomName(this.formState.selectedGender, this.formState.protagonistName, avoid),
       nameAuto: true,
       error: '',
     };
     this.bump();
+  }
+
+  /** 当前名字是骰子 / 默认起的(玩家没手动改过)。 */
+  isNameAuto(): boolean {
+    return this.formState.nameAuto;
   }
 
   setError(error: string): void {
@@ -212,9 +233,21 @@ export class ProtagonistCreateState {
     };
   }
 
-  private randomName(gender: ProtagonistGender, avoid: string): string {
-    const pool = RANDOM_NAMES[gender].filter((name) => name !== avoid);
-    return pool[Math.floor(Math.random() * pool.length)] ?? RANDOM_NAMES[gender][0];
+  private randomName(gender: ProtagonistGender, avoid: string, tried?: ReadonlySet<string>): string {
+    const pool = RANDOM_NAMES[gender].filter((name) => name !== avoid && !tried?.has(name));
+    if (pool.length > 0) {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+    // 精选名都撞过了:首字 × 次字拼一个(两字不同、没试过)
+    const heads = NAME_HEADS[gender];
+    const tails = NAME_TAILS[gender];
+    for (let i = 0; i < 40; i += 1) {
+      const name = heads[Math.floor(Math.random() * heads.length)] + tails[Math.floor(Math.random() * tails.length)];
+      if (name[0] !== name[1] && name !== avoid && !tried?.has(name)) {
+        return name;
+      }
+    }
+    return RANDOM_NAMES[gender][0];
   }
 
   private bump(): void {

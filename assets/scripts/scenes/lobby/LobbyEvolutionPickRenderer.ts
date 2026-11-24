@@ -52,7 +52,8 @@ const ZERO_LINE: Record<EvolutionRoute, [string, string]> = {
  * docs/58 §10「进化抉择」(原型 周报截图/2026-11-02_主角/proto/evolution_pick_b.png,用户 11-02 认可):
  * 升级后弹出,背景压暗;左上五条路线计数;顶部「等级提升 · Lv.N / 进化抉择 / 境界」;三张卡(左上稀有度、右上类别、
  * 路线色圆徽 + 图案、名字、效果、路线进度),选中卡金边 + 顶边勾 + 质变提示;下方刷新 / 保底;零的点评 + 「确认进化」。
- * 坐标取原型 1870×841 实测像素。不可跳过(必须选一张;积压的逐个选)。
+ * 坐标取原型 1870×841 实测像素。
+ * 11-24 策划通玩:原来不可跳过、积压的逐个连着弹 → 右上加「稍后再选」,没选的攒在大厅右上「进化」钮里(抉择不会过期)。
  */
 export class LobbyEvolutionPickRenderer {
   static readonly NODE_NAME = 'LobbyEvolutionPick';
@@ -63,6 +64,7 @@ export class LobbyEvolutionPickRenderer {
     private readonly onConfirm: () => void,
     private readonly onRefresh: () => void,
     private readonly onHelp: (open: boolean) => void,
+    private readonly onLater?: () => void,
   ) {}
 
   render(layout: UiLayout, pick: EvolutionPickState): void {
@@ -98,6 +100,11 @@ export class LobbyEvolutionPickRenderer {
     glassLabel(this.host, root, 'Realm', `境界:${pick.state.realm || '觉醒 · 初期'}`, FX(935), FY(117), S(26), GLASS_COLOR.sub, S(500), HorizontalTextAlignment.CENTER);
     // 11-03 用户「左上那排是什么,加个 ? 说明」:标题右侧圆形「?」,点开说明面板
     this.helpButton(root, FX(935) + S(178), FY(74), S);
+    // 右上「稍后再选」(和左上路线胶囊同一行):关掉页面,抉择留在大厅右上「进化」钮里
+    if (this.onLater && !pick.busy) {
+      const later = mountGlassButton(this.host, root, 'Later', '稍后再选', FX(1758), FY(41), S(196), S(52), k, 'secondary', () => this.onLater?.(), 22);
+      this.host.applyPointerCursor?.(later);
+    }
 
     // 三张卡(原型 344×444,中心 x 542 / 935 / 1330,y 386)
     const xs = [542, 935, 1330];
@@ -184,7 +191,7 @@ export class LobbyEvolutionPickRenderer {
     mountGlassSlice(this.host, panel, 'Glass', GLASS_SLICES.panel, 0, 0, pw, ph, k);
     glassLabel(this.host, panel, 'Title', '进化说明', 0, ph / 2 - S(44), S(34), GLASS_COLOR.text, pw - S(80), HorizontalTextAlignment.CENTER, true);
     const lines: Array<[string, string]> = [
-      ['进化抉择', '每升 1 级,系统给出 3 张进化卡,选 1 张永久生效。'],
+      ['进化抉择', '每升 1 级,系统给出 3 张进化卡,选 1 张永久生效;没选的攒在大厅右上「进化」里,随时可以选。'],
       ['进化路线', '每张卡属于一条路线:猎杀 / 守护 / 奥术 / 探索 / 财富。左上角是各路线已选的张数。'],
       ['质变', '同一路线选满 3 / 6 张,自动触发第 3 / 6 层质变(见下方);第 6 层要主角突破到炼魂境才生效。'],
       ['稀有度', '普通 / 稀有 / 传说,越稀有数值越高;传说卡要主角突破到炼魂境后才会出现。'],

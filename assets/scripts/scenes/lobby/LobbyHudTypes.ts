@@ -125,6 +125,14 @@ export interface LobbyHudHost {
   openLobbyMorePanel?(): void;
   /** docs/51:右上「终端」全屏菜单(玩家名片 + 功能宫格)。 */
   openLobbyTerminalPanel?(): void;
+  /** docs/57 §11:功能还没开放(右上召唤 / 商店钮跟终端格同口径,没开放的不显示)。 */
+  lobbyFeatureLocked?(key: 'gacha' | 'shop'): boolean;
+  /** docs/57 §11:有刚开放、还没点进去过的功能(终端钮亮红点)。 */
+  lobbyHasFreshFeature?(): boolean;
+  /** docs/58 进化抉择待选次数(右上「进化」钮的数字;0 = 不显示)。 */
+  evolutionPendingCount?(): number;
+  /** 右上「进化」钮:打开进化抉择页(玩家自己点开的,选完一张接着选下一张)。 */
+  openEvolutionPickFromHud?(): void;
   currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
   /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
   lobbyMailUnreadCount?(): number;

@@ -1,0 +1,104 @@
+[
+ {
+  "label": "等创建页",
+  "js": "for (let i = 0; i < 300; i++) { refresh(); if (root && (view() === 'protagonistCreate' || view() === 'lobby')) break; await sleep(500); } return view();",
+  "wait": 1,
+  "shot": true
+ },
+ {
+  "label": "撞名自动换名建角",
+  "js": "refresh(); const flow = root.protagonistCreateFlow; const st = flow.state; st.formState = Object.assign({}, st.formState, { protagonistName: '圣契64', nameAuto: true }); if (flow.nameInput) flow.nameInput.string = '圣契64'; root.submitProtagonistCreate(); for (let i = 0; i < 60; i++) { await sleep(500); if (view() !== 'protagonistCreate') break; } return JSON.stringify({ view: view(), name: st.formState.protagonistName, error: st.formState.error, retries: flow.autoNameRetries, tried: Array.from(flow.triedAutoNames) });",
+  "wait": 2,
+  "shot": false
+ },
+ {
+  "label": "序幕播放中",
+  "js": "await sleep(4000); return JSON.stringify({ prologue: !!document.getElementById('lootchain-prologue'), view: view() });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "等序幕结束",
+  "js": "for (let i = 0; i < 160; i++) { if (!document.getElementById('lootchain-prologue')) break; await sleep(500); } return JSON.stringify({ gone: !document.getElementById('lootchain-prologue'), seen: localStorage.getItem('lootchain.prologue.seen.{UID}'), pending: localStorage.getItem('lootchain.awaken.pending.{UID}') });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "觉醒演出",
+  "js": "let ok = false; const t0 = Date.now(); let last = null; for (let i = 0; i < 200; i++) { refresh(); if (root && root.awakenCinematic && root.awakenCinematic.active) { ok = true; break; } last = { view: view(), boot: root && root.bootPreloadActive, town: !!(t && t.isMounted && t.isMounted()), stage: t && t.awakenStageReady ? t.awakenStageReady() : null, layer: root && root.lobbyHasOpenLayer ? root.lobbyHasOpenLayer() : null, dialog: !!(root && root.worldDialog), prologue: !!document.getElementById('lootchain-prologue') }; await sleep(500); } await sleep(2500); return JSON.stringify({ started: ok, waitedMs: Date.now() - t0, last, pending: localStorage.getItem('lootchain.awaken.pending.{UID}') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "契约之选未选卡",
+  "js": "refresh(); if (root.awakenCinematic.active) root.awakenCinematic.skip(); for (let i = 0; i < 80; i++) { if (root.contractPick) break; await sleep(500); } await sleep(1500); return JSON.stringify({ contract: !!root.contractPick, n: root.contractPick ? root.contractPick.candidates.length : 0, queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "契约之选选中一张",
+  "js": "refresh(); root.selectStarterContract(root.contractPick.candidates[0].heroCode); await sleep(1200); return root.contractPick.selected;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "订立后进村HUD",
+  "js": "refresh(); root.confirmStarterContract(); for (let i = 0; i < 60; i++) { if (!root.contractPick) break; await sleep(500); } await sleep(5000); refresh(); const icons = []; const g = find('LobbySystemIcons'); if (g) g.children.forEach(c => icons.push(c.name)); return JSON.stringify({ icons, hint: !!find('AutoWalkHint'), level: root.currentLobbyProfile().playerLevel, evo: root.evolutionPendingCount(), queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "终端锁格",
+  "js": "refresh(); root.openLobbyTerminalPanel(); await sleep(2500); const locks = []; cc.director.getScene().walk(n => { if (n.name.indexOf('LockText_') === 0 && n.activeInHierarchy) { const l = n.getComponent(cc.Label); locks.push(n.name.slice(9) + ':' + (l ? l.string : '')); } }); return JSON.stringify(locks);",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "点锁住的召唤格",
+  "js": "refresh(); root.runLobbyTerminalAction('gacha'); await sleep(700); return JSON.stringify({ terminal: root.lobbyTerminalOpen, floats: texts(200).filter(s => s.indexOf('开放') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "点追踪条自动寻路",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); await sleep(800); const n = find('LobbyWorldQuestTracker'); const had = !!find('AutoWalkHint'); tap(n); await sleep(1200); return JSON.stringify({ tracker: !!n, hadHint: had, hintAfter: !!find('AutoWalkHint'), walking: t.isAutoWalking(), pos: t.leaderPosition(), map: root.worldMapPanel ? 'opened' : 'none' });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "走到目标",
+  "js": "refresh(); for (let i = 0; i < 90; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(800); return JSON.stringify({ walking: t.isAutoWalking(), pos: t.leaderPosition(), near: (t.nearbyInteracts ? t.nearbyInteracts() : []).map(x => x.label) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "对话中走到隐藏点_应排队",
+  "js": "refresh(); root.openWorldNpcDialog('CHIEF'); await sleep(600); const okWalk = t.autoWalkTo(260, 150); for (let i = 0; i < 80; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(3500); return JSON.stringify({ okWalk, pos: t.leaderPosition(), dialog: root.worldDialog ? root.worldDialog.mode : null, poi: !!root.worldPoiDialog, queue: root.popupQueue.size, overlay: !!find('LobbyPoiOverlay') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "交任务后弹发现卡",
+  "js": "refresh(); root.worldDialogPrimary(); for (let i = 0; i < 20; i++) { await sleep(500); if (!root.worldDialog || root.worldDialog.mode !== 'claim') break; } await sleep(1500); if (root.worldDialog) { root.closeWorldDialog(); } await sleep(2500); return JSON.stringify({ dialog: root.worldDialog ? root.worldDialog.mode : null, poi: !!root.worldPoiDialog, evo: !!root.evolutionPick, queue: root.popupQueue.size, level: root.currentLobbyProfile().playerLevel });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "关发现卡后进化第一次自动弹",
+  "js": "refresh(); if (root.worldPoiDialog) root.closeWorldPoiDialog(); for (let i = 0; i < 40; i++) { if (root.evolutionPick) break; await sleep(500); } await sleep(1500); return JSON.stringify({ evo: !!root.evolutionPick, pending: root.evolutionState ? root.evolutionState.pendingCount : null, fromHud: root.evolutionFromHud, later: !!find('Later'), level: root.currentLobbyProfile().playerLevel });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "稍后再选后右上进化钮",
+  "js": "refresh(); if (root.evolutionPick) root.closeEvolutionPickLater(); await sleep(1500); const icons = []; const g = find('LobbySystemIcons'); if (g) g.children.forEach(c => icons.push(c.name)); const evo = find('LobbySystemIcon_evolution'); let badge = ''; if (evo) { const b = evo.getChildByName('LobbyCountBadge'); const l = b && b.getChildByName('Num') && b.getChildByName('Num').getComponent(cc.Label); badge = l ? l.string : ''; } return JSON.stringify({ evoOpen: !!root.evolutionPick, icons, badge });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "从右上进化钮打开并确认",
+  "js": "refresh(); tap(find('LobbySystemIcon_evolution')); await sleep(1500); const opened = !!root.evolutionPick; const fromHud = root.evolutionFromHud; root.confirmEvolution(); for (let i = 0; i < 20; i++) { await sleep(500); if (!root.evolutionPick || !root.evolutionPick.busy) break; } await sleep(1500); return JSON.stringify({ opened, fromHud, stillOpen: !!root.evolutionPick, pending: root.evolutionState ? root.evolutionState.pendingCount : null, evoIcon: !!find('LobbySystemIcon_evolution') });",
+  "wait": 0,
+  "shot": true
+ }
+]

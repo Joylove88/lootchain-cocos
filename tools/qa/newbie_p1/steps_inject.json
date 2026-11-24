@@ -1,0 +1,8 @@
+[
+ {
+  "label": "注入新号会话",
+  "js": "localStorage.setItem('lootchain.player.tokenName', 'satoken'); localStorage.setItem('lootchain.player.tokenValue', '{TOKEN}'); localStorage.setItem('lootchain.player.userId', '{UID}'); setTimeout(() => location.reload(), 300); return 'set';",
+  "wait": 3,
+  "shot": false
+ }
+]

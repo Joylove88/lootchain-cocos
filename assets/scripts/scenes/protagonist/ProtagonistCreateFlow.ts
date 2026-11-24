@@ -192,10 +192,29 @@ export class ProtagonistCreateFlow {
         return;
       }
       const message = this.formatApiError(error, '主角色创建失败');
+      // 11-23 策划通玩:默认随机名「玄策」撞名 → 名字是骰子 / 默认起的(玩家没手动改)且后端报重名:
+      // 自动换一个没试过的名字重试(最多 5 次),玩家无感;玩家自己输入的名字撞了照常提示
+      if (/已被使用|重名|已存在/.test(message) && this.state.isNameAuto() && this.autoNameRetries < 5) {
+        this.autoNameRetries += 1;
+        this.triedAutoNames.add(nextName.trim());
+        this.state.setError('');
+        this.state.rollName(this.triedAutoNames);
+        const rolled = this.currentState().protagonistName;
+        if (this.nameInput) {
+          this.nameInput.string = rolled;
+        }
+        void this.submitCreate();
+        return;
+      }
+      this.autoNameRetries = 0;
       this.state.setError(message);
       this.host.setStatus(message);
     }
   }
+
+  /** 自动起名撞名的重试次数 / 已撞过的名字(本次进创建页内)。 */
+  private autoNameRetries = 0;
+  private readonly triedAutoNames = new Set<string>();
 
   cancel(): void {
     // 切换场景或销毁时断开输入引用，避免旧 EditBox 回调保留在流程对象里。

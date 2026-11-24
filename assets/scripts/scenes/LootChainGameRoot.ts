@@ -110,6 +110,9 @@ import { playPrologueVideo, prologuePlaying, prologueSeen } from './protagonist/
 import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
 import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickState } from './lobby/LobbyContractPickRenderer';
 import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickState } from './lobby/LobbyEvolutionPickRenderer';
+import { LobbyPopupQueue } from './lobby/LobbyPopupQueue';
+import { FeatureUnlockTracker, featureLockText, featureName, type FeatureKey } from './lobby/LobbyFeatureUnlocks';
+import { mountZeroGuideBubble } from './GuideKit';
 import type { EvolutionState } from '../api/EvolutionApi';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
 import {
@@ -404,6 +407,8 @@ export class LootChainGameRoot extends Component {
   // docs/60 新号「觉醒」演出(晨风村法阵旁醒来 → 零绑定 → 对话)
   private readonly awakenCinematic = new LobbyAwakenCinematic(this as unknown as AwakenCinematicHost, this.lobbyTownRenderer);
   private awakenCheckAt = 0;
+  /** 待演觉醒却没有主角队长时,上次强制重拉名册的时间(10 秒一次)。 */
+  private awakenRosterRetryAt = 0;
   // docs/58 契约之选:觉醒后 3 选 1 R(没选过才弹;不可跳过)
   private contractPick: ContractPickState | null = null;
   private contractCheckedUid = 0;
@@ -442,7 +447,19 @@ export class LootChainGameRoot extends Component {
     () => void this.confirmEvolution(),
     () => void this.refreshEvolution(),
     (open) => this.toggleEvolutionHelp(open),
+    () => this.closeEvolutionPickLater(),
   );
+  /**
+   * 11-24 策划通玩 P1「每升一级都弹进化抉择(27 次,出村连弹 5 层)」:服务端照旧每级生成一次抉择,
+   * 前端只在「第一次」(教学)和每 5 级自动弹一次,其余攒在右上「进化」钮(数字 = 待选次数),玩家想选时自己点开。
+   * evolutionMilestoneDue:升级跨过 5 的倍数,下次查到有待选就自动弹;evolutionFromHud:玩家自己点开的,选完一张接着选下一张。
+   */
+  private evolutionMilestoneDue = false;
+  private evolutionFromHud = false;
+  /** 统一弹窗队列(隐藏点 / 石碑 / 进化 / 契约 / 功能开放播报):一次只弹一张,别的界面开着时排队。 */
+  private readonly popupQueue = new LobbyPopupQueue();
+  /** docs/57 §11 终端功能逐步解锁:解锁那一刻播报 +「新」角标。 */
+  private readonly featureUnlocks = new FeatureUnlockTracker();
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
   private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
@@ -1358,6 +1375,8 @@ export class LootChainGameRoot extends Component {
       this.lobbyTownRenderer.step(deltaTime);
       this.tickRealmTrial();
       this.stepAwakenCinematic();
+      this.pumpPopupQueue();
+      this.tickSteleDialogLeave();
       // docs/50:切图那一刻素材组还在加载会被加载门挡住、地图没建;加载完没人补刷 → 地图一直空着。这里兜底补一次(1 秒限频)
       if (!this.lobbyTownRenderer.isMounted() && !this.uiSpriteFrameCache.groupProgress('town')) {
         const now = Date.now();
@@ -1773,6 +1792,14 @@ export class LootChainGameRoot extends Component {
   }
 
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {
+    // docs/57 §11:没开放的格子点了只提示开放条件,不进入
+    const lock = featureLockText(action, this.worldState, this.featureLevel());
+    if (lock) {
+      gameAudio.sfx('ui_error');
+      this.spawnRewardFloats([`${featureName(action)} · ${lock}`]);
+      return;
+    }
+    this.markFeatureSeen(action);
     // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
     if (action === 'gift') {
       this.openLobbyGiftDialog();
@@ -2068,6 +2095,8 @@ export class LootChainGameRoot extends Component {
       if (this.uiSpriteFrameCache.groupProgress('town')) {
         return;
       }
+      // docs/57 §11:先对一次功能解锁(右上召唤 / 商店钮、终端格子都按它画;新开放的入队列播报)
+      this.checkFeatureUnlocks();
       // 世界节点可能还挂在内容根(HUD 局部刷新)、或刚被整页重绘摘下(挂回)、或从未建过(重建)
       const restored = this.lobbyTownRenderer.isMounted() || this.contentRootController.restoreNodes([LobbyTownRenderer.WORLD_NODE_NAME]);
       this.lobbyTownRenderer.render(layout, restored);
@@ -2448,8 +2477,17 @@ export class LootChainGameRoot extends Component {
       // 试炼中用「放弃试炼」退出;突破成功页点「继续」
       return;
     }
-    if (this.contractPick || this.evolutionPick) {
-      // 契约之选 / 进化抉择必须选一张,返回键不关
+    if (this.evolutionPick) {
+      // 11-24:进化抉择可以「稍后再选」,返回键 = 稍后再选(说明面板开着先关说明)
+      if (this.evolutionPick.help) {
+        this.toggleEvolutionHelp(false);
+      } else {
+        this.closeEvolutionPickLater();
+      }
+      return;
+    }
+    if (this.contractPick) {
+      // 契约之选必须选一张,返回键不关
       return;
     }
     const contentRoot = this.ensureContentRoot();
@@ -6114,9 +6152,18 @@ export class LootChainGameRoot extends Component {
     this.openLobbyNoticeDialog();
   }
 
+  /**
+   * 11-23 策划通玩:祭司入口(V04「在祭坛召唤一次,今日免费」)进召唤默认停在限时池(300 钻),免费单抽在最后一个页签。
+   * 根因:进页时还没拉过免费状态,预选写的是猜的池码,卡池回来找不到就落到第一个可抽池(限时池)。
+   * 改为:每次进召唤页,今天的免费单抽还在 → 卡池 / 免费状态谁后回来都把免费池选上;玩家自己点了页签就不再抢。
+   */
+  private gachaPreferFree = false;
+
   private openLobbyGachaScene(): void {
     this.uiSpriteFrameCache.preloadGroup('gacha');
     lobbyGuide.markVisited('summon');
+    this.markFeatureSeen('gacha');
+    this.gachaPreferFree = true;
     this.closeAllLobbyScenePanelFlags();
     this.gachaResultMode = null;
     this.pendingGachaDraw = null;
@@ -6143,9 +6190,12 @@ export class LootChainGameRoot extends Component {
     try {
       const status = await this.api.gacha.freeStatus();
       this.gachaSceneState = { ...this.gachaSceneState, freeSingle: { poolCode: status.poolCode, available: status.available } };
-      // 引导免费单抽步:自动选中免费池,玩家进页即对准"免费召唤"按钮,零多余操作。
-      if (status.available && this.isGuideDrawStepActive() && this.gachaSceneState.pools.some((pool) => pool.poolCode === status.poolCode)) {
-        this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: status.poolCode };
+      // 引导免费单抽步 / 刚进召唤页:自动选中免费池,玩家进页即对准"免费召唤"按钮,零多余操作。
+      if (status.available && (this.gachaPreferFree || this.isGuideDrawStepActive()) && this.gachaSceneState.pools.some((pool) => pool.poolCode === status.poolCode)
+        && this.gachaSceneState.selectedPoolCode !== status.poolCode) {
+        this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: status.poolCode, poolDetail: null, poolDetailError: '' };
+        void this.loadGachaPity(status.poolCode);
+        void this.loadGachaPoolDetail(status.poolCode);
       }
       if (this.currentView === 'gacha') {
         this.renderCurrentView();
@@ -6214,6 +6264,8 @@ export class LootChainGameRoot extends Component {
       this.setStatus('该卡池配置不存在，请刷新召唤页。');
       return;
     }
+    // 玩家自己换了页签:之后卡池 / 免费状态回读不再抢回免费池
+    this.gachaPreferFree = false;
     this.gachaSceneState = {
       ...this.gachaSceneState,
       selectedPoolCode: pool.poolCode ?? pool.id,
@@ -6278,7 +6330,7 @@ export class LootChainGameRoot extends Component {
         .map((pool) => this.toGachaPreviewPool(pool))
         .filter((pool) => this.isVisibleGachaPool(pool));
       // 引导免费单抽步:pools 就位后优先选中免费池(free-status 可能先于 pools 返回,选池必须在这里兜一次)。
-      const freePoolCode = this.gachaSceneState.freeSingle?.available && this.isGuideDrawStepActive()
+      const freePoolCode = this.gachaSceneState.freeSingle?.available && (this.gachaPreferFree || this.isGuideDrawStepActive())
         ? pools.find((pool) => pool.poolCode === this.gachaSceneState.freeSingle?.poolCode)?.poolCode ?? null
         : null;
       const selectedPoolCode = freePoolCode
@@ -7455,6 +7507,7 @@ export class LootChainGameRoot extends Component {
     if (!this.isLobbyViewActive()) {
       return;
     }
+    this.markFeatureSeen('shop');
     // 11-06(docs/62):强化护符单页并入道具页,旧入口一律落到道具页
     const kind: LobbyShopKind = requested === 'rune' ? 'item' : requested;
     // 皮肤页(docs/56):素材没下完先挡下载页;目录没拿到先拉
@@ -7808,6 +7861,12 @@ export class LootChainGameRoot extends Component {
   // NPC 对话(原型 p4)
 
   private openWorldNpcDialog(npc: WorldNpcCode): void {
+    // 11-24 统一弹窗队列:隐藏点发现卡 / 石碑面板开着时玩家又和 NPC 对话(电脑端按 F 不受遮罩拦)→ 先收掉那张卡
+    // (奖励早已到账),保证同一时间只有一层;别的自动弹窗都在队列里等对话关掉
+    if (this.worldPoiDialog) {
+      this.worldPoiDialog = null;
+      this.steleDialogAt = null;
+    }
     const dialog = this.resolveWorldDialog(npc);
     this.worldDialog = dialog;
     gameAudio.sfx('panel_open');
@@ -8322,12 +8381,26 @@ export class LootChainGameRoot extends Component {
       const mapPois = WORLD_MAPS[mapCode]?.pois ?? [];
       if (def.kind === 'HIDDEN' && first) {
         const hidden = mapPois.filter((poi) => poi.kind === 'HIDDEN');
-        this.worldPoiDialog = {
+        const dialog: WorldPoiDialogState = {
           kind: 'found', poiCode: code, poiKind: def.kind, rewards: result.rewards, first,
           progressText: `隐藏点 ${hidden.filter((poi) => found.has(`POI:${poi.code}`)).length} / ${hidden.length} · ${poiMapName(code)}`,
           footerText: '',
         };
-        gameAudio.sfx('chest_land', 0.6);
+        // 11-23 策划通玩:走到村长屋旁自动发现隐藏点,「发现」卡和村长对话 / 任务完成卡叠成三层 → 入统一弹窗队列,
+        // 对话开着 / 战斗中先排着,关了再弹(奖励已经到账,卡片晚一点出不影响)
+        this.popupQueue.push({
+          key: `poi:${code}`,
+          priority: 75,
+          show: () => {
+            if (this.currentView !== 'lobby') {
+              return false;
+            }
+            this.worldPoiDialog = dialog;
+            gameAudio.sfx('chest_land', 0.6);
+            this.syncWorldOverlays();
+            return true;
+          },
+        });
       } else if (def.kind === 'STELE') {
         // 新手区石碑收集(成就「晨曦往事」,quest_config A_STELE_NOVICE)
         const novice = ['V_STELE_1', 'W_STELE_1'];
@@ -8336,13 +8409,29 @@ export class LootChainGameRoot extends Component {
           const map = stele.startsWith('V') ? 'VILLAGE' : 'WOODS';
           return (result.state.explore.find((item) => item.mapCode === map)?.found ?? []).includes(`POI:${stele}`);
         }).length;
-        this.worldPoiDialog = {
+        const dialog: WorldPoiDialogState = {
           kind: 'stele', poiCode: code, poiKind: def.kind, rewards: result.rewards, first,
           progressText: '',
           // 11-08 自检:荒原古碑不算新手区石碑,别显示「新手区石碑 x / 2」
           footerText: !isNovice ? '' : read >= novice.length ? `新手区石碑 ${read} / ${novice.length} · 已解锁成就「晨曦往事」,可在成就里领取` : `新手区石碑 ${read} / ${novice.length} · 集齐解锁成就「晨曦往事」`,
         };
-        gameAudio.sfx('panel_open');
+        // 玩家自己点的「阅读」:队列最高优先级、战斗中也弹(一般立刻就弹;请求途中别的界面开了才排一下)
+        this.popupQueue.push({
+          key: 'poi-stele',
+          priority: 90,
+          combatOk: true,
+          show: () => {
+            if (this.currentView !== 'lobby') {
+              return false;
+            }
+            this.worldPoiDialog = dialog;
+            // 11-23 策划通玩「古碑阅读面板离开不收」:记下石碑位置,走远 / 换图自动收起(tickSteleDialogLeave)
+            this.steleDialogAt = { map: this.lobbyTownRenderer.currentMapCode(), x: def.x, y: def.y };
+            gameAudio.sfx('panel_open');
+            this.syncWorldOverlays();
+            return true;
+          },
+        });
       } else if (first) {
         this.lobbyTownRenderer.showPoiRewards(result.rewards.map((item) => ({ name: item.resourceName, amount: item.amount })));
         gameAudio.sfx('merge', 0.5);
@@ -8352,8 +8441,29 @@ export class LootChainGameRoot extends Component {
         this.setStatus(result.message);
       }
       this.applyWorldState(result.state);
+      this.pumpPopupQueue();
       this.syncWorldOverlays();
     })();
+  }
+
+  /** 石碑阅读面板对应的石碑位置(走远 / 换图自动收起)。 */
+  private steleDialogAt: { map: WorldMapCode; x: number; y: number } | null = null;
+
+  /** 每帧:石碑阅读面板开着、队长离石碑超过 360 或换了图 → 收起(键盘还能走动,原来面板一直挂着)。 */
+  private tickSteleDialogLeave(): void {
+    const at = this.steleDialogAt;
+    if (!at) {
+      return;
+    }
+    if (this.worldPoiDialog?.kind !== 'stele') {
+      this.steleDialogAt = null;
+      return;
+    }
+    const leader = this.lobbyTownRenderer.leaderPosition();
+    if (this.lobbyTownRenderer.currentMapCode() !== at.map || (leader && Math.hypot(leader.x - at.x, leader.y - at.y) > 360)) {
+      this.steleDialogAt = null;
+      this.closeWorldPoiDialog();
+    }
   }
 
   /** docs/52 §3.1 野外宝箱:开箱成功放演出 + 奖励飘字(runWorldAction);失败提示原因(例如要先打赢旁边的精英)。 */
@@ -8408,8 +8518,20 @@ export class LootChainGameRoot extends Component {
     })();
   }
 
-  /** 左侧任务追踪条:打开世界地图并选中任务所在地图。 */
+  /**
+   * 左侧任务追踪条(docs/57 §3「点这里自动寻路」;11-23 策划通玩:原来点了打开世界地图):
+   * 队长自动走向当前任务目标(推摇杆取消;目标在别的图会过出口接着走)。没有目标 / 走不过去才退回打开地图。
+   */
   private openWorldQuestTracker(): void {
+    this.lobbyTownRenderer.markQuestTrackerUsed();
+    const walk = this.lobbyTownRenderer.isMounted() ? this.lobbyTownRenderer.autoWalkToQuest() : null;
+    if (walk?.ok) {
+      gameAudio.sfx('ui_click');
+      return;
+    }
+    if (walk) {
+      this.spawnRewardFloats([`去「${walk.label}」的路暂时走不通,打开地图看看`]);
+    }
     const quests = this.worldState?.quests ?? [];
     const quest = quests.find((item) => item.state === 'DONE') ?? quests.find((item) => item.state === 'ACCEPTED') ?? quests.find((item) => item.state === 'AVAILABLE');
     this.worldMapPanel = { tab: 0, selected: quest?.map ?? this.lobbyTownRenderer.currentMapCode(), region: null, view: 'world', dest: null };
@@ -9323,9 +9445,12 @@ export class LootChainGameRoot extends Component {
 
   /** docs/08 升级礼包:逢 5 级服务端投礼包邮件,等级涨了就回读邮件(不标已读)和红点,邮箱红点立刻亮。 */
   onPlayerLevelUp(before: number, after: number): void {
-    // docs/58 §10:每升一级一次进化抉择(战斗中升级 → 打完再弹)
+    // docs/58 §10:每升一级一次进化抉择(服务端生成);11-24 起只有跨过 5 的倍数才自动弹,其余攒在右上「进化」钮
     if (after > before) {
       this.evolutionCheckDue = true;
+      if (before > 0 && Math.floor(after / 5) > Math.floor(before / 5)) {
+        this.evolutionMilestoneDue = true;
+      }
       this.levelContractCheckDue = true;
       void this.loadRealmState();
     }
@@ -9985,7 +10110,7 @@ export class LootChainGameRoot extends Component {
     const userId = this.api.tokenStore.userId();
     // 11-07 用户:剧情对话框和进化抉择同时出现 → 剧情框(worldDialog)开着时契约 / 进化 / 里程碑都等它关了再弹
     if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone
-      || this.worldDialog || this.lobbyHasOpenLayer() || prologuePlaying()) {
+      || this.worldDialog || this.worldPoiDialog || this.lobbyHasOpenLayer() || prologuePlaying()) {
       return;
     }
     if (!isAwakenPending(userId)) {
@@ -10024,6 +10149,17 @@ export class LootChainGameRoot extends Component {
       playPrologueVideo(userId, () => undefined);
       return;
     }
+    // 兜底:待演觉醒但名册里还没有主角(野外没有队长,舞台永远不就绪)→ 10 秒一次强制重拉名册,拉到后整刷重建队伍
+    if (!currentLobbyProtagonistHero() && this.lobbyTownRenderer.isMounted() && !this.lobbyTownRenderer.awakenStageReady()
+      && now - this.awakenRosterRetryAt > 10_000) {
+      this.awakenRosterRetryAt = now;
+      void this.loadLobbyHeroRoster(true).then(() => {
+        if (currentLobbyProtagonistHero() && this.currentView === 'lobby') {
+          this.renderCurrentView();
+        }
+      });
+      return;
+    }
     const name = currentLobbyProtagonistHero()?.heroName || this.protagonistCreateFlow.currentState().protagonistName || '';
     this.awakenCinematic.start(this.resolveLayout(), name, () => {
       clearAwakenPending(userId);
@@ -10046,20 +10182,221 @@ export class LootChainGameRoot extends Component {
         this.removeNodeFromContent(LobbyEvolutionPickRenderer.BANNER_NAME);
         this.evolutionPickRenderer.showQualityBanner(this.resolveLayout(), unlocked);
       }
-      if (state.choice && this.currentView === 'lobby' && !this.contractPick) {
-        if (this.worldDialog) {
-          // 请求途中剧情框弹出来了(交任务升级 → 教官接着派下一个任务):等剧情框关掉再弹
-          this.evolutionCheckDue = true;
-        } else {
-          this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
-          this.renderEvolutionPick();
-        }
+      // 11-24:不再每级都弹整页 —— 第一次(还一张都没选过,教学,本会话最多一次)/ 升级跨过 5 的倍数才自动弹;
+      // 其余只把右上「进化」钮的数字加上,零在中上方提醒一句(本会话一次)。自动弹也走统一弹窗队列(别的界面开着 / 战斗中先排着)。
+      const picked = Object.values(state.routes).reduce((sum, count) => sum + count, 0);
+      const firstEver = picked === 0 && !this.evolutionIntroQueued;
+      const milestone = this.evolutionMilestoneDue;
+      this.evolutionMilestoneDue = false;
+      if (state.choice && (firstEver || milestone)) {
+        this.evolutionIntroQueued = this.evolutionIntroQueued || firstEver;
+        this.queueEvolutionPick();
+      } else if (state.choice && prev && state.pendingCount > prev.pendingCount && !this.evolutionHintShown) {
+        this.evolutionHintShown = true;
+        this.queueZeroToast('evolution-hint', '进化方向已生成。想选的时候,点右上角的「进化」就行。', 20, 60_000);
+      }
+      if ((prev?.pendingCount ?? -1) !== state.pendingCount) {
+        this.remountTownSystemIcons();
       }
     } catch (error) {
       console.warn('[Evolution] state failed', error);
     } finally {
       this.evolutionLoading = false;
     }
+  }
+
+  /** 本会话已经自动弹过「第一次进化」教学;零的「去右上选」提醒已经说过。 */
+  private evolutionIntroQueued = false;
+  private evolutionHintShown = false;
+
+  /** 自动弹进化抉择(入统一弹窗队列):真正弹的那一刻还有待选、大厅上没别的界面才弹;选完不连弹下一张。 */
+  private queueEvolutionPick(): void {
+    // 优先级:契约之选 80 > 隐藏点发现 75 > 进化 70 > 英雄契约 60(Lv.30 先进化后契约)> 功能开放播报 40 > 进化提醒 20
+    this.popupQueue.push({
+      key: 'evolution',
+      priority: 70,
+      show: () => {
+        const state = this.evolutionState;
+        if (!state?.choice || this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
+          return false;
+        }
+        this.evolutionFromHud = false;
+        this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
+        this.renderEvolutionPick();
+        return true;
+      },
+    });
+  }
+
+  /** 右上「进化」钮:玩家自己点开(选完一张接着选下一张,随时「稍后再选」)。 */
+  openEvolutionPickFromHud(): void {
+    if (this.currentView !== 'lobby' || this.evolutionPick || this.contractPick || this.realmTrial) {
+      return;
+    }
+    const state = this.evolutionState;
+    if (!state?.choice) {
+      void this.checkEvolution();
+      return;
+    }
+    this.popupQueue.remove('evolution');
+    this.evolutionFromHud = true;
+    gameAudio.sfx('panel_open');
+    this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
+    this.renderEvolutionPick();
+  }
+
+  /** 进化页右上「稍后再选」:关页,抉择留在右上「进化」钮里。 */
+  private closeEvolutionPickLater(): void {
+    if (!this.evolutionPick || this.evolutionPick.busy) {
+      return;
+    }
+    this.evolutionPick = null;
+    this.evolutionFromHud = false;
+    this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
+    this.setTownHudVisible(true);
+    gameAudio.sfx('panel_close');
+    this.remountTownSystemIcons();
+  }
+
+  /** 右上「进化」钮的数字(LobbyHudHost)。 */
+  evolutionPendingCount(): number {
+    return this.evolutionState?.choice ? Math.max(1, this.evolutionState.pendingCount) : 0;
+  }
+
+  // ── 统一弹窗队列(11-24 策划通玩 P1)──
+
+  /** 大厅上已经有东西挡着(对话 / 面板 / 弹窗 / 演出 / 加载):队列里的自动弹窗先排着。 */
+  private lobbyPopupBusy(): boolean {
+    if (this.currentView !== 'lobby' || this.bootPreloadActive || !this.lobbyTownRenderer.isMounted()) {
+      return true;
+    }
+    if (this.worldDialog || this.worldPoiDialog || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone) {
+      return true;
+    }
+    if (this.awakenCinematic.active || prologuePlaying()) {
+      return true;
+    }
+    // 新号觉醒演出还没开演(待演标记还在):别抢在演出前弹东西
+    const userId = this.api.tokenStore.userId();
+    if (userId && isAwakenPending(userId)) {
+      return true;
+    }
+    // 训练场教学(圈住按钮一步步教)进行中不打断
+    if (this.lobbyTownRenderer.trainingCoachActive()) {
+      return true;
+    }
+    return this.lobbyHasOpenLayer();
+  }
+
+  /** 每帧:队列非空时看能不能弹下一张。 */
+  private pumpPopupQueue(): void {
+    if (this.popupQueue.size === 0) {
+      return;
+    }
+    this.popupQueue.pump(this.lobbyPopupBusy(), this.lobbyTownRenderer.isInCombat());
+  }
+
+  /**
+   * 「零」的一句话提醒(不挡操作,约 3.6 秒后淡出):功能开放播报 / 进化待选提醒。入队列,别的弹窗开着 / 战斗中先排着,
+   * 排超过 expireMs 就作废(过了那个时机别再补)。
+   */
+  private queueZeroToast(key: string, text: string, priority: number, expireMs: number): void {
+    this.popupQueue.push({
+      key,
+      priority,
+      holdMs: 3800,
+      expireMs,
+      show: () => {
+        if (this.currentView !== 'lobby') {
+          return false;
+        }
+        this.showZeroToast(text);
+        return true;
+      },
+    });
+  }
+
+  private showZeroToast(text: string): void {
+    this.removeNodeFromContent('LobbyZeroToast');
+    const layout = this.resolveLayout();
+    const phone = isPhoneDesign();
+    const k = Math.max(0.7, Math.min(1.25, layout.stageHeight / 841)) * (phone ? 1.1 : 1);
+    const w = Math.min(layout.stageWidth * 0.62, 640 * k);
+    const h = 104 * k;
+    const root = this.createUiNode('LobbyZeroToast');
+    root.addComponent(UITransform).setContentSize(new Size(w + h, h));
+    // 中上方(右上系统钮下面一点,不压小地图 / 任务追踪);头像压在左沿外,整体右移半个头像居中
+    root.setPosition(new Vec3((layout.stageLeft + layout.stageRight) / 2 + h * 0.3, layout.stageTop - 190 * k, 0));
+    mountZeroGuideBubble(this as unknown as import('./GuideKit').GuideKitHost, root, 'Bubble', 0, 0, w, h, text);
+    const opacity = root.addComponent(UIOpacity);
+    opacity.opacity = 0;
+    tween(opacity).to(0.25, { opacity: 255 }).delay(3.2).to(0.4, { opacity: 0 }).call(() => root.isValid && root.destroy()).start();
+  }
+
+  /** 只重挂右上系统钮(进化待选数 / 功能开放变化):保持原来的层级,不盖到开着的弹窗上。 */
+  private remountTownSystemIcons(): void {
+    if (this.currentView !== 'lobby' || !LOBBY_TOWN_ENABLED) {
+      return;
+    }
+    const root = this.ensureContentRoot();
+    const old = root.getChildByName('LobbySystemIcons');
+    if (!old) {
+      return;
+    }
+    const index = old.getSiblingIndex();
+    const visible = old.active;
+    old.removeFromParent();
+    old.destroy();
+    this.lobbyHudRenderer.renderTownTop(this.resolveLayout());
+    const fresh = root.getChildByName('LobbySystemIcons');
+    if (fresh) {
+      fresh.setSiblingIndex(index);
+      fresh.active = visible;
+    }
+  }
+
+  // ── docs/57 §11 终端功能逐步解锁 ──
+
+  private featureLevel(): number {
+    return Math.max(this.currentLobbyProfile().playerLevel ?? 0, this.worldState?.playerLevel ?? 0);
+  }
+
+  /** 终端格子没开放时的开放条件(LobbyTerminalPanelHost)。 */
+  terminalFeatureLock(key: LobbyTerminalAction): string | null {
+    return featureLockText(key, this.worldState, this.featureLevel());
+  }
+
+  terminalFeatureFresh(key: LobbyTerminalAction): boolean {
+    return this.featureUnlocks.isFresh(key);
+  }
+
+  /** 右上召唤 / 商店钮:没开放就不显示(LobbyHudHost)。 */
+  lobbyFeatureLocked(key: 'gacha' | 'shop'): boolean {
+    return featureLockText(key, this.worldState, this.featureLevel()) !== null;
+  }
+
+  lobbyHasFreshFeature(): boolean {
+    return this.featureUnlocks.anyFresh();
+  }
+
+  /** 点进过某功能:清「新」角标。 */
+  private markFeatureSeen(key: FeatureKey): void {
+    this.featureUnlocks.markSeen(key);
+  }
+
+  /** 每次大厅 HUD 重画前对一次:有新开放的功能 → 零播报(入队列)+ 终端格「新」角标。 */
+  private checkFeatureUnlocks(): void {
+    const userId = this.api.tokenStore.userId();
+    if (!userId) {
+      return;
+    }
+    this.featureUnlocks.bind(userId);
+    const added = this.featureUnlocks.update(this.worldState, this.featureLevel());
+    if (added.length === 0) {
+      return;
+    }
+    const names = added.map((key) => featureName(key)).filter(Boolean);
+    this.queueZeroToast(`feature-${added.join('-')}`, `新功能开放:${names.join(' · ')}。在右上角的「终端」里打开。`, 40, 120_000);
   }
 
   /** 跑图键盘锁:契约之选 / 进化抉择开着时(LobbyTownHost)。 */
@@ -10113,19 +10450,26 @@ export class LootChainGameRoot extends Component {
       this.applyEvolutionState(state);
       gameAudio.sfx('reward');
       const newQuality = state.qualities.find((q) => q.active && !pick.state.qualities.find((old) => old.code === q.code)?.active);
-      if (state.choice) {
-        // 还有积压的抉择:接着选下一次
+      if (state.choice && this.evolutionFromHud) {
+        // 玩家自己从右上「进化」点开的:还有积压就接着选下一次(随时可以「稍后再选」)
         this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
         this.renderEvolutionPick();
       } else {
+        // 自动弹出的(第一次 / 每 5 级)只选这一张,不连弹;剩下的留在右上「进化」钮里
         this.evolutionPick = null;
+        this.evolutionFromHud = false;
         this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
         this.setTownHudVisible(true);
         // 寻宝直觉 / 拾遗之眼:小地图标记要整页重绘一次才出来
         if (card?.code.startsWith('MAP_')) {
           this.renderCurrentView();
         }
+        if (state.choice && !this.evolutionHintShown) {
+          this.evolutionHintShown = true;
+          this.queueZeroToast('evolution-hint', `还有 ${state.pendingCount} 次进化可选,点右上角的「进化」随时继续。`, 20, 60_000);
+        }
       }
+      this.remountTownSystemIcons();
       this.spawnRewardFloats(['进化 · ' + (card?.name ?? '')]);
       if (newQuality) {
         // 质变:中上方横幅(飘字太容易错过)
@@ -10456,12 +10800,24 @@ export class LootChainGameRoot extends Component {
   private async checkStarterContract(): Promise<void> {
     try {
       const state = await this.api.starterContract.state();
-      if (state.picked || state.candidates.length < 3 || this.currentView !== 'lobby') {
+      if (state.picked || state.candidates.length < 3) {
         return;
       }
-      this.contractMilestone = '';
-      this.contractPick = { candidates: state.candidates, selected: '', busy: false, error: '' };
-      this.renderStarterContract();
+      // 统一弹窗队列:最高优先级(没有它新号没有英雄),但也等大厅上别的界面关掉再弹
+      this.popupQueue.push({
+        key: 'contract',
+        priority: 80,
+        show: () => {
+          if (this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
+            return false;
+          }
+          this.contractMilestone = '';
+          this.contractPick = { candidates: state.candidates, selected: '', busy: false, error: '' };
+          this.renderStarterContract();
+          return true;
+        },
+      });
+      this.pumpPopupQueue();
     } catch (error) {
       console.warn('[Contract] state failed', error);
     }
@@ -10471,31 +10827,38 @@ export class LootChainGameRoot extends Component {
   private async checkLevelContract(): Promise<void> {
     try {
       const state = await this.api.starterContract.levelState();
-      if (state.milestone && state.candidates.length >= 3 && this.worldDialog) {
-        // 剧情 V04 / V09 领奖后剧情框还开着:等它关了再弹,不叠在一起
-        this.levelContractCheckDue = true;
+      if (!state.milestone || state.candidates.length < 3) {
         return;
       }
-      if (!state.milestone || state.candidates.length < 3 || this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
-        return;
-      }
-      this.contractMilestone = state.milestone;
-      this.contractPick = {
-        candidates: state.candidates,
-        selected: '',
-        busy: false,
-        error: '',
-        copy: {
-          title: '英雄契约',
-          subtitle: `${LEVEL_CONTRACT_SOURCE[state.storyQuest] ?? `Lv.${state.milestone}`} · 圣契感应到了新的强者,可以再订立一份契约`,
-          line: state.candidates.every((c) => c.owned)
-            ? '回应的都是你已经认识的伙伴。订立契约会化作他们的碎片。'
-            : state.rarity === 'SR' ? '这次回应的是 SR 级的强者。挑一位,马上入队。' : '宿主的力量足以维系新的契约了。挑一位,马上入队。',
-          confirm: '订立契约',
-          confirming: '订立中…',
+      // 统一弹窗队列:剧情框(V04 / V09 领奖)还开着就排着,关了再弹;同一次升级有进化抉择时先进化后契约(优先级低于进化)
+      this.popupQueue.push({
+        key: 'level-contract',
+        priority: 60,
+        show: () => {
+          if (this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
+            return false;
+          }
+          this.contractMilestone = state.milestone;
+          this.contractPick = {
+            candidates: state.candidates,
+            selected: '',
+            busy: false,
+            error: '',
+            copy: {
+              title: '英雄契约',
+              subtitle: `${LEVEL_CONTRACT_SOURCE[state.storyQuest] ?? `Lv.${state.milestone}`} · 圣契感应到了新的强者,可以再订立一份契约`,
+              line: state.candidates.every((c) => c.owned)
+                ? '回应的都是你已经认识的伙伴。订立契约会化作他们的碎片。'
+                : state.rarity === 'SR' ? '这次回应的是 SR 级的强者。挑一位,马上入队。' : '宿主的力量足以维系新的契约了。挑一位,马上入队。',
+              confirm: '订立契约',
+              confirming: '订立中…',
+            },
+          };
+          this.renderStarterContract();
+          return true;
         },
-      };
-      this.renderStarterContract();
+      });
+      this.pumpPopupQueue();
     } catch (error) {
       console.warn('[LevelContract] state failed', error);
     }
@@ -10620,7 +10983,9 @@ export class LootChainGameRoot extends Component {
     void this.loadLobbyNotices();
     void this.loadLobbyAdventure();
     void this.loadLobbyBattleRecent();
-    void this.loadLobbyHeroRoster();
+    // 11-24 策划通玩「首次进村序幕后觉醒没接上,第二次登录才补演」:恢复会话时名册先拉过一次(那时还没建主角),
+    // 建完主角走到这里不强制重拉 → 名册里没有主角 → 野外没有队长 → 觉醒舞台永远不就绪。登录 / 建角后一律强制重拉
+    void this.loadLobbyHeroRoster(true);
     // 邮件未读红点数据(只读不标已读,"更多"入口用)。
     void this.loadLobbyMails(false, false);
   }

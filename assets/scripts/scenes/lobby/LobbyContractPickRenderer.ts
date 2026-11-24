@@ -136,10 +136,15 @@ export class LobbyContractPickRenderer {
     rg.stroke();
 
     // 主按钮(原型 x 1288~1627 / y 705~781)
+    // 11-23 策划通玩:还没选卡时按钮和可点时一样亮(primaryOff 只是字色暗一点),看着能点、点了没反应 →
+    // 没选时用 B 风格禁用态(深色玻璃 + 灰字,不可点)+ 文案「先选一位伙伴」;选中后恢复亮金「订立契约」
     const ready = !!state.selected && !state.busy;
-    const confirm = mountGlassButton(this.host, root, 'Confirm', state.busy ? copy.confirming : copy.confirm, FX(1457), FY(743), S(339), S(76), k,
-      ready ? 'primary' : 'primaryOff', () => this.onConfirm(), 30);
-    this.host.applyPointerCursor?.(confirm);
+    const waiting = !state.selected && !state.busy;
+    const confirm = mountGlassButton(this.host, root, 'Confirm', state.busy ? copy.confirming : waiting ? '先选一位伙伴' : copy.confirm, FX(1457), FY(743), S(339), S(76), k,
+      ready ? 'primary' : waiting ? 'disabled' : 'primaryOff', () => this.onConfirm(), 30);
+    if (!waiting) {
+      this.host.applyPointerCursor?.(confirm);
+    }
   }
 
   private card(root: Node, hero: StarterContractCandidate, x: number, y: number, S: (v: number) => number, k: number, selected: boolean, busy: boolean): void {

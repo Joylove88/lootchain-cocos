@@ -42,6 +42,8 @@ Get-ChildItem "$env:TEMP\lootchain-qa" -Directory -Filter 'edge_*' | Remove-Item
 | `soak_cdp.py` / `soak_rush_cdp.py` | 挂机压测,抓战斗循环异常 |
 | `melee_probe_cdp.py` | 怪物钉在水晶前,统计各英雄出手事件与动画 |
 | `fullpack_cdp.py` / `switch_wait.py` / `input_keep_cdp.py` / `battle_ui_cdp.py` | 首访整包下载 / 切页等待 / 输入框保持 / 战斗设置界面 |
+| `newbie_p1_regress.py [输出目录]` | 新手体验一键回归(编辑器预览 7456):本地注册新号 → 建角 / 序幕 / 觉醒 / 契约 → 终端逐步解锁 → 追踪条寻路 → 统一弹窗队列 → 进化入口 → 召唤默认池 → 古碑 → 立绘;步骤在 `newbie_p1/` |
+| `city_npc_recut.py [名字…] [--preview 目录]` | 主城 / 荒原 / 枯木林 NPC 立绘从品红底原图重抠(只抠与边缘连通的品红 + 发丝去溢色),旧图先备份 |
 
 ## fxprev/ — 满屏大招(hu_*)选型与贴图处理
 

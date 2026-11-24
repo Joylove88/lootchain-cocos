@@ -255,7 +255,12 @@ function mount(src: string, portraits: string[], done: () => void): void {
     }
     const cue = CUES[index];
     const narration = cue.kind === 'narration';
-    face.src = portraits[index] || '';
+    // 没头像(旁白)时不能写 src = '':浏览器会拿页面根地址去请求图片并报错(编辑器预览弹「Get http://…/ failed!」)
+    if (portraits[index]) {
+      face.src = portraits[index];
+    } else {
+      face.removeAttribute('src');
+    }
     face.style.display = !narration && portraits[index] ? '' : 'none';
     head.style.display = narration ? 'none' : '';
     speaker.textContent = cue.speaker ? t(cue.speaker) : '';

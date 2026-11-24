@@ -22,6 +22,7 @@ import {
   input,
   resources,
   sp,
+  sys,
   tween,
   Vec4,
 } from 'cc';
@@ -2436,6 +2437,7 @@ export class LobbyTownRenderer {
       this.applyCamera(false, clamped);
       return;
     }
+    this.stepQuestWalk();
     this.stepLeader(clamped);
     if (!this.trial) {
       this.stepFollowers(clamped);
@@ -2694,6 +2696,55 @@ export class LobbyTownRenderer {
   cancelAutoWalk(): void {
     this.autoPath = null;
     this.autoGoal = null;
+    this.questWalk = null;
+  }
+
+  /**
+   * 任务追踪条点击(docs/57 §3「点这里自动寻路」,11-23 策划通玩:原来点了是打开世界地图):
+   * 队长自动走向当前任务引导点(NPC / 怪群 / 石碑 / 本图出口);目标在别的图时走到出口过图后接着走(最多 4 张图)。
+   * 推摇杆 / 按方向键取消。没有引导点返回 null;走不过去 ok = false。
+   */
+  autoWalkToQuest(): { ok: boolean; label: string } | null {
+    const guide = this.guide;
+    const cfg = guide ? this.guideTargetPoint(guide) : null;
+    const leader = this.leader;
+    if (!cfg || !leader) {
+      return null;
+    }
+    const ok = this.autoWalkTo(cfg.x, cfg.y);
+    if (ok) {
+      this.questWalk = { map: this.mapCode, hops: this.questWalk?.hops ?? 0 };
+      this.spawnFloater(leader.x, leader.y + 250, `自动寻路 · ${cfg.label}`, rgba(236, 214, 160), 22);
+    } else {
+      this.questWalk = null;
+    }
+    return { ok, label: cfg.label };
+  }
+
+  /** 任务寻路跨图跟随:过了出口(换了图)接着往任务目标走;同图上寻路结束 / 被取消就收工。 */
+  private questWalk: { map: WorldMapCode; hops: number } | null = null;
+
+  private stepQuestWalk(): void {
+    const walk = this.questWalk;
+    if (!walk || !this.leader) {
+      return;
+    }
+    if (this.mapCode === walk.map) {
+      if (!this.autoPath) {
+        this.questWalk = null;
+      }
+      return;
+    }
+    // 换图了:新图的引导点在 renderHud 里已按新图算好
+    if (walk.hops >= 4 || this.inCombat) {
+      this.questWalk = null;
+      return;
+    }
+    walk.hops += 1;
+    walk.map = this.mapCode;
+    if (!this.autoWalkToQuest()?.ok) {
+      this.questWalk = null;
+    }
   }
 
   /**
@@ -2762,6 +2813,7 @@ export class LobbyTownRenderer {
     // (11-23 策划通玩:原先战斗中每帧都取消,隔着拒马 / 栅栏打不着的怪一直挂着「战斗中」,点寻路毫无反应)
     if (v.x !== 0 || v.y !== 0 || (this.inCombat && !this.autoWalkInCombat)) {
       this.autoPath = null;
+      this.questWalk = null;
     } else if (this.autoPath && this.autoPath.length > 0) {
       this.watchAutoWalk(leader, nowMs);
       v = this.autoPath ? this.autoPathVector(leader) : v;
@@ -3355,9 +3407,21 @@ export class LobbyTownRenderer {
         hits.push({ item, dist });
       }
     }
+    // 11-23 策划通玩:主城公告板旁站着闲聊 NPC「老镇民」,C101 要看公告板,第一条(F 键 / 高亮)却是闲聊 →
+    // 和当前剧情有关的(可接 / 可交 / 要对话的 NPC、要读的石碑)排最前,其余仍由近到远
+    const questKeys = this.questInteractKeys();
+    const rank = (item: TownInteract): number => {
+      if (item.kind === 'npc' && questKeys.npcs.has(item.npc)) {
+        return 0;
+      }
+      if (item.kind === 'poi' && questKeys.pois.has(item.poi.code)) {
+        return 0;
+      }
+      return 1;
+    };
     // 建筑门口(action npc)和站在门边的 NPC 本人指向同一段对话:同一个 NPC 只留最近的一条
     const seenNpc = new Set<WorldNpcCode>();
-    return hits.sort((a, b) => a.dist - b.dist).filter((hit) => {
+    return hits.sort((a, b) => rank(a.item) - rank(b.item) || a.dist - b.dist).filter((hit) => {
       if (hit.item.kind !== 'npc') {
         return true;
       }
@@ -3367,6 +3431,28 @@ export class LobbyTownRenderer {
       seenNpc.add(hit.item.npc);
       return true;
     }).slice(0, 3).map((hit) => hit.item);
+  }
+
+  /** 当前剧情相关的交互对象:可接任务的 NPC / 可交付的 NPC / 对话目标 / 养成任务的交付人 / 「到达」类要读的石碑。 */
+  private questInteractKeys(): { npcs: Set<string>; pois: Set<string> } {
+    const npcs = new Set<string>();
+    const pois = new Set<string>();
+    for (const quest of this.host.currentWorldState?.()?.quests ?? []) {
+      if (quest.state === 'AVAILABLE') {
+        npcs.add(quest.acceptNpc);
+      } else if (quest.state === 'DONE') {
+        npcs.add(quest.turnInNpc);
+      } else if (quest.state === 'ACCEPTED') {
+        if (quest.objective === 'TALK') {
+          npcs.add(quest.objectiveTarget);
+        } else if (quest.objective === 'GROW') {
+          npcs.add(quest.turnInNpc);
+        } else if (quest.objective === 'REACH' && quest.objectiveTarget.startsWith('POI:')) {
+          pois.add(quest.objectiveTarget.slice(4));
+        }
+      }
+    }
+    return { npcs, pois };
   }
 
   private nearestInteract(): TownInteract | null {
@@ -5546,6 +5632,48 @@ export class LobbyTownRenderer {
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.host.openWorldQuestTracker?.(), this);
     this.host.applyImageButtonFeedback(node, 1.01, 0.99);
+    // docs/57 §3 V01 弱引导:新手村里还没点过追踪条 → 主行右侧挂一个「点这里自动寻路」小胶囊(点过一次就不再出)
+    if (quest && quest.state !== 'LOCKED' && world?.stage === 'VILLAGE' && !this.questTrackerUsed()) {
+      const hw = P.S(176);
+      const hh = P.S(36);
+      const hint = this.host.addChildPlainNode(node, 'AutoWalkHint', w / 2 + hw / 2 + P.S(6), h / 2 - P.S(18), hw, hh);
+      const g = hint.addComponent(Graphics);
+      g.fillColor = rgba(16, 19, 26, 215);
+      g.roundRect(-hw / 2, -hh / 2, hw, hh, hh / 2);
+      g.fill();
+      g.strokeColor = rgba(227, 196, 138, 200);
+      g.lineWidth = Math.max(1, P.S(1.6));
+      g.roundRect(-hw / 2, -hh / 2, hw, hh, hh / 2);
+      g.stroke();
+      const label = this.host.addChildLabel(hint, 'Text', '点这里自动寻路 ›', 0, 0, P.S(19), rgba(227, 196, 138), new Size(hw - P.S(14), hh), HorizontalTextAlignment.CENTER);
+      label.overflow = Label.Overflow.SHRINK;
+      tween(hint).repeatForever(tween<Node>().to(0.6, { position: new Vec3(hint.position.x + P.S(8), hint.position.y, 0) }).to(0.6, { position: new Vec3(hint.position.x, hint.position.y, 0) })).start();
+    }
+  }
+
+  private questTrackerUsedKey(): string {
+    return `lc_tracker_walk_${this.host.currentLobbyProfile().userId ?? 0}`;
+  }
+
+  private questTrackerUsed(): boolean {
+    try {
+      return sys.localStorage.getItem(this.questTrackerUsedKey()) === '1';
+    } catch {
+      return true;
+    }
+  }
+
+  /** 点过追踪条:「点这里自动寻路」提示不再出(本机按账号记)。 */
+  markQuestTrackerUsed(): void {
+    try {
+      sys.localStorage.setItem(this.questTrackerUsedKey(), '1');
+    } catch {
+      // 本地存储不可用:提示照常显示
+    }
+    const hint = this.hudNode?.getChildByName('LobbyWorldQuestTracker')?.getChildByName('AutoWalkHint');
+    if (hint && hint.isValid) {
+      hint.destroy();
+    }
   }
 
   private positionRecallButton(layout: UiLayout): void {
@@ -8487,6 +8615,16 @@ export class LobbyTownRenderer {
   }
 
   /** 训练场教官「开始训练」后由 GameRoot 调:从普攻那一步开始教。 */
+  /** 队长当前坐标(没进图 / 没队长时 null)。 */
+  leaderPosition(): { x: number; y: number } | null {
+    return this.leader ? { x: this.leader.x, y: this.leader.y } : null;
+  }
+
+  /** 训练场按键教学进行中(统一弹窗队列不打断)。 */
+  trainingCoachActive(): boolean {
+    return !!this.coach && this.mapCode === 'VILLAGE';
+  }
+
   startTrainingCoach(): void {
     this.coach = { step: 0, count: 0 };
     this.mountCoach();

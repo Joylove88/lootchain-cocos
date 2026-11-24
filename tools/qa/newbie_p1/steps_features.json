@@ -1,0 +1,122 @@
+[
+ {
+  "label": "等回大厅",
+  "js": "for (let i = 0; i < 300; i++) { refresh(); if (root && view() === 'lobby' && !root.bootPreloadActive && t && t.isMounted && t.isMounted() && t.leaderPosition()) break; await sleep(500); } await sleep(3000); refresh(); return JSON.stringify({ view: view(), pos: t.leaderPosition(), evo: root.evolutionPendingCount(), level: root.currentLobbyProfile().playerLevel });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "契约之选未选卡_禁用态",
+  "js": "refresh(); const st = await root.api.starterContract.state(); root.contractMilestone = ''; root.contractPick = { candidates: st.candidates, selected: '', busy: false, error: '' }; root.renderStarterContract(); await sleep(1800); return st.candidates.map(c => c.heroCode).join(',');",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "关掉契约演示",
+  "js": "refresh(); root.contractPick = null; root.removeNodeFromContent('LobbyContractPick'); root.setTownHudVisible(true); await sleep(600); return 'ok';",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "对话开着时走到隐藏点_应排队",
+  "js": "refresh(); root.openWorldNpcDialog('CHIEF'); await sleep(600); const okWalk = t.autoWalkTo(-2120, 60); for (let i = 0; i < 120; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(4000); return JSON.stringify({ okWalk, pos: t.leaderPosition(), dialog: root.worldDialog ? root.worldDialog.mode : null, poi: !!root.worldPoiDialog, queue: root.popupQueue.size, overlay: !!find('LobbyPoiOverlay') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "关对话后发现卡才弹",
+  "js": "refresh(); root.closeWorldDialog(); for (let i = 0; i < 20; i++) { await sleep(300); if (root.worldPoiDialog) break; } await sleep(1200); return JSON.stringify({ dialog: !!root.worldDialog, poi: root.worldPoiDialog ? root.worldPoiDialog.kind : null, queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "发现卡开着按F和NPC对话_先收卡",
+  "js": "refresh(); const had = !!root.worldPoiDialog; root.openWorldNpcDialog('CHIEF'); await sleep(1200); const r = { had, poiAfter: !!root.worldPoiDialog, overlay: !!find('LobbyPoiOverlay'), dialog: root.worldDialog ? root.worldDialog.mode : null }; root.closeWorldDialog(); await sleep(500); return JSON.stringify(r);",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "终端锁格新样式",
+  "js": "refresh(); root.openLobbyTerminalPanel(); await sleep(2500); return 'ok';",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "模拟接到V04_功能开放播报",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); await sleep(600); const q = root.worldState.quests.find(x => x.code === 'V04'); const before = q ? q.state : null; if (q) q.state = 'ACCEPTED'; root.refreshLobbyViewPreservingBackground(); let toast = false; for (let i = 0; i < 20; i++) { await sleep(300); if (find('LobbyZeroToast')) { toast = true; break; } } await sleep(700); const icons = []; const g = find('LobbySystemIcons'); if (g) g.children.forEach(c => icons.push(c.name)); window.__v04before = before; return JSON.stringify({ before, toast, toastText: texts(200).filter(s => s.indexOf('新功能') >= 0), icons, fresh: Array.from(root.featureUnlocks.fresh) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "终端新角标",
+  "js": "refresh(); await sleep(3000); root.openLobbyTerminalPanel(); await sleep(2500); const tags = []; cc.director.getScene().walk(n => { if (n.name.indexOf('FreshTag_') === 0 && n.activeInHierarchy) tags.push(n.name.slice(9)); }); return JSON.stringify({ tags });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "从终端进召唤_默认免费池",
+  "js": "refresh(); root.runLobbyTerminalAction('gacha'); for (let i = 0; i < 40; i++) { await sleep(500); if (root.gachaSceneState.freeSingle && root.gachaSceneState.pools.length > 0 && !root.gachaSceneState.loading) break; } await sleep(3000); const s = root.gachaSceneState; return JSON.stringify({ view: view(), selected: s.selectedPoolCode, free: s.freeSingle, pools: s.pools.map(p => p.poolCode), fresh: Array.from(root.featureUnlocks.fresh) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "回大厅_还原V04",
+  "js": "refresh(); root.closeGachaScene(); await sleep(2500); const q = root.worldState.quests.find(x => x.code === 'V04'); if (q && window.__v04before) q.state = window.__v04before; root.refreshLobbyViewPreservingBackground(); await sleep(1500); return view();",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "关终端清队列",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; await sleep(1500); if (root.worldPoiDialog) { root.closeWorldPoiDialog(); } await sleep(800); return JSON.stringify({ terminal: root.lobbyTerminalOpen, poi: !!root.worldPoiDialog, queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "走到晨曦之碑阅读",
+  "js": "refresh(); const ok = t.autoWalkTo(-1983, 1200); for (let i = 0; i < 140; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(500); root.claimWorldPoi('V_STELE_1'); for (let i = 0; i < 20; i++) { await sleep(400); if (root.worldPoiDialog) break; } await sleep(1200); return JSON.stringify({ ok, pos: t.leaderPosition(), stele: root.worldPoiDialog ? root.worldPoiDialog.kind : null, at: root.steleDialogAt, queue: root.popupQueue.size, terminal: root.lobbyTerminalOpen });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "走远古碑面板自动收",
+  "js": "refresh(); const ok = t.autoWalkTo(-1300, 700); for (let i = 0; i < 60; i++) { await sleep(500); if (!root.worldPoiDialog) break; } const left = t.leaderPosition(); await sleep(800); return JSON.stringify({ ok, closedAt: left, stele: root.worldPoiDialog ? root.worldPoiDialog.kind : null });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "葛兰对话大立绘",
+  "js": "refresh(); t.cancelAutoWalk(); root.openWorldNpcDialog('WANDERER'); await sleep(2500); return root.worldDialog ? root.worldDialog.npc : null;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "酒馆老板对话大立绘",
+  "js": "refresh(); root.closeWorldDialog(); await sleep(400); root.openWorldNpcDialog('INNKEEPER'); await sleep(2500); return root.worldDialog ? root.worldDialog.npc : null;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "吟游诗人对话大立绘",
+  "js": "refresh(); root.closeWorldDialog(); await sleep(400); root.openWorldNpcDialog('BARD'); await sleep(2500); return root.worldDialog ? root.worldDialog.npc : null;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "升级来了新抉择_只提醒不弹",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; if (root.worldDialog) root.closeWorldDialog(); if (root.worldPoiDialog) root.closeWorldPoiDialog(); await sleep(800); const base = root.evolutionState; const cards = [{ key: 'ATK:C', code: 'ATK', name: '锋锐', category: 'ATTR', route: 'HUNT', rarity: 'C', rarityName: '普通', desc: '全队攻击 +2%', routeCount: 0 }, { key: 'HP:C', code: 'HP', name: '坚韧之躯', category: 'ATTR', route: 'GUARD', rarity: 'C', rarityName: '普通', desc: '全队生命 +3%', routeCount: 0 }, { key: 'SPEED:C', code: 'SPEED', name: '疾行', category: 'EXPLORE', route: 'EXPLORE', rarity: 'C', rarityName: '普通', desc: '移动速度 +4%', routeCount: 0 }]; const fake = Object.assign({}, base, { level: 3, pendingCount: 1, choice: { id: 999999, level: 3, candidates: cards, refreshCount: 0, refreshPrice: 0, pityLeft: 4 } }); window.__evoOrig = root.api.evolution.state; root.api.evolution.state = async () => fake; root.evolutionHintShown = false; await root.checkEvolution(); await sleep(400); let toast = false; for (let i = 0; i < 15; i++) { if (find('LobbyZeroToast')) { toast = true; break; } await sleep(300); } return JSON.stringify({ evoOpen: !!root.evolutionPick, toast, toastText: texts(200).filter(s => s.indexOf('进化') >= 0 && s.length > 8), badge: !!find('LobbySystemIcon_evolution'), queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "跨过5级_自动弹一次",
+  "js": "refresh(); await sleep(3500); root.evolutionMilestoneDue = true; await root.checkEvolution(); for (let i = 0; i < 20; i++) { if (root.evolutionPick) break; await sleep(300); } await sleep(800); return JSON.stringify({ evoOpen: !!root.evolutionPick, fromHud: root.evolutionFromHud, level: root.evolutionPick ? root.evolutionPick.state.choice.level : null });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "收尾_稍后再选并还原接口",
+  "js": "refresh(); if (root.evolutionPick) root.closeEvolutionPickLater(); root.api.evolution.state = window.__evoOrig; await root.checkEvolution(); await sleep(1000); return JSON.stringify({ evoOpen: !!root.evolutionPick, pending: root.evolutionState ? root.evolutionState.pendingCount : null, badge: !!find('LobbySystemIcon_evolution') });",
+  "wait": 0,
+  "shot": false
+ }
+]

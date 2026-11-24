@@ -1,0 +1,75 @@
+# -*- coding: utf-8 -*-
+"""新手体验 P1 一键回归(2026-11-24,策划通玩 P1 修复;编辑器预览 7456 + 本地游戏服 8081)。
+
+流程:本地注册一个新号 → 写 localStorage 会话并刷新(第一段 --fresh --keep)→ 接管同一页依次跑
+  steps_newplayer.json:建角(故意用已占用的名字「圣契64」,验证自动名撞名自动换)→ 序幕 → 觉醒(首次进村要接上)
+    → 契约之选(未选卡按钮禁用)→ 进村 HUD(召唤 / 商店未开放不显示、追踪条「点这里自动寻路」)→ 终端锁格 → 点锁格只提示
+    → 点追踪条自动寻路 → 弹窗队列(对话 / 发现卡)→ 进化第一次教学 + 稍后再选 → 右上「进化」入口
+  steps_features.json:契约禁用态 → 对话开着时发现隐藏点要排队 → 发现卡开着和 NPC 对话先收卡 → 终端锁格样式
+    → 本地模拟接到 V04 的功能开放播报 +「新」角标 → 召唤默认免费池 → 古碑面板走远自动收 → 对话大立绘
+    → 进化「升级只提醒」/「跨 5 级自动弹」两条分支(桩接口,不确认)
+截图 / log 在 <输出目录>(默认 %TEMP%/lootchain-qa/newbie_p1_<时间>);跑完按配置目录关掉无头 Edge。
+注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
+      steps_features.json 里的「模拟接到 V04」只改页面内存,不碰服务端。
+
+用法:python tools/qa/newbie_p1_regress.py [输出目录]
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import edge_guard  # noqa: E402
+
+API = 'http://localhost:8081'
+STEPS = os.path.join(HERE, 'newbie_p1')
+SCRATCH = os.environ.get('LC_QA_OUT') or os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa')
+PROFILE_NAME = 'playtest_profile_newbie'
+ENV = dict(os.environ, PREVIEW_PORT='7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT='9384', PYTHONIOENCODING='utf-8')
+
+
+def register():
+    name = 'nb' + time.strftime('%m%d%H%M%S')
+    req = urllib.request.Request(API + '/api/player/auth/register', method='POST',
+                                 data=json.dumps({'username': name, 'password': 'pass1234', 'nickname': None}).encode('utf-8'),
+                                 headers={'Content-Type': 'application/json'})
+    data = json.load(urllib.request.urlopen(req, timeout=15))
+    if data.get('code') != 0:
+        raise SystemExit('注册失败: ' + str(data))
+    return name, data['data']['tokenValue'], data['data']['userId']
+
+
+def fill(src, out, token, uid):
+    text = open(os.path.join(STEPS, src), encoding='utf-8').read().replace('{TOKEN}', token).replace('{UID}', str(uid))
+    open(out, 'w', encoding='utf-8').write(text)
+    return out
+
+
+def run(out_dir, steps, *flags):
+    cmd = [sys.executable, os.path.join(HERE, 'playtest_cdp.py'), out_dir, steps, *flags]
+    print('>>', os.path.basename(steps), *flags, flush=True)
+    subprocess.run(cmd, env=ENV, check=False)
+
+
+def main():
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(SCRATCH, 'newbie_p1_' + time.strftime('%m%d_%H%M'))
+    os.makedirs(out_dir, exist_ok=True)
+    name, token, uid = register()
+    print('新号', name, 'uid', uid, flush=True)
+    try:
+        run(out_dir, fill('steps_inject.json', os.path.join(out_dir, '_inject.json'), token, uid), '--fresh', '--keep')
+        run(out_dir, fill('steps_newplayer.json', os.path.join(out_dir, '_newplayer.json'), token, uid), '--keep')
+        run(out_dir, fill('steps_features.json', os.path.join(out_dir, '_features.json'), token, uid), '--keep')
+    finally:
+        edge_guard.kill_profiles([os.path.join(SCRATCH, PROFILE_NAME)])
+    print('结果:', os.path.join(out_dir, 'log.jsonl'), flush=True)
+
+
+if __name__ == '__main__':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    main()
