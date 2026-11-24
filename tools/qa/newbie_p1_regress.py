@@ -10,6 +10,7 @@
     → 进化「升级只提醒」/「跨 5 级自动弹」两条分支(桩接口,不确认)
   steps_guides.json:docs/57 §4 功能说明卡(终端 / 背包 / 锻造 / 秘境 / 水晶 / 矿境 / 图鉴 / 世界地图 / 野外探索,只出一次)
     → §3 强引导:模拟接到 V04 召唤页聚光免费召唤 + 跳过;模拟接到 V05 终端→英雄格→第一位伙伴→升级,升级后当场收起
+    → docs/57 §12 服务端已存 intro:* / skip:V04 / tracker_walk、本机待发队列为空(换设备不重放另见 guide_flag_sync_check.py)
 截图 / log 在 <输出目录>(默认 %TEMP%/lootchain-qa/newbie_p1_<时间>);跑完按配置目录关掉无头 Edge。
 注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
       steps_features.json 里的「模拟接到 V04」只改页面内存,不碰服务端。

@@ -5651,8 +5651,9 @@ export class LobbyTownRenderer {
     }
   }
 
-  private questTrackerUsedKey(): string {
-    return `lc_tracker_walk_${this.host.currentLobbyProfile().userId ?? 0}`;
+  /** uid 缺省 = 当前玩家(登录同步时资料可能还没到,由调用方显式传)。 */
+  private questTrackerUsedKey(uid?: number): string {
+    return `lc_tracker_walk_${uid ?? this.host.currentLobbyProfile().userId ?? 0}`;
   }
 
   private questTrackerUsed(): boolean {
@@ -5663,10 +5664,22 @@ export class LobbyTownRenderer {
     }
   }
 
-  /** 点过追踪条:「点这里自动寻路」提示不再出(本机按账号记)。 */
-  markQuestTrackerUsed(): void {
+  /** 本机记没记过点过追踪条(docs/57 §12 登录同步时补报服务端 tracker_walk 用;读不了按没记过)。 */
+  questTrackerUsedLocally(uid: number): boolean {
     try {
-      sys.localStorage.setItem(this.questTrackerUsedKey(), '1');
+      return sys.localStorage.getItem(this.questTrackerUsedKey(uid)) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 点过追踪条:「点这里自动寻路」提示不再出。服务端标记 tracker_walk 由宿主上报(docs/57 §12);
+   * 这里记本机兜底 + 收掉已画出来的提示(服务端拉到 tracker_walk 时宿主也调这里,带上 uid)。
+   */
+  markQuestTrackerUsed(uid?: number): void {
+    try {
+      sys.localStorage.setItem(this.questTrackerUsedKey(uid), '1');
     } catch {
       // 本地存储不可用:提示照常显示
     }

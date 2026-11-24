@@ -1,5 +1,6 @@
 import { sys } from 'cc';
 import type { WorldStateVO } from '../../types/WorldTypes';
+import { GuideFlags, type GuideFlagSync } from './GuideFlagSync';
 import type { LobbyTerminalAction } from './LobbyTerminalPanelRenderer';
 
 /**
@@ -82,12 +83,17 @@ export function featureName(key: FeatureKey): string {
 
 /**
  * 解锁跟踪:本会话第一次算出的已开放集合只当基线(不播报);之后新开放的功能返回给调用方播报,
- * 并记进本机「新」角标(按账号存,点进去一次就清;换设备只是少个角标,不影响功能)。
+ * 并挂「新」角标(点进去一次就清)。角标存服务端(docs/57 §12):挂上记 new:<功能>、点掉记 newseen:<功能>,
+ * 换设备 / 清缓存后角标照样在、点掉过的不再冒出来;本机 lc_feature_new_<uid> 照写作离线兜底。
  */
 export class FeatureUnlockTracker {
   private uid = 0;
   private baseline: Set<FeatureKey> | null = null;
   private fresh = new Set<FeatureKey>();
+  /** 合过的服务端标记版本(GuideFlagSync.version);换绑账号后重新合。 */
+  private mergedVersion = -1;
+
+  constructor(private readonly sync?: GuideFlagSync) {}
 
   bind(uid: number): void {
     if (uid === this.uid) {
@@ -95,6 +101,7 @@ export class FeatureUnlockTracker {
     }
     this.uid = uid;
     this.baseline = null;
+    this.mergedVersion = -1;
     this.fresh = new Set(this.loadFresh());
   }
 
@@ -103,6 +110,7 @@ export class FeatureUnlockTracker {
     if (!world || !this.uid) {
       return [];
     }
+    this.mergeServer();
     const keys = Object.keys(FEATURE_GATES) as FeatureKey[];
     const open = new Set(keys.filter((key) => featureUnlocked(key, world, playerLevel)));
     if (!this.baseline) {
@@ -120,25 +128,60 @@ export class FeatureUnlockTracker {
     if (added.length > 0) {
       added.forEach((key) => this.fresh.add(key));
       this.saveFresh();
+      added.forEach((key) => this.sync?.mark(GuideFlags.fresh(key)));
     }
     return added;
   }
 
   isFresh(key: FeatureKey): boolean {
+    this.mergeServer();
     return this.fresh.has(key);
   }
 
   anyFresh(): boolean {
+    this.mergeServer();
     return this.fresh.size > 0;
   }
 
   /** 玩家点进过这个功能:清「新」角标;返回是否真的清掉了(调用方据此决定要不要重画)。 */
   markSeen(key: FeatureKey): boolean {
+    this.mergeServer();
     if (!this.fresh.delete(key)) {
       return false;
     }
     this.saveFresh();
+    this.sync?.mark(GuideFlags.freshSeen(key));
     return true;
+  }
+
+  /** 本机挂着的角标 → 标记码(登录同步时补报服务端没有的)。 */
+  localFlags(): string[] {
+    return Array.from(this.fresh).map((key) => GuideFlags.fresh(key));
+  }
+
+  /**
+   * 把服务端的角标合进本机(服务端标记有新版本才动):点掉过的(newseen)清掉;别的设备挂上还没点的(new)补上 ——
+   * 已经算过基线时只补现在开着的功能。返回本机记录有没有变。
+   */
+  mergeServer(): boolean {
+    const sync = this.sync;
+    if (!sync || !this.uid || sync.boundUid() !== this.uid || sync.version === this.mergedVersion) {
+      return false;
+    }
+    this.mergedVersion = sync.version;
+    let changed = false;
+    for (const key of Object.keys(FEATURE_GATES) as FeatureKey[]) {
+      if (sync.has(GuideFlags.freshSeen(key))) {
+        changed = this.fresh.delete(key) || changed;
+      } else if (sync.has(GuideFlags.fresh(key)) && !this.fresh.has(key) && (!this.baseline || this.baseline.has(key))) {
+        this.fresh.add(key);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.saveFresh();
+    }
+    return changed;
   }
 
   private storageKey(): string {

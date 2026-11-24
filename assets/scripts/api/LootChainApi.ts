@@ -25,6 +25,7 @@ import { ShopApi } from './ShopApi';
 import { PlayerProfileApi } from './PlayerProfileApi';
 import { StarterContractApi } from './StarterContractApi';
 import { EvolutionApi } from './EvolutionApi';
+import { GuideApi } from './GuideApi';
 import { RealmApi } from './RealmApi';
 import { ProtagonistApi } from './ProtagonistApi';
 import { TokenApi } from './TokenApi';
@@ -45,6 +46,8 @@ export class LootChainApi {
   /** docs/58 契约之选(新号 3 选 1 R)。 */
   readonly starterContract = new StarterContractApi(this.http);
   readonly evolution = new EvolutionApi(this.http);
+  /** docs/57 §12 新手引导标记(说明卡看过 / 强引导跳过 / 「新」角标 / 追踪条提示存服务端)。 */
+  readonly guide = new GuideApi(this.http);
   readonly realm = new RealmApi(this.http);
   readonly lobbyNotice = new LobbyNoticeApi(this.http);
   readonly lobbyCodex = new LobbyCodexApi(this.http);

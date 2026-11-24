@@ -113,6 +113,7 @@ import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickS
 import { LobbyPopupQueue } from './lobby/LobbyPopupQueue';
 import { FeatureUnlockTracker, featureLockText, featureName, type FeatureKey } from './lobby/LobbyFeatureUnlocks';
 import { FeatureIntroTracker, renderFeatureIntroCard, type FeatureIntroKey, type FeatureIntroHost } from './lobby/LobbyFeatureIntro';
+import { GuideFlags, GuideFlagSync } from './lobby/GuideFlagSync';
 import { mountZeroGuideBubble } from './GuideKit';
 import type { EvolutionState } from '../api/EvolutionApi';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
@@ -336,6 +337,8 @@ function profileRenameInvalidReason(name: string, currentName: string): string {
 const LOBBY_ADVENTURE_RETIRED = true;
 /** 英雄契约里程碑副标题前缀:来源剧情任务码 → 剧情名(按等级解锁的显示 Lv.N)。 */
 const LEVEL_CONTRACT_SOURCE: Record<string, string> = { V04: '祭坛的回应', V09: '林地之王已除' };
+/** docs/57 §3 剧情强引导的剧情码(LobbyHudRenderer.resolveStoryGuide);登录同步时把本机的跳过记录补报服务端。 */
+const STORY_GUIDE_CODES = ['V04', 'V05'] as const;
 
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
@@ -459,10 +462,12 @@ export class LootChainGameRoot extends Component {
   private evolutionFromHud = false;
   /** 统一弹窗队列(隐藏点 / 石碑 / 进化 / 契约 / 功能开放播报):一次只弹一张,别的界面开着时排队。 */
   private readonly popupQueue = new LobbyPopupQueue();
+  /** docs/57 §12 新手引导标记存服务端(说明卡看过 / 强引导跳过 / 「新」角标 / 追踪条提示):登录拉一次,记录点写本机同时上报。 */
+  private readonly guideFlags = new GuideFlagSync(() => this.api.guide);
   /** docs/57 §11 终端功能逐步解锁:解锁那一刻播报 +「新」角标。 */
-  private readonly featureUnlocks = new FeatureUnlockTracker();
+  private readonly featureUnlocks = new FeatureUnlockTracker(this.guideFlags);
   /** docs/57 §4 功能说明卡:每个功能第一次打开时出一次(pending = 等页面真正打开再弹;open = 正开着)。 */
-  private readonly featureIntros = new FeatureIntroTracker();
+  private readonly featureIntros = new FeatureIntroTracker(this.guideFlags);
   private featureIntroPending: { key: FeatureIntroKey; at: number } | null = null;
   private featureIntroOpen: FeatureIntroKey | null = null;
   /** docs/57 §3 剧情强引导(V04 免费召唤 / V05 升级英雄):本会话已完成的(等世界状态回读前先压住)。 */
@@ -8557,6 +8562,7 @@ export class LootChainGameRoot extends Component {
    */
   private openWorldQuestTracker(): void {
     this.lobbyTownRenderer.markQuestTrackerUsed();
+    this.guideFlags.mark(GuideFlags.trackerWalk);
     const walk = this.lobbyTownRenderer.isMounted() ? this.lobbyTownRenderer.autoWalkToQuest() : null;
     if (walk?.ok) {
       gameAudio.sfx('ui_click');
@@ -10490,6 +10496,10 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.featureIntroPending = null;
+    // 排着的时候服务端标记刚拉到、说这张别的设备看过了:不弹
+    if (this.featureIntros.seen(pending.key)) {
+      return;
+    }
     this.showFeatureIntroCard(pending.key);
   }
 
@@ -10525,28 +10535,87 @@ export class LootChainGameRoot extends Component {
 
   // ── docs/57 §3 剧情强引导(V04 免费召唤 / V05 升级英雄)──
 
-  /** 本条强引导已跳过 / 本会话已完成(LobbyHudHost)。跳过记在本机(按账号)。 */
+  /** 本条强引导已跳过 / 本会话已完成(LobbyHudHost)。跳过存服务端(skip:<剧情码>),本机按账号存一份兜底。 */
   storyGuideBlocked(code: string): boolean {
-    if (this.storyGuideDone.has(code)) {
+    if (this.storyGuideDone.has(code) || this.guideFlags.has(GuideFlags.skip(code))) {
       return true;
     }
-    try {
-      return sys.localStorage.getItem(`lc_story_guide_skip_${this.api.tokenStore.userId() ?? 0}_${code}`) === '1';
-    } catch {
-      return false;
-    }
+    return this.storyGuideSkippedLocally(this.api.tokenStore.userId() ?? 0, code);
   }
 
   /** 强引导右上「跳过引导」(docs/57 §9:跳过 = 本条记完成)。 */
   skipStoryGuide(code: string): void {
     try {
-      sys.localStorage.setItem(`lc_story_guide_skip_${this.api.tokenStore.userId() ?? 0}_${code}`, '1');
+      sys.localStorage.setItem(this.storyGuideSkipKey(this.api.tokenStore.userId() ?? 0, code), '1');
     } catch {
-      // 本地存储不可用:本会话内压住
+      // 本地存储不可用:以服务端为准
     }
+    this.guideFlags.mark(GuideFlags.skip(code));
     this.storyGuideDone.add(code);
     this.removeNodeFromContent('LobbyGuideOverlay');
     gameAudio.sfx('panel_close');
+  }
+
+  private storyGuideSkipKey(uid: number, code: string): string {
+    return `lc_story_guide_skip_${uid}_${code}`;
+  }
+
+  private storyGuideSkippedLocally(uid: number, code: string): boolean {
+    try {
+      return sys.localStorage.getItem(this.storyGuideSkipKey(uid, code)) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  // ── docs/57 §12 新手引导标记同步(服务端为准,本机记录兜底)──
+
+  /** 登录进大厅时拉一次服务端标记(同账号只拉一次,失败下次登录再拉),合进本机;本机有、服务端没有的顺带补报。 */
+  private syncGuideFlags(userId: number): void {
+    void this.guideFlags.pull(userId, () => this.localGuideFlags(userId)).then((ok) => {
+      if (ok && this.api.tokenStore.userId() === userId) {
+        this.applyServerGuideFlags(userId);
+      }
+    });
+  }
+
+  /** 本机已有的全部引导记录 → 标记码(老号上线前只存本机的、断网没报上的,登录同步时补报)。 */
+  private localGuideFlags(userId: number): string[] {
+    this.featureIntros.bind(userId);
+    this.featureUnlocks.bind(userId);
+    const flags = this.featureIntros.localFlags().concat(this.featureUnlocks.localFlags());
+    for (const code of STORY_GUIDE_CODES) {
+      if (this.storyGuideSkippedLocally(userId, code)) {
+        flags.push(GuideFlags.skip(code));
+      }
+    }
+    if (this.lobbyTownRenderer.questTrackerUsedLocally(userId)) {
+      flags.push(GuideFlags.trackerWalk);
+    }
+    return flags;
+  }
+
+  /** 服务端标记拉到后:合进本机兜底记录;本机因此有变化(换了设备 / 清过缓存)就重画大厅,收掉不该出的遮罩 / 提示 / 角标。 */
+  private applyServerGuideFlags(userId: number): void {
+    let changed = this.featureIntros.mergeServer();
+    changed = this.featureUnlocks.mergeServer() || changed;
+    for (const code of this.guideFlags.withPrefix(GuideFlags.skip(''))) {
+      if (!this.storyGuideSkippedLocally(userId, code)) {
+        try {
+          sys.localStorage.setItem(this.storyGuideSkipKey(userId, code), '1');
+        } catch {
+          // 本地存储不可用:storyGuideBlocked 直接看服务端标记
+        }
+        changed = true;
+      }
+    }
+    if (this.guideFlags.has(GuideFlags.trackerWalk) && !this.lobbyTownRenderer.questTrackerUsedLocally(userId)) {
+      this.lobbyTownRenderer.markQuestTrackerUsed(userId);
+      changed = true;
+    }
+    if (changed) {
+      this.refreshLobbyViewPreservingBackground();
+    }
   }
 
   /** 英雄详情里看的是主角(主角等级跟玩家走,不能用经验书升级,不指升级钮)。 */
@@ -11110,6 +11179,8 @@ export class LootChainGameRoot extends Component {
   private resetLobbyProfileForLogin(userId: number): void {
     // 切换登录用户时必须清空上一位玩家资料，防止大厅左上角短暂显示旧数据。
     this.lobbyProfileLoader.resetForLogin(userId);
+    // docs/57 §12 引导标记:换绑账号,进大厅时重新拉一次
+    this.guideFlags.resetForLogin(userId);
     this.lobbyAdventureLoader.resetForLogin();
     this.lobbyBagLoader.resetForLogin();
     this.lobbyBattleFlow.resetForLogin();
@@ -11143,6 +11214,8 @@ export class LootChainGameRoot extends Component {
     void this.loadLobbyHeroRoster(true);
     // 邮件未读红点数据(只读不标已读,"更多"入口用)。
     void this.loadLobbyMails(false, false);
+    // docs/57 §12 新手引导标记:拉服务端「看过 / 跳过」合进本机(换设备 / 清缓存不重放),老号本机记录补报
+    this.syncGuideFlags(userId);
   }
 
   private startLobbyLoading(tokenName: string): void {

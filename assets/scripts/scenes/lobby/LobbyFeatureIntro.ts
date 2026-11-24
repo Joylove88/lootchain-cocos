@@ -2,11 +2,12 @@ import { BlockInputEvents, Color, Graphics, HorizontalTextAlignment, Label, Node
 import type { UiLayout } from './LobbyHudTypes';
 import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassSlice } from '../UiGlassKit';
 import { ZERO_GUIDE_PORTRAIT } from '../GuideKit';
+import { GuideFlags, type GuideFlagSync } from './GuideFlagSync';
 
 /**
  * docs/57 §4 功能说明卡(11-24):终端里 10 个功能第一次打开时,在页面上盖一张 B 风格玻璃卡 ——
  * 零的圆头像 + 标题 + 一句话讲清这个页面干什么 + 3 个要点 +「知道了」,每个功能只出一次。
- * 「看过」记在本机(按账号,lc_feature_intro_<uid>):后端没有引导进度表(docs/57 §9 拍板的服务端存档未实现),换设备会再出一次。
+ * 「看过」存服务端(docs/57 §12,标记码 intro:<功能>,换设备 / 清缓存不再出),本机 lc_feature_intro_<uid> 照写作离线兜底。
  * 卡挂在根节点下的独立层(LobbyFeatureIntroLayer),功能页整页重绘不会把它拆掉 / 盖住。
  */
 export type FeatureIntroKey = 'terminal' | 'bag' | 'forge' | 'daily' | 'crystal' | 'raid' | 'codex' | 'guild' | 'explore' | 'worldmap';
@@ -189,16 +190,21 @@ export function renderFeatureIntroCard(host: FeatureIntroHost, root: Node, layou
   tween(card).to(0.22, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
 }
 
-/** 「看过」记录(本机按账号存;点「知道了」才算看过)。 */
+/** 「看过」记录(点「知道了」才算看过):服务端标记 intro:<功能> 为准,本机按账号存一份兜底。 */
 export class FeatureIntroTracker {
   private uid = 0;
   private seenSet = new Set<FeatureIntroKey>();
+  /** 合过的服务端标记版本(GuideFlagSync.version);换绑账号后重新合。 */
+  private mergedVersion = -1;
+
+  constructor(private readonly sync?: GuideFlagSync) {}
 
   bind(uid: number): void {
     if (uid === this.uid) {
       return;
     }
     this.uid = uid;
+    this.mergedVersion = -1;
     this.seenSet = new Set<FeatureIntroKey>();
     try {
       const raw = sys.localStorage.getItem(this.key());
@@ -212,18 +218,50 @@ export class FeatureIntroTracker {
   }
 
   seen(key: FeatureIntroKey): boolean {
+    this.mergeServer();
     return this.seenSet.has(key);
   }
 
   markSeen(key: FeatureIntroKey): void {
+    this.mergeServer();
     if (this.seenSet.has(key)) {
       return;
     }
     this.seenSet.add(key);
+    this.save();
+    this.sync?.mark(GuideFlags.intro(key));
+  }
+
+  /** 本机已有的「看过」→ 标记码(登录同步时补报服务端没有的)。 */
+  localFlags(): string[] {
+    return Array.from(this.seenSet).map((key) => GuideFlags.intro(key));
+  }
+
+  /** 把服务端的「看过」合进本机(服务端标记有新版本才动);返回本机记录有没有变。 */
+  mergeServer(): boolean {
+    const sync = this.sync;
+    if (!sync || !this.uid || sync.boundUid() !== this.uid || sync.version === this.mergedVersion) {
+      return false;
+    }
+    this.mergedVersion = sync.version;
+    let changed = false;
+    for (const key of Object.keys(FEATURE_INTROS) as FeatureIntroKey[]) {
+      if (!this.seenSet.has(key) && sync.has(GuideFlags.intro(key))) {
+        this.seenSet.add(key);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.save();
+    }
+    return changed;
+  }
+
+  private save(): void {
     try {
       sys.localStorage.setItem(this.key(), JSON.stringify(Array.from(this.seenSet)));
     } catch {
-      // 本地存储不可用:下次进来再出一次
+      // 本地存储不可用:以服务端为准
     }
   }
 
