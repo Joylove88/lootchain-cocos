@@ -102,6 +102,42 @@ PROMPT_V2 = (
     "No characters, no animals, no UI, no text, no frame. Not cartoon, not a 3D render, not plastic, no HDR look, no glow, no "
     "vignette, no film grain, no depth of field. Landscape, exactly 1672x941."
 )
+# 11-24 用户看 C 版:「AI 感太强了,摆件的位置也不好看,城墙右侧怎么是破的」→ v3 = v2 + 布局整理:3D 底稿里的摆件是程序随机撒的
+# (路灯散在草坪中央、长椅乱朝向、每棵树套石圈、灌木野花均匀撒点),这才是「没有主次」的 AI 味来源;城墙在城门 / 塔 / 运河出城处断开错位。
+# 底稿先由 tools/qa/city_v3_cleanup.py 清过(base_v3.png:草坪点景 / 沿街长椅 / 广场中间的路灯 / 草坪树池已抹掉,碰撞同步放开),
+# 所以 v3 不让生图「自己判断删哪个」(删了就和可走格对不上 = 空气墙),只让它照底稿画、不许再加东西;
+# 加的「生活痕迹」只许贴地 / 贴墙(脚印路、菜畦、柴垛),不加围栏 / 推车这类会挡人的。
+# 运河过城墙处不画拱桥 / 水门:水流特效按 v4 水面遮罩走,水面上画了东西会跟着波动。
+_WALL_V3 = (
+    "- The city wall is one continuous, solid ring: wherever the guide shows a gap, a missing piece, a short stub or a crooked "
+    "joint between wall segments next to a gatehouse or a tower, close it with the same crenellated wall so it never looks broken "
+    "or ruined. Where the canal passes through the wall, end the wall on each bank with a solid squared stone pier at the water's "
+    "edge (nothing built over the water itself).\n"
+)
+LAYOUT_V3 = (
+    "LAYOUT - this guide was already cleaned up by our level designer, follow it exactly:\n"
+    "- Paint every lamp post, bench, statue, prop and tree trunk exactly where the guide shows it and nowhere else. Do NOT add new "
+    "lamp posts, benches, statues, rocks, shrubs, flower patches or any clutter on lawns, streets or squares.\n"
+    "- Trees stand straight in the grass or earth; only trees standing on paved streets keep a low stone ring.\n"
+    "- Lawns are calm open grass with natural tonal patches; shrubs or flowers only hug house walls, the wall foot and garden edges, "
+    "as in the guide - never sprinkled over the lawn.\n"
+    "- Signs of life stay flat and close to buildings: worn earth in front of doors and gates, a narrow footpath from a front door "
+    "to the street, a small herb or vegetable bed or a stacked woodpile against a house wall. No fences, carts, laundry or market "
+    "clutter unless the guide has them.\n"
+    + _WALL_V3 +
+    "- The ground tells a story but stays calm: cart ruts along streets, darker damp earth by the canal, trampled grass at path "
+    "corners, moss and weeds at wall feet.\n"
+    "- Technique: soft painterly edges on grass and foliage, crisp edges only on architecture; no streaky wind-swept grass "
+    "texture, no uniform noise pattern, no over-sharpened outlines or halos.\n"
+)
+# v3:主广场回到石板铺装(街道保持沙土)—— 全城一色沙土地没有主次,广场认不出来
+PROMPT_V3 = PROMPT_V2.replace(
+    "Streets and squares stay WARM SANDY trodden earth like image 1 (light ochre-beige, "
+    "not grey cobblestone), with foot-worn centres, a few loose stones and grass tufts at the edges.",
+    "Streets and lanes are WARM SANDY trodden earth (light ochre-beige, not grey) with foot-worn centres, cart ruts, a few "
+    "loose stones and grass tufts at the edges; the main squares - the round square around the statue inside the gate, the "
+    "square with the big compass rose, the cathedral square and the market square by the bridge - keep worn, patched "
+    "cobblestone paving in warm grey-beige, so they read as squares.")
 STYLE = os.environ.get('CITY_PAINT_STYLE', 'v1')
 # 大半在城墙外的块:底稿那部分只是平涂的布局示意(11-23 第一批 r1 c6~c8 用城里那套提示词,生图说「图 1 是绿色迷宫纹理,
 # 看不到城」并要真正的底稿,三次都没出图)
@@ -213,7 +249,9 @@ def grid(size):
 def base_img():
     global _BASE
     if _BASE is None:
-        _BASE = Image.open(os.path.join(OUT, 'base.png')).convert('RGB')
+        # v3 用清理过的底稿(city_v3_cleanup.py guide 出的 base_v3.png)
+        name = 'base_v3.png' if STYLE == 'v3' and os.path.exists(os.path.join(OUT, 'base_v3.png')) else 'base.png'
+        _BASE = Image.open(os.path.join(OUT, name)).convert('RGB')
         _BASE.load()
     return _BASE
 
@@ -335,6 +373,29 @@ _GATE_DRY = ('IMPORTANT: the arched passage through the gatehouse is a DRY stone
              'shaded paving, NOT water. The dirt road runs straight out through the gate. There is no water, river, stream '
              'or moat anywhere under or near this gate.')
 PIECE_HINTS = {(6, 15): _GATE_DRY, (6, 16): _GATE_DRY}
+# v3 城墙 / 城门修补(11-24 用户:「这个城墙右侧怎么是破的」)。根子在 3D 摆城(guard3d/G3DCityV4.ts,别的会话的地盘不动):
+# 城门楼朝向「城中心」而不是顺着城墙、城门 8.5 米内的墙段整段不放 → 门两侧一截矮墩 + 缺口;离河 RW/2+3 米内的墙段也不放 → 运河口墙直接截断。
+# 城墙内侧 6 米本来就不让走(布局 inside_core),补墙不碰可走格。位置用 city_v3_cleanup 同一套投影算过落在哪块、块里哪儿。
+PIECE_HINTS_V3 = {
+    (6, 15): ("WALL FIX for this piece: the south gatehouse stands right of centre. Immediately to its RIGHT the guide's wall is "
+              "broken - a short low stub, an empty gap, then a thicker wall block. Paint one continuous crenellated wall there, "
+              "joined flush to the gatehouse and carrying on to the right edge in line with the wall on the gatehouse's left. "
+              "The gate square inside (above the gatehouse) is a clean round cobbled square around the statue; the road runs "
+              "straight through the arch."),
+    (7, 15): ("WALL FIX for this piece: at the left edge the city wall comes from the south gatehouse (just outside the image). "
+              "In the guide there is a gap and a short stub there; paint the wall continuous and solid from the left edge "
+              "onwards, with the same height and crenellations as the rest of the wall."),
+    (10, 4): ("GATE FIX for this piece: the east gatehouse stands left of centre, a little below the middle. In the guide it "
+              "looks half-built and the city wall does not reach it. Paint a complete, intact stone gatehouse - a tall arched "
+              "passage with an open wooden gate, a crenellated top and a small slate roof, like a proper town gate - standing "
+              "squarely in the line of the city wall, with the wall joined flush on BOTH sides (fill the gaps with the same "
+              "wall). The road runs straight through the arch; keep the trees and the lamp where the guide has them."),
+    (2, 14): ("WALL FIX for this piece: right of centre the city wall ends at the canal bank with a raw cut end. Finish it with "
+              "a solid squared stone pier at the water's edge so the wall end looks built on purpose."),
+    (3, 15): ("WALL FIX for this piece: in the upper left-centre, the bare grey strip on the bank below the canal is where a "
+              "piece of the city wall is missing. Paint the same crenellated wall along that strip, from the round tower on its "
+              "right up to the canal bank, and end it with a solid squared stone pier at the water's edge."),
+}
 
 
 def gen_piece(c, r, out_frac, xs, ys, strict=False):
@@ -359,11 +420,17 @@ def gen_piece(c, r, out_frac, xs, ys, strict=False):
         seam = SEAM
     raw = dst.replace('.png', '_raw.png')
     if out_frac > COUNTRY_FRAC:
-        prompt = (COUNTRY_V2 if STYLE == 'v2' else COUNTRY).format(seam=seam)
+        prompt = (COUNTRY_V2 if STYLE in ('v2', 'v3') else COUNTRY).format(seam=seam)
+        if STYLE == 'v3':
+            prompt += '\n' + _WALL_V3
     else:
-        prompt = (PROMPT_V2 if STYLE == 'v2' else PROMPT).format(seam=seam, outside=OUTSIDE if out_frac > 0.04 else '')
+        prompt = {'v2': PROMPT_V2, 'v3': PROMPT_V3}.get(STYLE, PROMPT).format(seam=seam, outside=OUTSIDE if out_frac > 0.04 else '')
+        if STYLE == 'v3':
+            prompt += '\n' + LAYOUT_V3
     if (c, r) in PIECE_HINTS:
         prompt += '\n' + PIECE_HINTS[(c, r)]
+    if STYLE == 'v3' and (c, r) in PIECE_HINTS_V3:
+        prompt += '\n' + PIECE_HINTS_V3[(c, r)]
     tag = f'city r{r} c{c} out={out_frac:.2f}'
     if not (run_codex_strict(inputs, prompt, raw, tag) if strict else run_codex(inputs, prompt, raw, tag, size=None)):
         return None
@@ -402,14 +469,16 @@ def run_codex_strict(inputs, prompt, raw, tag):
     return True
 
 
-def run_pieces(sel):
+def run_pieces(sel, strict=False):
+    """strict = 和 worker 一样走 run_codex_strict(不等别的 Codex 跑完):worker 在跑时单开一路画指定块要加 --strict,
+    否则原版 run_codex 会一直等别的出图进程都结束(11-24 关键块那一路干等了 15 分钟)。"""
     m = _meta()
     xs, ys = m['xs'], m['ys']
     frac = {(p['c'], p['r']): p.get('out', 0.5 if p['outside'] else 0.0) for p in m['pieces']}
     failed = []
     for c, r in sorted(sel, key=lambda t: (t[1], t[0])):
         for _ in range(3):
-            if gen_piece(c, r, frac.get((c, r), 0.0), xs, ys):
+            if gen_piece(c, r, frac.get((c, r), 0.0), xs, ys, strict=strict):
                 break
         else:
             failed.append((c, r))
@@ -605,12 +674,14 @@ if __name__ == '__main__':
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ('status', [])
+    strict = '--strict' in rest
+    rest = [a for a in rest if a != '--strict']
     if cmd == 'base':
         cmd_base()
     elif cmd == 'sample':
-        run_pieces([(int(rest[0]), int(rest[1]))])
+        run_pieces([(int(rest[0]), int(rest[1]))], strict)
     elif cmd == 'area':
-        run_pieces(area(rest))
+        run_pieces(area(rest), strict)
     elif cmd == 'all':
         run_pieces([(p['c'], p['r']) for p in _meta()['pieces']])
     elif cmd == 'worker':

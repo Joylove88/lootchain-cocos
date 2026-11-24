@@ -188,7 +188,8 @@ const NPCS: Array<[WorldNpcCode, string, string, number, number, 1 | -1]> = [
   ['CHILD', '小汤姆', 'city4_npc_child', -30, 30, 1],
   ['CAPTAIN', '卫队长 · 罗兰', 'city4_npc_captain', 92, 4, -1],
   ['GUARD_E', '城门卫兵', 'city4_npc_guard', 112.8, 2.3, -1],
-  // 11-24 手绘版整城缩一半后,原位置(-62, 76.5)正挡在南门门洞进城的路线上、身前就是门楼墙 → 挪到门洞东侧路灯旁的石板地上
+  // 11-24 手绘版整城缩一半后,原位置(-62, 76.5)正挡在南门门洞进城的路线上、身前就是门楼墙 → 挪到门洞东侧的石板地上
+  // (旁边那盏路灯在 v3 布局整理里去掉了:城门 10 米内不留散立的路灯)
   ['GUARD_S', '城门卫兵', 'city4_npc_guard', -59.4, 77.1, 1],
 ];
 const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, X, Z, flip]) => ({ code, name, asset: CITY4(art), ...pre25Ground(X, Z), height: 215, flip }));
