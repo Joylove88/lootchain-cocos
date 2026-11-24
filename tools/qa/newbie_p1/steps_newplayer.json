@@ -48,6 +48,12 @@
   "shot": true
  },
  {
+  "label": "说明卡先记看过_本批不测",
+  "js": "localStorage.setItem('lc_feature_intro_{UID}', JSON.stringify(['terminal', 'bag', 'forge', 'daily', 'crystal', 'raid', 'codex', 'guild', 'explore', 'worldmap'])); refresh(); root.featureIntros.uid = 0; return 'ok';",
+  "wait": 0,
+  "shot": false
+ },
+ {
   "label": "终端锁格",
   "js": "refresh(); root.openLobbyTerminalPanel(); await sleep(2500); const locks = []; cc.director.getScene().walk(n => { if (n.name.indexOf('LockText_') === 0 && n.activeInHierarchy) { const l = n.getComponent(cc.Label); locks.push(n.name.slice(9) + ':' + (l ? l.string : '')); } }); return JSON.stringify(locks);",
   "wait": 0,

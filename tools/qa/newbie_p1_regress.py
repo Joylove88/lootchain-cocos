@@ -8,6 +8,8 @@
   steps_features.json:契约禁用态 → 对话开着时发现隐藏点要排队 → 发现卡开着和 NPC 对话先收卡 → 终端锁格样式
     → 本地模拟接到 V04 的功能开放播报 +「新」角标 → 召唤默认免费池 → 古碑面板走远自动收 → 对话大立绘
     → 进化「升级只提醒」/「跨 5 级自动弹」两条分支(桩接口,不确认)
+  steps_guides.json:docs/57 §4 功能说明卡(终端 / 背包 / 锻造 / 秘境 / 水晶 / 矿境 / 图鉴 / 世界地图 / 野外探索,只出一次)
+    → §3 强引导:模拟接到 V04 召唤页聚光免费召唤 + 跳过;模拟接到 V05 终端→英雄格→第一位伙伴→升级,升级后当场收起
 截图 / log 在 <输出目录>(默认 %TEMP%/lootchain-qa/newbie_p1_<时间>);跑完按配置目录关掉无头 Edge。
 注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
       steps_features.json 里的「模拟接到 V04」只改页面内存,不碰服务端。
@@ -67,6 +69,7 @@ def main():
         run(out_dir, fill('steps_inject.json', os.path.join(out_dir, '_inject.json'), token, uid), '--fresh', '--keep')
         run(out_dir, fill('steps_newplayer.json', os.path.join(out_dir, '_newplayer.json'), token, uid), '--keep')
         run(out_dir, fill('steps_features.json', os.path.join(out_dir, '_features.json'), token, uid), '--keep')
+        run(out_dir, fill('steps_guides.json', os.path.join(out_dir, '_guides.json'), token, uid), '--keep')
     finally:
         edge_guard.kill_profiles([os.path.join(SCRATCH, PROFILE_NAME)])
     print('结果:', os.path.join(out_dir, 'log.jsonl'), flush=True)

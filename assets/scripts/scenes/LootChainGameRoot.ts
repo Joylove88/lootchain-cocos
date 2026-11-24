@@ -112,6 +112,7 @@ import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickStat
 import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickState } from './lobby/LobbyEvolutionPickRenderer';
 import { LobbyPopupQueue } from './lobby/LobbyPopupQueue';
 import { FeatureUnlockTracker, featureLockText, featureName, type FeatureKey } from './lobby/LobbyFeatureUnlocks';
+import { FeatureIntroTracker, renderFeatureIntroCard, type FeatureIntroKey, type FeatureIntroHost } from './lobby/LobbyFeatureIntro';
 import { mountZeroGuideBubble } from './GuideKit';
 import type { EvolutionState } from '../api/EvolutionApi';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
@@ -460,6 +461,12 @@ export class LootChainGameRoot extends Component {
   private readonly popupQueue = new LobbyPopupQueue();
   /** docs/57 §11 终端功能逐步解锁:解锁那一刻播报 +「新」角标。 */
   private readonly featureUnlocks = new FeatureUnlockTracker();
+  /** docs/57 §4 功能说明卡:每个功能第一次打开时出一次(pending = 等页面真正打开再弹;open = 正开着)。 */
+  private readonly featureIntros = new FeatureIntroTracker();
+  private featureIntroPending: { key: FeatureIntroKey; at: number } | null = null;
+  private featureIntroOpen: FeatureIntroKey | null = null;
+  /** docs/57 §3 剧情强引导(V04 免费召唤 / V05 升级英雄):本会话已完成的(等世界状态回读前先压住)。 */
+  private readonly storyGuideDone = new Set<string>();
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
   private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
@@ -1351,6 +1358,7 @@ export class LootChainGameRoot extends Component {
   update(deltaTime: number): void {
     this.updateNetOverlay();
     this.tickTerminalReturn();
+    this.tickFeatureIntro();
     // 视口变化(窗口缩放 / 手机转动)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
     // 输入框编辑中(软键盘弹出会改窗口尺寸)不同步也不重排,否则输入框被重建、键盘收起、字丢失。
     if (!isTextInputActive()) {
@@ -1684,6 +1692,7 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
       this.lobbyTerminalPanelRenderer.render(layout);
       this.remountTerminalDialogs(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'terminal');
     }
   }
 
@@ -1700,7 +1709,11 @@ export class LootChainGameRoot extends Component {
     if (guideFlag) {
       lobbyGuide.markVisited(guideFlag);
     }
-    this.lobbyTerminalPanelRenderer.render(this.resolveLayout());
+    const layout = this.resolveLayout();
+    this.lobbyTerminalPanelRenderer.render(layout);
+    // docs/57:第一次打开终端出说明卡;V05「变强」进行中时聚光「英雄」格(强引导)
+    this.queueFeatureIntro('terminal');
+    this.lobbyHudRenderer.mountGuideOverlay(layout, 'terminal');
     // 红点只在进大厅时拉过一次,领完奖 / 读完邮件后会过时:每次打开终端重拉,变了自动整刷
     void this.loadLobbyBadges(true);
   }
@@ -1777,6 +1790,8 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbySettingsGlassOpen = false;
     this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
+    // 终端上的强引导遮罩(V05 聚光「英雄」格)跟着收
+    this.removeNodeFromContent('LobbyGuideOverlay');
     // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
     const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
     if (node) {
@@ -2195,6 +2210,7 @@ export class LootChainGameRoot extends Component {
       this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
       this.lobbyTerminalPanelRenderer.render(layout);
       this.remountTerminalDialogs(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'terminal');
     }
     this.awakenCinematic.remount(layout);
     this.remountStarterContract(layout);
@@ -2462,6 +2478,11 @@ export class LootChainGameRoot extends Component {
    */
   private handleNativeBack(): void {
     if (this.bootPreloadActive) {
+      return;
+    }
+    if (this.featureIntroOpen) {
+      // 功能说明卡开着:返回键 = 知道了
+      this.dismissFeatureIntroCard(true);
       return;
     }
     if (this.awakenCinematic.active) {
@@ -2891,6 +2912,7 @@ export class LootChainGameRoot extends Component {
 
   private openLobbyBagPanel(): void {
     this.uiSpriteFrameCache.preloadGroup('bag');
+    this.queueFeatureIntro('bag');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyBagPanelOpen = true;
     this.currentView = 'bag';
@@ -2935,6 +2957,7 @@ export class LootChainGameRoot extends Component {
   private openLobbyForgePanel(preselectEquipId: number | null = null, returnHeroId: number | null = null): void {
     this.uiSpriteFrameCache.preloadGroup('forge');
     this.lobbyForgePanelRenderer.prewarmForgeFx();
+    this.queueFeatureIntro('forge');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyForgeReturnHeroId = returnHeroId;
     this.lobbyForgePanelOpen = true;
@@ -4196,6 +4219,7 @@ export class LootChainGameRoot extends Component {
       this.openWithPackGate(codexPrefixes, '正在加载图鉴素材', () => this.openLobbyCodexPanel());
       return;
     }
+    this.queueFeatureIntro('codex');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyCodexPanelOpen = true;
     this.currentView = 'codex';
@@ -4537,6 +4561,9 @@ export class LootChainGameRoot extends Component {
       this.lobbyHeroRosterState.patchHero(heroId, powerOk ? { level: result.level, power: result.power } : { level: result.level });
       this.lobbyHeroLevelUpBusyId = null;
       lobbyGuide.markVisited('levelup');
+      // docs/57 §3 V05 强引导:升级成功即完成(剧情进度要回大厅重读世界状态才更新,这里先压住,遮罩当场收掉)
+      this.storyGuideDone.add('V05');
+      this.removeNodeFromContent('LobbyGuideOverlay');
       gameAudio.sfx('level_up');
       this.setStatus(`${heroName} 升级成功：Lv.${result.level}`);
       // 2026-10-12 用户录屏"点升级骨骼和特效都卡一下":成功时刻只做局部(按钮解锁 + 贴着英雄的庆祝特效),不整页重绘
@@ -4738,6 +4765,8 @@ export class LootChainGameRoot extends Component {
         this.loadLobbyHeroDetail(heroId),
       ]);
       if (ups > 0) {
+        // 一键升级也算 V05「变强」完成(强引导别再指升级钮)
+        this.storyGuideDone.add('V05');
         this.setStatus(`${heroName} 一键升级 +${ups} 级${lastLevel !== null ? `，Lv.${lastLevel}` : ''}，战力 ${this.formatInteger(lastPower)}${stopReason ? `（已停止：${stopReason}）` : ''}`);
       } else {
         this.setStatus(`一键升级未执行：${stopReason || '材料不足或已达上限'}`);
@@ -5874,6 +5903,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     lobbyGuide.markVisited('daily');
+    this.queueFeatureIntro('daily');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelRenderer.resetTransientPopups();
     this.lobbyDailyDungeonPanelOpen = true;
@@ -5888,6 +5918,7 @@ export class LootChainGameRoot extends Component {
 
   private openLobbyRaidPanel(): void {
     this.uiSpriteFrameCache.preloadGroup('raid');
+    this.queueFeatureIntro('raid');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyRaidPanelOpen = true;
     this.currentView = 'raid';
@@ -8070,6 +8101,7 @@ export class LootChainGameRoot extends Component {
 
   private openWorldMapPanel(): void {
     this.worldMapPanel = { tab: 0, selected: null, region: null, view: 'world', dest: null };
+    this.queueFeatureIntro('worldmap');
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
   }
@@ -8078,6 +8110,7 @@ export class LootChainGameRoot extends Component {
   private openAreaMapPanel(): void {
     this.lobbyAreaMapRenderer.exploreOpen = false;
     this.worldMapPanel = { tab: 0, selected: null, region: null, view: 'area', dest: null };
+    this.queueFeatureIntro('explore');
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
   }
@@ -8547,6 +8580,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.worldBountyPanel = { busy: false };
+    this.queueFeatureIntro('guild');
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
   }
@@ -8719,6 +8753,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     lobbyGuide.markVisited('crystal');
+    this.queueFeatureIntro('crystal');
     this.lobbyGuardCrystalDialog = {
       info: this.lobbyGuardCrystalDialog?.info ?? null,
       loading: true,
@@ -10397,6 +10432,126 @@ export class LootChainGameRoot extends Component {
     }
     const names = added.map((key) => featureName(key)).filter(Boolean);
     this.queueZeroToast(`feature-${added.join('-')}`, `新功能开放:${names.join(' · ')}。在右上角的「终端」里打开。`, 40, 120_000);
+  }
+
+  // ── docs/57 §4 功能说明卡 ──
+
+  /** 打开某功能时调用:没看过就排一张说明卡,等页面真正打开(不在下载页、不在启动预载)再弹在最上层。 */
+  private queueFeatureIntro(key: FeatureIntroKey): void {
+    const userId = this.api.tokenStore.userId();
+    if (!userId) {
+      return;
+    }
+    this.featureIntros.bind(userId);
+    if (this.featureIntros.seen(key) || this.featureIntroOpen === key) {
+      return;
+    }
+    this.featureIntroPending = { key, at: Date.now() };
+  }
+
+  /** 这张卡对应的功能页现在是否开着。 */
+  private featureIntroPanelOpen(key: FeatureIntroKey): boolean {
+    switch (key) {
+      case 'terminal': return this.lobbyTerminalOpen;
+      case 'bag': return this.lobbyBagPanelOpen;
+      case 'forge': return this.lobbyForgePanelOpen;
+      case 'daily': return this.lobbyDailyDungeonPanelOpen;
+      case 'crystal': return !!this.lobbyGuardCrystalDialog;
+      case 'raid': return this.lobbyRaidPanelOpen;
+      case 'codex': return this.lobbyCodexPanelOpen;
+      case 'guild': return !!this.worldBountyPanel;
+      case 'explore': return this.worldMapPanel?.view === 'area';
+      case 'worldmap': return this.worldMapPanel?.view === 'world';
+      default: return false;
+    }
+  }
+
+  /** 每帧:排着的说明卡等功能页真正打开(过 0.3 秒、没在下载页)再弹;开着的卡在功能页被代码关掉时一起收(不算看过)。 */
+  private tickFeatureIntro(): void {
+    const open = this.featureIntroOpen;
+    if (open) {
+      if (!this.featureIntroPanelOpen(open)) {
+        this.dismissFeatureIntroCard(false);
+      }
+      return;
+    }
+    const pending = this.featureIntroPending;
+    if (!pending) {
+      return;
+    }
+    const age = Date.now() - pending.at;
+    if (age > 30_000) {
+      this.featureIntroPending = null;
+      return;
+    }
+    // 功能页还在下载页 / 素材加载门(「正在加载锻造素材」)上:等真正的页面出来再弹
+    const root = this.ensureContentRoot();
+    if (age < 300 || this.bootPreloadActive || !this.featureIntroPanelOpen(pending.key) || root.getChildByName('PackLoading') || root.getChildByName('SceneAssetLoading')) {
+      return;
+    }
+    this.featureIntroPending = null;
+    this.showFeatureIntroCard(pending.key);
+  }
+
+  private showFeatureIntroCard(key: FeatureIntroKey): void {
+    this.dismissFeatureIntroCard(false);
+    // 独立层挂根节点最上面:功能页整页重绘只动内容根,不会拆掉 / 盖住这张卡
+    let layer = this.node.getChildByName('LobbyFeatureIntroLayer');
+    if (!layer) {
+      layer = new Node('LobbyFeatureIntroLayer');
+      layer.layer = this.node.layer;
+      this.node.addChild(layer);
+      layer.addComponent(UITransform).setContentSize(new Size(10, 10));
+    }
+    layer.setSiblingIndex(this.node.children.length - 1);
+    const card = new Node(`FeatureIntro_${key}`);
+    card.layer = this.node.layer;
+    layer.addChild(card);
+    renderFeatureIntroCard(this as unknown as FeatureIntroHost, card, this.resolveLayout(), key, () => this.dismissFeatureIntroCard(true));
+    this.featureIntroOpen = key;
+    gameAudio.sfx('panel_open');
+  }
+
+  /** 收说明卡;seen = 点了「知道了」(记为看过,以后不再出)。 */
+  private dismissFeatureIntroCard(seen: boolean): void {
+    const open = this.featureIntroOpen;
+    this.featureIntroOpen = null;
+    this.node.getChildByName('LobbyFeatureIntroLayer')?.destroyAllChildren();
+    if (open && seen) {
+      this.featureIntros.markSeen(open);
+      gameAudio.sfx('panel_close');
+    }
+  }
+
+  // ── docs/57 §3 剧情强引导(V04 免费召唤 / V05 升级英雄)──
+
+  /** 本条强引导已跳过 / 本会话已完成(LobbyHudHost)。跳过记在本机(按账号)。 */
+  storyGuideBlocked(code: string): boolean {
+    if (this.storyGuideDone.has(code)) {
+      return true;
+    }
+    try {
+      return sys.localStorage.getItem(`lc_story_guide_skip_${this.api.tokenStore.userId() ?? 0}_${code}`) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /** 强引导右上「跳过引导」(docs/57 §9:跳过 = 本条记完成)。 */
+  skipStoryGuide(code: string): void {
+    try {
+      sys.localStorage.setItem(`lc_story_guide_skip_${this.api.tokenStore.userId() ?? 0}_${code}`, '1');
+    } catch {
+      // 本地存储不可用:本会话内压住
+    }
+    this.storyGuideDone.add(code);
+    this.removeNodeFromContent('LobbyGuideOverlay');
+    gameAudio.sfx('panel_close');
+  }
+
+  /** 英雄详情里看的是主角(主角等级跟玩家走,不能用经验书升级,不指升级钮)。 */
+  heroDetailIsProtagonist(): boolean {
+    return !!this.currentLobbyHeroDetailHero()?.protagonist;
   }
 
   /** 跑图键盘锁:契约之选 / 进化抉择开着时(LobbyTownHost)。 */

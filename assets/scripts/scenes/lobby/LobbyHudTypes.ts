@@ -133,6 +133,14 @@ export interface LobbyHudHost {
   evolutionPendingCount?(): number;
   /** 右上「进化」钮:打开进化抉择页(玩家自己点开的,选完一张接着选下一张)。 */
   openEvolutionPickFromHud?(): void;
+  /** docs/57 §3 剧情强引导:跑图世界状态(剧情任务进度决定该出哪条引导)。 */
+  currentWorldState?(): import('../../types/WorldTypes').WorldStateVO | null;
+  /** 该条剧情强引导已跳过 / 本会话已完成。 */
+  storyGuideBlocked?(code: string): boolean;
+  /** 强引导右上「跳过引导」。 */
+  skipStoryGuide?(code: string): void;
+  /** 英雄详情看的是主角(主角等级跟玩家走,不指升级钮)。 */
+  heroDetailIsProtagonist?(): boolean;
   currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
   /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
   lobbyMailUnreadCount?(): number;

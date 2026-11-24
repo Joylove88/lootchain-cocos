@@ -166,8 +166,14 @@ export class LobbyHudRenderer {
    * 按(步骤,当前视图)查表:大厅指入口按钮,面板内指向具体动作按钮(免费单抽/英雄卡/升级/领取)。
    * 未列出的视图不打扰(玩家跑偏自己返回,主路径页面上引导自动续上)。步骤见 GuideManager。
    */
-  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest' | 'formation'): void {
+  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest' | 'formation' | 'terminal'): void {
     this.findLobbyNode('LobbyGuideOverlay')?.destroy();
+    // docs/57 §3 剧情强引导(11-24):跟剧情任务走,优先于旧引导链
+    const story = this.resolveStoryGuide(view);
+    if (story) {
+      this.renderGuideEntry(layout, story, null, story.code);
+      return;
+    }
     const profile = this.host.currentLobbyProfile();
     lobbyGuide.bind(profile.userId);
     const adventure = this.host.currentLobbyAdventureState().adventure;
@@ -218,6 +224,43 @@ export class LobbyHudRenderer {
     if (step === 'LEVEL_UP' && view === 'heroDetail' && this.host.heroDetailLevelUpAffordable() !== true) {
       return;
     }
+    this.renderGuideEntry(layout, entry, soft, null);
+  }
+
+  /**
+   * docs/57 §3 强引导(只做 5 处里的召唤 / 升级英雄;移动 / 战斗按键在训练场教学里):
+   * - V04「祭坛的回应」接了还没召唤:召唤页聚光「免费召唤」(确认今天的免费单抽还在、且选中的是免费池才上遮罩);
+   * - V05「变强」接了还没升级:终端聚光「英雄」格 → 名册聚光第一位伙伴(不是主角)→ 详情聚光「升级」(经验书 / 金币够才上遮罩)。
+   * 完成看剧情进度(服务端),换设备不重放;跳过 = 本条记完成(本机)。只在新手村阶段出。
+   */
+  private resolveStoryGuide(view: string): { code: string; targets: string[]; text: string } | null {
+    const world = this.host.currentWorldState?.() ?? null;
+    if (!world || world.stage !== 'VILLAGE') {
+      return null;
+    }
+    const active = (code: string): boolean => {
+      const quest = world.quests.find((item) => item.code === code);
+      return !!quest && quest.state === 'ACCEPTED' && quest.progress < quest.target && !this.host.storyGuideBlocked?.(code);
+    };
+    if (view === 'gacha' && active('V04') && this.host.gachaFreeSingleAvailable() === true) {
+      return { code: 'V04', targets: ['GachaSummonOnceButton'], text: '祭坛今天的免费召唤还在,点这里召唤一次!' };
+    }
+    if (active('V05')) {
+      if (view === 'terminal') {
+        return { code: 'V05', targets: ['LobbyTerminalHit_Tile_heroes'], text: '点「英雄」,去给你的伙伴升一级' };
+      }
+      if (view === 'heroes') {
+        return { code: 'V05', targets: ['LobbyHeroRosterCard_0'], text: '点你的伙伴,进入详情' };
+      }
+      if (view === 'heroDetail' && !this.host.heroDetailIsProtagonist?.() && this.host.heroDetailLevelUpAffordable() === true) {
+        return { code: 'V05', targets: ['LobbyHeroDetailLevelUpButton'], text: '经验书已经备好了,点「升级」!' };
+      }
+    }
+    return null;
+  }
+
+  /** 引导覆盖层本体:soft = 软引导(不压暗,点气泡关闭);storyCode = 剧情强引导(右上「跳过引导」)。 */
+  private renderGuideEntry(layout: UiLayout, entry: { targets: string[]; text: string }, soft: { flag: GuideFlag } | null, storyCode: string | null): void {
     let target: Node | null = null;
     for (const name of entry.targets) {
       target = this.findLobbyNode(name);
@@ -361,6 +404,30 @@ export class LobbyHudRenderer {
         lobbyGuide.markVisited(soft.flag);
         overlay.destroy();
       }, this);
+    }
+    if (storyCode) {
+      // docs/57 §9:每条强引导都带「跳过」(跳过 = 本条记完成)。右上深色玻璃胶囊,压在暗层上面才点得到
+      const skipW = 148 * scale;
+      const skipH = 50 * scale;
+      const skip = this.addChildPlainNode(overlay, 'GuideSkip', layout.stageRight - skipW / 2 - 24 * scale, layout.stageTop - skipH / 2 - 22 * scale, skipW, skipH);
+      const sg = skip.addComponent(Graphics);
+      sg.fillColor = rgba(16, 19, 26, 225);
+      sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
+      sg.fill();
+      sg.strokeColor = rgba(255, 255, 255, 60);
+      sg.lineWidth = Math.max(1, 1.2 * scale);
+      sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
+      sg.stroke();
+      const label = this.addChildLabel(skip, 'Text', '跳过引导 ›', 0, 0, Math.max(20, 20 * scale), rgba(214, 218, 228), new Size(skipW - 12 * scale, skipH), HorizontalTextAlignment.CENTER);
+      label.overflow = Label.Overflow.SHRINK;
+      skip.addComponent(Button);
+      skip.on(Button.EventType.CLICK, () => {
+        this.host.skipStoryGuide?.(storyCode);
+        if (overlay.isValid) {
+          overlay.destroy();
+        }
+      }, this);
+      this.applyImageButtonFeedback(skip, 1.04, 0.96);
     }
   }
 
