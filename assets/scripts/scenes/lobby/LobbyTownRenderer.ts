@@ -4946,7 +4946,7 @@ export class LobbyTownRenderer {
     }
     const now = Date.now();
     if (now >= this.exitCooldownUntil) {
-      const exit: WorldMapExit | undefined = this.def.exits.find((item) => Math.hypot(item.x - leader.x, item.y - leader.y) < item.radius * 0.7);
+      const exit: WorldMapExit | undefined = this.def.exits.find((item) => Math.hypot(item.x - leader.x, item.y - leader.y) < (item.triggerRadius ?? item.radius * 0.7));
       if (exit) {
         this.exitCooldownUntil = now + 3000;
         this.host.travelWorldMap?.(exit.toMap, exit.toSpawn, exit.reach);

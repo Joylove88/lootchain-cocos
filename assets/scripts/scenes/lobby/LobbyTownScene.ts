@@ -62,6 +62,21 @@ export function sceneWalkable(scene: WorldSceneDef, x: number, y: number): boole
         bits[r * cols + c] = (parseInt(hex.charAt(c >> 2) || '0', 16) >> (3 - (c & 3))) & 1;
       }
     }
+    // 补丁(世界坐标矩形)按顺序盖上去:后写的覆盖先写的
+    for (const [x0, y0, x1, y1, ok] of scene.walkPatches ?? []) {
+      const ca = Math.max(0, Math.floor((Math.min(x0, x1) / scene.unit + scene.px[0] / 2) / cell));
+      const cb = Math.min(cols - 1, Math.floor((Math.max(x0, x1) / scene.unit + scene.px[0] / 2) / cell));
+      const ra = Math.max(0, Math.floor((scene.px[1] / 2 - Math.max(y0, y1) / scene.unit) / cell));
+      const rb = Math.min(rows.length - 1, Math.floor((scene.px[1] / 2 - Math.min(y0, y1) / scene.unit) / cell));
+      for (let r = ra; r <= rb; r += 1) {
+        bits.fill(ok ? 1 : 0, r * cols + ca, r * cols + cb + 1);
+      }
+    }
+    for (const [r, c0, c1, ok] of scene.walkRuns ?? []) {
+      if (r >= 0 && r < rows.length) {
+        bits.fill(ok ? 1 : 0, r * cols + Math.max(0, c0), r * cols + Math.min(cols - 1, c1) + 1);
+      }
+    }
     walkCache.set(scene, bits);
   }
   const c = Math.floor((x / scene.unit + scene.px[0] / 2) / cell);

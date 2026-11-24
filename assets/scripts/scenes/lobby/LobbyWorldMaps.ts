@@ -214,6 +214,11 @@ export interface WorldMapExit {
   x: number;
   y: number;
   radius: number;
+  /**
+   * 踩进多近算出图(缺省 radius × 0.7)。地上画的圈仍按 radius;
+   * 11-24 手绘主城南门:打通的门洞约 400 宽,0.7 × 140 的圈从两侧推摇杆会擦边走过 → 单独放大判定、圈不变大。
+   */
+  triggerRadius?: number;
   toMap: WorldMapCode;
   toSpawn: { x: number; y: number };
   /** 剧情:走出这个出口时上报 REACH(如村口)。 */
@@ -319,6 +324,16 @@ export interface WorldSceneDef {
   strips: number[][];
   /** 可走栅格:一格 cell 图片像素;每行一个十六进制串(高位在左),第 0 行在最上。只有标 1 的格子能走。 */
   walk: { cell: number; cols: number; rows: string[] };
+  /**
+   * 可走栅格补丁(世界坐标矩形 [x0, y0, x1, y1, 1 = 改成可走 / 0 = 改成挡]),按顺序盖在栅格上(sceneWalkable 建缓存时套一次)。
+   * 11-24 手绘主城:自动生成的栅格把南门门楼背后那一排判成挡,门洞只能绕西边墙根进去 → 用补丁直接打通。
+   */
+  walkPatches?: Array<[number, number, number, number, number]>;
+  /**
+   * 可走栅格行段补丁(栅格坐标:[行, 起列, 止列(含), 1 = 可走 / 0 = 挡]),在 walkPatches 之后套。
+   * 按栅格算出来的形状(斜着的台阶)用它,比世界坐标矩形贴得准。
+   */
+  walkRuns?: Array<[number, number, number, number]>;
   /** 柔光点贴图(光晕 / 火焰载体 / 飞蛾 / 雪片共用;packable=false)。 */
   dot: string;
   /** 光晕:盖在所有东西上面的叠加光(灯 / 窗 / 火旁),alpha 0~255,flicker = 明暗起伏幅度 0~1;moths = 绕灯飞蛾数。 */
