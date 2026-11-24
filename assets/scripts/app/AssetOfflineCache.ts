@@ -99,9 +99,11 @@ export async function ensureAssetServiceWorker(waitForControl: boolean): Promise
  * 之后刷新页面会重新走一次首访预载(只拉登录+大厅),其余素材用到时重新下载。任何一步失败都跳过继续。
  */
 export async function resetAssetOfflineCache(): Promise<void> {
+  forgetCacheIndex();
   try {
     sys.localStorage.removeItem(PRELOAD_DONE_KEY);
     sys.localStorage.removeItem('lootchain.fullPack.version');
+    sys.localStorage.removeItem(CACHE_SWEEP_KEY);
   } catch (error) {
     void error;
   }
@@ -248,16 +250,263 @@ export async function fetchAssetManifest(): Promise<AssetManifest | null> {
 }
 
 /**
- * 清单里本地缓存还缺的文件(全齐返回空数组)。先把内容已过期的同名文件删掉,它们随缺失文件一起重下。
- * onCheck:核对进度(要核对几个、核对了几个),启动加载页用来显示「正在核对本地资源」,免得看起来卡在 0%。
+ * 本地缓存索引(11-24 用户:加载页「正在读取本地缓存 0%」等了 1 分钟,以为卡死了):
+ * 以前每次启动把整个缓存列一遍(cache.keys()),浏览器要把每个缓存文件打开读一遍 —— 老玩家缓存两三万个文件,
+ * 开机后第一次打开(磁盘冷)要一分钟。现在把「缓存里有哪些清单文件」记成一条索引,存进同一个缓存
+ * (浏览器清缓存时索引跟着一起没,不会出现索引说有、缓存里却没有),启动只读这一条:
+ * - 有完整索引:开局包里索引没记的(发版新增的,一般几十个)逐个查一下,其余直接按索引算;
+ * - 没有索引(这版第一次打开 / 缓存被清过):只并发查开局包那 3 千个文件(加载页显示读取进度),
+ *   开局包之外的进游戏后在后台查,查完写索引;
+ * - 下载器每下好一个文件记进索引(攒 15 秒写一次,切后台 / 关页面时也写;没写上的下次启动再查,不会重下)。
  */
+const CACHE_INDEX_KEY = 'lootchain-cache-index.json';
+const CACHE_INDEX_FORMAT = 1;
+const CACHE_SCAN_CONCURRENCY = 24;
+const CACHE_VERIFY_CONCURRENCY = 12;
+const CACHE_INDEX_FLUSH_MS = 15000;
+const CACHE_DELETE_CONCURRENCY = 8;
+/** 每个版本整表扫一次缓存(清掉索引外的旧文件)做没做过。 */
+const CACHE_SWEEP_KEY = 'lootchain.cacheSweep';
+
+/** 认为在缓存里的文件(清单相对路径;含上个版本留下、还没清掉的)。 */
+const cachedPaths = new Set<string>();
+let indexCache: Cache | null = null;
+/** 索引完整 = 不在索引里的清单文件可以认为本地没有。 */
+let indexComplete = false;
+let indexLoadTried = false;
+let indexDirty = false;
+let indexTimer: ReturnType<typeof setTimeout> | null = null;
+let indexWriting: Promise<void> = Promise.resolve();
+let indexHideHooked = false;
+
+async function openAssetCache(): Promise<Cache> {
+  if (!indexCache) {
+    indexCache = await caches.open(ASSET_CACHE_NAME);
+  }
+  return indexCache;
+}
+
+function readLocal(key: string): string | null {
+  try {
+    return sys.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(key: string, value: string): void {
+  try {
+    sys.localStorage.setItem(key, value);
+  } catch {
+    // 忽略(存不下就下次再做一遍)
+  }
+}
+
+/** 读本地索引(每个页面只读一次);返回是否拿到完整索引。 */
+async function loadCacheIndex(cache: Cache): Promise<boolean> {
+  if (indexLoadTried) {
+    return indexComplete;
+  }
+  indexLoadTried = true;
+  try {
+    const hit = await cache.match(CACHE_INDEX_KEY, { ignoreVary: true });
+    if (!hit) {
+      return false;
+    }
+    const data = (await hit.json()) as { v?: number; complete?: boolean; files?: unknown };
+    if (!data || data.v !== CACHE_INDEX_FORMAT || !Array.isArray(data.files)) {
+      return false;
+    }
+    for (const path of data.files) {
+      if (typeof path === 'string') {
+        cachedPaths.add(path);
+      }
+    }
+    indexComplete = data.complete === true;
+    return indexComplete;
+  } catch (error) {
+    void error;
+    return false;
+  }
+}
+
+function hookIndexFlushOnHide(): void {
+  if (indexHideHooked || typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+  indexHideHooked = true;
+  // 切后台 / 关页面时把还没写的索引写掉(尽力而为;没写上的下次启动再查一遍)
+  window.addEventListener('pagehide', () => void flushCacheIndex());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      void flushCacheIndex();
+    }
+  });
+}
+
+function scheduleIndexFlush(): void {
+  indexDirty = true;
+  if (indexTimer || !indexCache) {
+    return;
+  }
+  indexTimer = setTimeout(() => {
+    indexTimer = null;
+    void flushCacheIndex();
+  }, CACHE_INDEX_FLUSH_MS);
+}
+
+/** 记一笔「这个文件已在缓存」,攒一阵再写索引。 */
+function noteCached(path: string): void {
+  if (!cachedPaths.has(path)) {
+    cachedPaths.add(path);
+    scheduleIndexFlush();
+  }
+}
+
+function noteUncached(path: string): void {
+  if (cachedPaths.delete(path)) {
+    scheduleIndexFlush();
+  }
+}
+
+/** 把索引写进缓存(排队写,两次写不会交叉)。 */
+export function flushCacheIndex(): Promise<void> {
+  if (indexTimer) {
+    clearTimeout(indexTimer);
+    indexTimer = null;
+  }
+  indexWriting = indexWriting.then(async () => {
+    const cache = indexCache;
+    if (!indexDirty || !cache) {
+      return;
+    }
+    indexDirty = false;
+    try {
+      const body = JSON.stringify({ v: CACHE_INDEX_FORMAT, complete: indexComplete, files: Array.from(cachedPaths) });
+      await cache.put(CACHE_INDEX_KEY, new Response(body, { headers: { 'content-type': 'application/json' } }));
+    } catch (error) {
+      indexDirty = true;
+      void error;
+    }
+  });
+  return indexWriting;
+}
+
+function forgetCacheIndex(): void {
+  if (indexTimer) {
+    clearTimeout(indexTimer);
+    indexTimer = null;
+  }
+  cachedPaths.clear();
+  indexCache = null;
+  indexComplete = false;
+  indexLoadTried = false;
+  indexDirty = false;
+}
+
+/** 并发查一批文件在不在缓存,返回在的(查不到 / 出错算不在)。 */
+async function matchCachedPaths(cache: Cache, paths: string[], concurrency: number, onProgress?: (done: number, total: number) => void): Promise<string[]> {
+  const hits: string[] = [];
+  const total = paths.length;
+  if (total === 0) {
+    return hits;
+  }
+  let cursor = 0;
+  let done = 0;
+  onProgress?.(0, total);
+  const worker = async (): Promise<void> => {
+    while (cursor < total) {
+      const path = paths[cursor++];
+      try {
+        if (await cache.match(path, { ignoreVary: true })) {
+          hits.push(path);
+        }
+      } catch (error) {
+        void error;
+      }
+      done += 1;
+      onProgress?.(done, total);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, () => worker()));
+  return hits;
+}
+
+async function deleteCacheEntries(cache: Cache, items: Array<string | Request>): Promise<void> {
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      try {
+        await cache.delete(item, { ignoreVary: true });
+      } catch (error) {
+        void error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CACHE_DELETE_CONCURRENCY, items.length) }, () => worker()));
+}
+
+export interface PackCacheScan {
+  /** 开局包里本地缺的(加载页下完再进游戏)。 */
+  coreMissing: Array<[string, number]>;
+  /** 开局包之外、索引里没有的(交给后台下载器)。 */
+  rest: Array<[string, number]>;
+  /** rest 是否已确认本地没有;false = 没有索引,要先 verifyPackFiles 在后台查一遍。 */
+  restVerified: boolean;
+}
+
+/**
+ * 启动时算本地缓存还缺哪些清单文件(不整表列缓存,见上面「本地缓存索引」)。先把内容已过期的同名文件删掉,它们随缺失文件一起重下。
+ * onCheck:核对同名改内容文件的进度(发版后第一次打开);onScan:查开局包文件在不在缓存的进度(没有索引时)。
+ */
+export async function scanPackCache(manifest: TieredManifest, onCheck?: (done: number, total: number) => void, onScan?: (done: number, total: number) => void): Promise<PackCacheScan> {
+  const cache = await openAssetCache();
+  hookIndexFlushOnHide();
+  const indexed = await loadCacheIndex(cache);
+  const coreCount = Math.min(manifest.core ?? manifest.files.length, manifest.files.length);
+  const coreFiles = manifest.files.slice(0, coreCount);
+  // 开局包里索引没记的逐个查(有索引时一般只是发版新增的几十个,不在缓存里的查得很快)
+  const unknownCore = coreFiles.filter(([path]) => !cachedPaths.has(path)).map(([path]) => path);
+  const hits = await matchCachedPaths(cache, unknownCore, CACHE_SCAN_CONCURRENCY, onScan);
+  hits.forEach((path) => cachedPaths.add(path));
+  // 没有索引、开局包一个都不在 = 新玩家 / 缓存被清过:没有旧内容要核对,开局包之外的也不用查
+  const fresh = !indexed && coreFiles.every(([path]) => !cachedPaths.has(path));
+  await evictMutatedFiles(cache, manifest, indexed, fresh, onCheck);
+  if (fresh) {
+    indexComplete = true;
+  }
+  if (hits.length > 0 || fresh) {
+    scheduleIndexFlush();
+  }
+  (globalThis as unknown as { __lootchainCacheIndex?: unknown }).__lootchainCacheIndex = {
+    size: () => cachedPaths.size,
+    complete: () => indexComplete,
+    flush: () => flushCacheIndex(),
+  };
+  return {
+    coreMissing: coreFiles.filter(([path]) => !cachedPaths.has(path)),
+    rest: manifest.files.slice(coreCount).filter(([path]) => !cachedPaths.has(path)),
+    restVerified: indexed || fresh,
+  };
+}
+
+/** 没有索引时:开局包之外的文件在后台并发查一遍缓存(命中的记进索引),返回确实缺的;查完索引就完整了,立刻写一次。 */
+export async function verifyPackFiles(files: Array<[string, number]>): Promise<Array<[string, number]>> {
+  const cache = await openAssetCache();
+  const hits = new Set(await matchCachedPaths(cache, files.map(([path]) => path), CACHE_VERIFY_CONCURRENCY));
+  hits.forEach((path) => cachedPaths.add(path));
+  indexComplete = true;
+  indexDirty = true;
+  void flushCacheIndex();
+  return files.filter(([path]) => !hits.has(path));
+}
+
+/** 清单里本地缓存还缺的文件(全齐返回空数组;后台补缺用,没有索引时会把开局包之外的也查一遍)。 */
 export async function missingManifestFiles(manifest: AssetManifest, onCheck?: (done: number, total: number) => void): Promise<Array<[string, number]>> {
-  const cache = await caches.open(ASSET_CACHE_NAME);
-  const keys = await cache.keys();
-  const have = new Set<string>(keys.map((request) => new URL(request.url).pathname));
-  const base = new URL('.', location.href).pathname;
-  await evictMutatedFiles(cache, manifest, base, have, onCheck);
-  return manifest.files.filter(([path]) => !have.has(base + path));
+  const scan = await scanPackCache(manifest as TieredManifest, onCheck);
+  const rest = scan.restVerified ? scan.rest : await verifyPackFiles(scan.rest);
+  return scan.coreMissing.concat(rest);
 }
 
 /**
@@ -271,8 +520,11 @@ function packFetchInit(path: string): RequestInit {
   return { headers: { [PREFETCH_HEADER]: '1' }, cache: evictedPaths.has(path) ? 'reload' : 'default' };
 }
 
-/** 核对 manifest.mutable 里在缓存中的文件:内容哈希对不上就删掉并从 have 里移除。任何一步失败都跳过(不影响启动)。 */
-async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: string, have: Set<string>, onCheck?: (done: number, total: number) => void): Promise<void> {
+/**
+ * 核对 manifest.mutable 里在缓存中的文件:内容哈希对不上就删掉(随缺失文件一起重下)。任何一步失败都跳过(不影响启动)。
+ * trustIndex:有完整索引时只查索引里记着的;没有索引时都查一下(不在缓存里的查得很快)。fresh:缓存里没有旧内容,直接记成已核对。
+ */
+async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, trustIndex: boolean, fresh: boolean, onCheck?: (done: number, total: number) => void): Promise<void> {
   const mutable = manifest.mutable;
   const subtle = typeof crypto !== 'undefined' ? crypto.subtle : undefined;
   if (!mutable || !subtle) {
@@ -294,7 +546,7 @@ async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: st
   } catch {
     verified = {};
   }
-  const todo = Object.keys(mutable).filter((path) => have.has(base + path) && verified[path] !== mutable[path]);
+  const todo = fresh ? [] : Object.keys(mutable).filter((path) => verified[path] !== mutable[path] && (!trustIndex || cachedPaths.has(path)));
   let done = 0;
   onCheck?.(0, todo.length);
   let cursor = 0;
@@ -308,10 +560,14 @@ async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: st
           const hex = Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('');
           if (hex !== mutable[path]) {
             await cache.delete(path, { ignoreVary: true });
-            have.delete(base + path);
+            noteUncached(path);
             evictedPaths.add(path);
             console.warn(`[LootChain] full pack: ${path} 缓存内容已过期,重新下载`);
+          } else {
+            noteCached(path);
           }
+        } else {
+          noteUncached(path);
         }
       } catch (error) {
         void error;
@@ -341,8 +597,12 @@ export async function hasStorageRoomFor(bytes: number): Promise<boolean> {
     if (storage.persist) {
       void storage.persist().catch(() => false);
     }
-    const estimate = await storage.estimate();
-    if (!estimate.quota) {
+    // 估算偶尔很慢(冷启动要统计整个缓存的大小):最多等 3 秒,拿不到按「够」处理
+    const estimate = await Promise.race([
+      storage.estimate(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    if (!estimate || !estimate.quota) {
       return true;
     }
     return estimate.quota - (estimate.usage || 0) > bytes * 1.15;
@@ -357,7 +617,7 @@ export async function hasStorageRoomFor(bytes: number): Promise<boolean> {
  * 有文件重试后仍失败返回 false(已下好的保留,下次访问继续补)。
  */
 export async function downloadFullPack(missing: Array<[string, number]>, totalBytesAll: number, cachedBytes: number, onProgress: (progress: FullPackProgress) => void, markDone = true): Promise<boolean> {
-  const cache = await caches.open(ASSET_CACHE_NAME);
+  const cache = await openAssetCache();
   const progress: FullPackProgress = { doneBytes: cachedBytes, totalBytes: totalBytesAll, doneFiles: 0, totalFiles: missing.length };
   onProgress(progress);
   let cursor = 0;
@@ -368,6 +628,7 @@ export async function downloadFullPack(missing: Array<[string, number]>, totalBy
         const response = await fetch(path, packFetchInit(path));
         if (response.ok && response.status === 200) {
           await cache.put(path, response);
+          noteCached(path);
           return true;
         }
       } catch (error) {
@@ -412,19 +673,62 @@ export function markFullPackCached(): void {
   }
 }
 
-/** 发版后清掉缓存里不在新清单里的旧文件(后台,不阻塞)。 */
-export async function pruneStaleAssetCache(manifest: AssetManifest): Promise<void> {
+/**
+ * 发版后清掉缓存里不在新清单里的旧文件(后台,不阻塞,分批并发删)。
+ * 先删索引里记着的旧文件(不用列缓存);每个版本再整表扫一次,清掉索引外的(这版以前留下的、Service Worker 自己存的),
+ * 顺带把清单里其实在缓存的补进索引。整表扫要把每个缓存文件读一遍,canRun 返回 false 时(战斗中)往后推。
+ */
+export async function pruneStaleAssetCache(manifest: AssetManifest, canRun?: () => boolean): Promise<void> {
   try {
-    const cache = await caches.open(ASSET_CACHE_NAME);
+    const cache = await openAssetCache();
+    const keep = new Set<string>(manifest.files.map(([path]) => path));
+    const stale = Array.from(cachedPaths).filter((path) => !keep.has(path));
+    await deleteCacheEntries(cache, stale);
+    stale.forEach((path) => noteUncached(path));
+    const version = manifest.version ?? assetCacheVersion();
+    if (readLocal(CACHE_SWEEP_KEY) === version) {
+      if (stale.length > 0) {
+        void flushCacheIndex();
+      }
+      return;
+    }
+    for (let waited = 0; canRun && !canRun() && waited < 600000; waited += 15000) {
+      await new Promise((resolve) => setTimeout(resolve, 15000));
+    }
     const base = new URL('.', location.href).pathname;
-    const keep = new Set<string>(manifest.files.map(([path]) => base + path));
-    const keys = await cache.keys();
+    const orphans: Request[] = [];
+    let keys: readonly Request[];
+    try {
+      keys = await cache.keys();
+    } catch (error) {
+      // 缓存条数太多时浏览器直接拒绝列出(Chrome:「Operation too large」,约 3 万条起;11-24 实测 3.8 万条必报)。
+      // 旧版启动就靠这一步,一报错整段跳过(开局包不补、后台不下、旧文件也不清,缓存越积越多)。现在启动不靠它,这里记一笔这个版本不再重试
+      console.warn('[LootChain] cache sweep: 列不出缓存,这个版本跳过', error);
+      writeLocal(CACHE_SWEEP_KEY, version);
+      return;
+    }
     for (const request of keys) {
-      const pathname = new URL(request.url).pathname;
-      if (!keep.has(pathname)) {
-        await cache.delete(request);
+      const url = new URL(request.url);
+      let rel = url.pathname.startsWith(base) ? url.pathname.slice(base.length) : url.pathname;
+      try {
+        rel = decodeURI(rel);
+      } catch {
+        // 解不开就按原样比
+      }
+      if (rel === CACHE_INDEX_KEY) {
+        continue;
+      }
+      if (keep.has(rel) && !url.search) {
+        noteCached(rel);
+      } else {
+        orphans.push(request);
       }
     }
+    await deleteCacheEntries(cache, orphans);
+    indexComplete = true;
+    indexDirty = true;
+    await flushCacheIndex();
+    writeLocal(CACHE_SWEEP_KEY, version);
   } catch (error) {
     void error;
   }
@@ -487,6 +791,10 @@ class PackDownloader {
         this.have.add(path);
         this.doneBytes += size;
       }
+    }
+    // 没有索引时要先在后台查完缓存才登记,这时后台下载可能已经叫开始了
+    if (this.started) {
+      this.pump();
     }
   }
 
@@ -582,8 +890,11 @@ class PackDownloader {
         }
         this.doneBytes += this.sizeOf.get(next) ?? 0;
         this.settle(next);
-        if (this.isComplete() && this.failed.size === 0) {
-          markFullPackCached();
+        if (this.isComplete()) {
+          if (this.failed.size === 0) {
+            markFullPackCached();
+          }
+          void flushCacheIndex();
         }
         this.pump();
       });
@@ -603,11 +914,23 @@ class PackDownloader {
   }
 
   private async fetchOne(path: string): Promise<boolean> {
+    // 先查缓存:Service Worker 按需取过的文件已经在本地(索引里没记),不用再下;启动核对删掉的过期文件必须回源
+    if (!evictedPaths.has(path)) {
+      try {
+        if (await this.cache!.match(path, { ignoreVary: true })) {
+          noteCached(path);
+          return true;
+        }
+      } catch (error) {
+        void error;
+      }
+    }
     for (let attempt = 0; attempt < FULL_PACK_RETRY; attempt += 1) {
       try {
         const response = await fetch(path, packFetchInit(path));
         if (response.ok && response.status === 200) {
           await this.cache!.put(path, response);
+          noteCached(path);
           return true;
         }
       } catch (error) {
@@ -629,7 +952,7 @@ export function coreManifestFiles(manifest: TieredManifest, missing: Array<[stri
 
 /** 启动:开局包下完后调用,登记清单 + 本地还缺的(含后台部分),进游戏后再 startBackgroundPack。 */
 export async function initPackDownloader(manifest: TieredManifest, known?: Array<[string, number]>): Promise<void> {
-  const cache = await caches.open(ASSET_CACHE_NAME);
+  const cache = await openAssetCache();
   // known = 启动时刚算过的缺失清单(11-20 用户:加载页停在 0% 几十秒 —— 这里原来又把整个缓存列一遍,老玩家缓存一两万个文件时很慢)
   const missing = known ?? (await missingManifestFiles(manifest));
   packDownloader.init(manifest, missing, cache);

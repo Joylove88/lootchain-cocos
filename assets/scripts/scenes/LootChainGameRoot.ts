@@ -35,9 +35,11 @@ import {
 import { AppConfig } from '../app/AppConfig';
 import { isPhoneDesign, isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
 import {
-  coreManifestFiles,
   downloadFullPack,
   ensureAssetServiceWorker,
+  flushCacheIndex,
+  scanPackCache,
+  verifyPackFiles,
   ensurePackResources,
   initPackDownloader,
   packDownloadPending,
@@ -921,14 +923,50 @@ export class LootChainGameRoot extends Component {
         // 忽略
       }
     };
-    // 没有进度可报的阶段:超过 0.4 秒才换标题(快的时候不闪字)
+    // 没有进度可报的阶段:超过 0.4 秒才换标题(快的时候不闪字);超过 1 秒进度条换成来回走的光条 + 计秒,
+    // 一眼看得出没卡死(11-24 用户:「正在读取本地缓存 0%」等了 1 分钟,以为卡死了)
+    let stopBusy: (() => void) | null = null;
+    const drawBusy = (phase: number): void => {
+      if (!barGraphics.isValid) {
+        return;
+      }
+      drawBar(0);
+      const seg = barWidth * 0.24;
+      const right = Math.min(barWidth / 2, -barWidth / 2 + (barWidth + seg) * phase);
+      const left = Math.max(-barWidth / 2, right - seg);
+      if (right - left > 2) {
+        barGraphics.fillColor = GLASS_COLOR.champagne;
+        barGraphics.roundRect(left, -barHeight / 2, right - left, barHeight, Math.min(barHeight / 2, (right - left) / 2));
+        barGraphics.fill();
+      }
+    };
     const phaseText = (title: string): (() => void) => {
-      const timer = setTimeout(() => {
-        if (titleLabel.isValid) {
+      stopBusy?.();
+      const t0 = Date.now();
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - t0;
+        if (elapsed < 400) {
+          return;
+        }
+        if (titleLabel.isValid && titleLabel.string !== title) {
           titleLabel.string = title;
         }
-      }, 400);
-      return () => clearTimeout(timer);
+        if (elapsed < 1000) {
+          return;
+        }
+        drawBusy(((elapsed - 1000) % 1500) / 1500);
+        if (percentLabel.isValid) {
+          percentLabel.string = `${Math.floor(elapsed / 1000)} 秒`;
+        }
+      }, 50);
+      const stop = (): void => {
+        clearInterval(timer);
+        if (stopBusy === stop) {
+          stopBusy = null;
+        }
+      };
+      stopBusy = stop;
+      return stop;
     };
     const downloadPack = async (): Promise<void> => {
       mark('pack-start');
@@ -942,50 +980,78 @@ export class LootChainGameRoot extends Component {
       const stopCacheText = phaseText('正在读取本地缓存');
       // 10-30 分层下载(领导:首访 500 多 M 会吓跑用户):首访只下开局包(清单前 core 个,约 100MB,晨风村为止),
       // 其余登记给后台下载器,进大厅后低并发慢慢下;去了还没下完的地方由 ensurePackResources 整块补下 + 加载页拦住
-      // 发版后第一次打开:核对缓存里同名改内容的文件。这一步以前不显示进度,缓存大的老玩家看到的就是一直不动的 0%
-      let lastCheckDraw = 0;
-      const missing = await missingManifestFiles(manifest, (done, total) => {
+      // 11-24:不再把整个缓存列一遍(老玩家冷启动要 1 分钟),改读本地索引;没有索引时只查开局包,显示读取进度。
+      // 发版后第一次打开还要核对缓存里同名改内容的文件,同样显示进度
+      let lastCountDraw = 0;
+      const showCount = (title: string, hint: string, done: number, total: number): void => {
         const now = Date.now();
-        if (total === 0 || (now - lastCheckDraw < 100 && done < total)) {
+        if (now - lastCountDraw < 100 && done < total) {
           return;
         }
-        lastCheckDraw = now;
+        lastCountDraw = now;
+        stopCacheText();
         drawBar(done / total);
         if (titleLabel.isValid) {
-          titleLabel.string = '正在核对本地资源';
+          titleLabel.string = title;
         }
         if (hintLabel.isValid) {
-          hintLabel.string = '游戏更新后第一次打开需要核对,之后打开直接进入';
+          hintLabel.string = hint;
         }
         if (percentLabel.isValid) {
           percentLabel.string = `${done} / ${total}`;
         }
-      });
+      };
+      const scan = await scanPackCache(
+        manifest,
+        (done, total) => {
+          if (total > 0) {
+            showCount('正在核对本地资源', '游戏更新后第一次打开需要核对,之后打开直接进入', done, total);
+          }
+        },
+        (done, total) => {
+          // 几十个文件一眨眼就查完,不显示计数免得闪字
+          if (total >= 200) {
+            showCount('正在读取本地缓存', '游戏更新后第一次打开需要读取,之后打开直接进入', done, total);
+          }
+        },
+      );
       stopCacheText();
       mark('cache-checked');
-      const core = coreManifestFiles(manifest, missing);
+      const core = scan.coreMissing;
       const coreCount = manifest.core ?? manifest.files.length;
       const coreTotal = manifest.files.slice(0, coreCount).reduce((sum, entry) => sum + entry[1], 0);
       const coreMissingBytes = core.reduce((sum, entry) => sum + entry[1], 0);
-      const allMissingBytes = missing.reduce((sum, entry) => sum + entry[1], 0);
+      // 没核对过的后台部分(没有索引时)大多其实在本地,不计入空间检查
+      const needBytes = coreMissingBytes + (scan.restVerified ? scan.rest.reduce((sum, entry) => sum + entry[1], 0) : 0);
       if (core.length > 0) {
-        if (await hasStorageRoomFor(allMissingBytes)) {
+        const stopRoomText = phaseText('正在准备下载');
+        const room = await hasStorageRoomFor(needBytes);
+        stopRoomText();
+        if (room) {
           await downloadFullPack(core, coreTotal, coreTotal - coreMissingBytes, (progress) => updatePackProgress(progress.doneBytes, progress.totalBytes), false);
         } else {
-          console.warn(`[LootChain] pack: 浏览器剩余空间不足 ${mb(allMissingBytes)}MB,改为按页面加载`);
+          console.warn(`[LootChain] pack: 浏览器剩余空间不足 ${mb(needBytes)}MB,改为按页面加载`);
         }
       }
       mark('core-done');
-      // 后台部分直接用上面算好的缺失清单(开局包刚下过的去掉),不再把整个缓存重列一遍
-      const coreSet = new Set(core.map(([path]) => path));
-      await initPackDownloader(manifest, missing.filter(([path]) => !coreSet.has(path)));
+      void flushCacheIndex();
+      if (scan.restVerified) {
+        await initPackDownloader(manifest, scan.rest);
+      } else {
+        // 这版第一次打开(还没有本地索引):开局包之外的文件进游戏后在后台查一遍缓存,查完再登记后台下载
+        void verifyPackFiles(scan.rest)
+          .then((rest) => initPackDownloader(manifest, rest))
+          .catch((error) => console.warn('[LootChain] pack: background cache check failed', error));
+      }
       mark('downloader-ready');
-      // 发版后旧版本文件留在缓存里没用,进游戏后后台清掉
-      setTimeout(() => void pruneStaleAssetCache(manifest), 20000);
+      // 发版后旧版本文件留在缓存里没用,进游戏后后台清掉(要整表扫的那一步避开战斗)
+      setTimeout(() => void pruneStaleAssetCache(manifest, () => this.currentView !== 'battle'), 45000);
     };
     // 第二段:登录+大厅界面图读进内存(整包已在本地时几乎是瞬时)。
     // 清单+并发逐个加载(loadDir 在编辑器预览环境会悬死,不可用;getDirWithPath 同步出全量清单)。
     const startPreload = (): void => {
+      // 整包阶段中途出错时计秒光条可能没停,别让它盖住下面的进度
+      stopBusy?.();
       if (finished) {
         return;
       }
