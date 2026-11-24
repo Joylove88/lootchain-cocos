@@ -72,6 +72,37 @@ PROMPT = (
     "No characters, no animals, no UI, no text, no frame. Realistic painted game art, not cartoon, not a 3D render, not plastic. "
     "No blur, no noise, no film grain, no glow, no vignette, no depth of field: everything equally sharp. Landscape, exactly 1672x941."
 )
+# 11-24 用户「主城还是需要打磨打磨,去 AI 感」:v1 出来是金色斜阳 + 硬影、满屏黄绿高光、树都一个样还都套石圈、草坪平涂发亮、
+# 处处一样锐利没有主次 → v2 画风(CITY_PAINT_STYLE=v2):正午偏高的自然白光 + 柔和天光阴影、沉一点的杂色绿、树种和大小有变化、
+# 细节有主次(房子 / 摊位清楚,大片草地 / 石板只用松一点的笔触带过)、旧化与不完美。先出样张给用户挑。
+PROMPT_V2 = (
+    "Image 1 is one piece of our game's main city map, a high oblique bird's-eye view rendered from a rough 3D blockout. It is "
+    "only a layout guide.\n"
+    "Image 2 is a battle background from the same game, for overall painting quality only - do NOT copy its golden light.\n"
+    "{seam}"
+    "Generate ONE new image with your image generation tool: repaint image 1 as a finished hand-painted game map that looks painted "
+    "by an experienced human matte painter, not generated. Keep exactly the same camera, framing and layout: every building, roof, "
+    "wall, tower, step, bridge, canal edge, stall, lamp post, tree trunk and street stays in the same place with the same size and "
+    "outline, so the walkable areas do not change.\n"
+    "Light: clear late-morning daylight, sun fairly high from the upper left, neutral white (not golden, not sunset), soft shadows "
+    "lifted by blue sky light, gentle ambient occlusion under eaves and trees. Calm, believable, lived-in medieval river town.\n"
+    "Colour: natural and slightly restrained, saturated but never garish. Greens are deep and varied - olive, sage, blue-green, "
+    "bottle green - never neon yellow-green. Trees are DIFFERENT species and sizes (oak, elm, lime, birch, a few willows by the "
+    "water, the blossom trees soft and sparse), foliage painted as loose masses with a few highlights, not glossy individual leaves. "
+    "Not every tree has a stone ring: most stand in grass or earth. Lawns are calm with subtle patches of darker and drier grass, "
+    "clover and worn paths where people walk. Streets and squares stay WARM SANDY trodden earth like image 1 (light ochre-beige, "
+    "not grey cobblestone), with foot-worn centres, a few loose stones and grass tufts at the edges. Houses vary: weathered timber, "
+    "patched plaster, mixed slate and tile roofs with uneven lines, sagging ridges, moss. It is daytime: windows are dark glass, "
+    "lamps and lanterns are unlit, no glowing windows, no light pools.\n"
+    "Detail hierarchy like a real painting: buildings, stalls, bridges and focal props are crisp; large lawns, paving and roofs are "
+    "described with fewer, confident strokes - no uniform micro-detail everywhere, no repeated identical stones, leaves, flowers or "
+    "roof tiles, no scattered debris carpet.\n"
+    "{outside}"
+    "Image 1 is the complete layout guide: do not ask questions or request other files, always generate the image.\n"
+    "No characters, no animals, no UI, no text, no frame. Not cartoon, not a 3D render, not plastic, no HDR look, no glow, no "
+    "vignette, no film grain, no depth of field. Landscape, exactly 1672x941."
+)
+STYLE = os.environ.get('CITY_PAINT_STYLE', 'v1')
 # 大半在城墙外的块:底稿那部分只是平涂的布局示意(11-23 第一批 r1 c6~c8 用城里那套提示词,生图说「图 1 是绿色迷宫纹理,
 # 看不到城」并要真正的底稿,三次都没出图)
 COUNTRY = (
@@ -96,6 +127,26 @@ COUNTRY = (
 COUNTRY_FRAC = 0.55   # 块里城外部分超过这个比例用 COUNTRY
 SEAM = ("Image 3 shows the already finished neighbouring pieces (sharp areas) placed exactly where they overlap this piece: "
         "continue them seamlessly, matching their colours, lighting and every object that crosses the border.\n")
+# v2 画风的城外块:同 COUNTRY 的布局说明,光色 / 绿色 / 细节口径换成 PROMPT_V2 那套(和城里的块接得上)
+COUNTRY_V2 = (
+    "Image 1 is one piece of our game's world map just OUTSIDE the main city wall, a high oblique bird's-eye view. Most of it is only "
+    "a flat colour guide: flat green = open meadow, the sandy stripe = the dirt road leading away from the city gate, the blue "
+    "stripe = the river flowing out of the city. Where the stone city wall, its towers, the gate or anything built appears, that "
+    "part is a rough 3D render: keep its exact shape, size and position.\n"
+    "Image 2 is a battle background from the same game, for overall painting quality only - do NOT copy its golden light.\n"
+    "{seam}"
+    "Generate ONE new image with your image generation tool: paint it as calm, believable countryside by an experienced human "
+    "matte painter, keeping the wall, road and river exactly where image 1 has them. Clear late-morning daylight, sun fairly high "
+    "from the upper left, neutral white (not golden), soft shadows lifted by blue sky light. Meadow in deep, varied natural greens "
+    "(olive, sage, blue-green, never neon yellow-green) with darker and drier patches, clover and a few wildflowers; a few shrubs, "
+    "lone trees of different species and some rocks spread sparsely, most of the meadow open and quiet; the road as warm sandy "
+    "trodden earth with grass tufts along its edges; the river clear blue-green-grey with grassy banks; the city wall weathered "
+    "stone with moss and shrubs at its foot. Describe the large grass areas with loose, confident strokes - no uniform micro-detail, "
+    "no repeated identical tufts or flowers.\n"
+    "Image 1 is the complete layout guide: do not ask questions or request other files, always generate the image.\n"
+    "No characters, no animals, no UI, no text, no frame. Not cartoon, not a 3D render, no HDR look, no glow, no vignette, "
+    "no film grain, no depth of field. Landscape, exactly 1672x941."
+)
 OUTSIDE = ("The flat green area outside the city wall is open countryside: meadow grass with wildflowers, a few shrubs and lone "
            "trees, the sandy road leading away from the gate and the river flowing out; keep it calm. ")
 
@@ -308,9 +359,9 @@ def gen_piece(c, r, out_frac, xs, ys, strict=False):
         seam = SEAM
     raw = dst.replace('.png', '_raw.png')
     if out_frac > COUNTRY_FRAC:
-        prompt = COUNTRY.format(seam=seam)
+        prompt = (COUNTRY_V2 if STYLE == 'v2' else COUNTRY).format(seam=seam)
     else:
-        prompt = PROMPT.format(seam=seam, outside=OUTSIDE if out_frac > 0.04 else '')
+        prompt = (PROMPT_V2 if STYLE == 'v2' else PROMPT).format(seam=seam, outside=OUTSIDE if out_frac > 0.04 else '')
     if (c, r) in PIECE_HINTS:
         prompt += '\n' + PIECE_HINTS[(c, r)]
     tag = f'city r{r} c{c} out={out_frac:.2f}'
