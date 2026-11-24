@@ -12,7 +12,8 @@
 注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
       steps_features.json 里的「模拟接到 V04」只改页面内存,不碰服务端。
 
-用法:python tools/qa/newbie_p1_regress.py [输出目录]
+用法:python tools/qa/newbie_p1_regress.py [输出目录] [--release]
+     --release:跑本地正式包 7460(build/web-mobile,出包后验证用;全新配置会先下开局包,慢一些)
 """
 import json
 import os
@@ -28,8 +29,9 @@ import edge_guard  # noqa: E402
 API = 'http://localhost:8081'
 STEPS = os.path.join(HERE, 'newbie_p1')
 SCRATCH = os.environ.get('LC_QA_OUT') or os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa')
-PROFILE_NAME = 'playtest_profile_newbie'
-ENV = dict(os.environ, PREVIEW_PORT='7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT='9384', PYTHONIOENCODING='utf-8')
+RELEASE = '--release' in sys.argv
+PROFILE_NAME = 'playtest_profile_newbie_rel' if RELEASE else 'playtest_profile_newbie'
+ENV = dict(os.environ, PREVIEW_PORT='7460' if RELEASE else '7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT='9385' if RELEASE else '9384', PYTHONIOENCODING='utf-8')
 
 
 def register():
@@ -56,7 +58,8 @@ def run(out_dir, steps, *flags):
 
 
 def main():
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(SCRATCH, 'newbie_p1_' + time.strftime('%m%d_%H%M'))
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    out_dir = args[0] if args else os.path.join(SCRATCH, 'newbie_p1_' + ('rel_' if RELEASE else '') + time.strftime('%m%d_%H%M'))
     os.makedirs(out_dir, exist_ok=True)
     name, token, uid = register()
     print('新号', name, 'uid', uid, flush=True)
