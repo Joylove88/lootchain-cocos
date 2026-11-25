@@ -850,6 +850,7 @@ export class LobbyTownRenderer {
     this.waypointFx = null;
     this.chestNodes = new Map();
     this.poiNodes = new Map();
+    this.nearTipsDone = false;
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -1306,6 +1307,7 @@ export class LobbyTownRenderer {
     this.waypointFx = null;
     this.chestNodes = new Map();
     this.poiNodes = new Map();
+    this.nearTipsDone = false;
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -1353,6 +1355,7 @@ export class LobbyTownRenderer {
     this.waypointFx = null;
     this.chestNodes = new Map();
     this.poiNodes = new Map();
+    this.nearTipsDone = false;
     this.monsters = [];
     this.leader = null;
     this.followers = [];
@@ -2462,6 +2465,7 @@ export class LobbyTownRenderer {
       // 试炼石台是就地铺的:探索 / 隐藏点 / 坐标上报都停掉(站位可能在建筑 / 水面范围里,服务端坐标校验会拦)
       this.updateExplore();
       this.updateHiddenPois();
+      this.stepNearTips();
       this.updatePositionReport();
     }
     if (Date.now() >= this.respawnCheckAt && !this.trial) {
@@ -4858,6 +4862,67 @@ export class LobbyTownRenderer {
         return;
       }
     }
+  }
+
+  /** docs/57 §5:每 250ms 查一次;三类都出过就不再查(换号 / 重进图时重置)。 */
+  private nearTipCheckAt = 0;
+  private nearTipsDone = false;
+
+  /**
+   * docs/57 §5「野外第一次走近隐藏点 / 宝箱 / 采集点 → 头顶『可互动』提示放大一次」:队长走进约 420 内(提示条出现之前),
+   * 那件东西头顶的圆徽放大弹三下;每类一辈子一次(出过记服务端 tip:near_*)。
+   */
+  private stepNearTips(): void {
+    const leader = this.leader;
+    const now = Date.now();
+    const seen = this.host.guideTipSeen;
+    const mark = this.host.markGuideTip;
+    if (!leader || this.nearTipsDone || now < this.nearTipCheckAt || !seen || !mark) {
+      return;
+    }
+    this.nearTipCheckAt = now + 250;
+    const pending = {
+      near_hidden: !seen.call(this.host, 'near_hidden'),
+      near_chest: !seen.call(this.host, 'near_chest'),
+      near_gather: !seen.call(this.host, 'near_gather'),
+    };
+    if (!pending.near_hidden && !pending.near_chest && !pending.near_gather) {
+      this.nearTipsDone = true;
+      return;
+    }
+    const near = (x: number, y: number): boolean => Math.hypot(x - leader.x, (y - leader.y) / 0.8) < 420;
+    for (const entry of this.poiNodes.values()) {
+      const kind = entry.poi.kind === 'HIDDEN' ? 'near_hidden' : entry.poi.kind === 'HERB' || entry.poi.kind === 'ORE' ? 'near_gather' : null;
+      if (!kind || !pending[kind] || entry.done || !entry.badge || !entry.badge.isValid || !entry.badge.active || !near(entry.poi.x, entry.poi.y)) {
+        continue;
+      }
+      this.popBadge(entry.poi.kind === 'HIDDEN' ? entry.badge.getChildByName('Badge') : entry.badge);
+      mark.call(this.host, kind);
+      pending[kind] = false;
+    }
+    if (pending.near_chest) {
+      for (const entry of this.chestNodes.values()) {
+        if (entry.opened || !entry.badge || !entry.badge.isValid || !entry.badge.active || !near(entry.node.position.x, entry.node.position.y)) {
+          continue;
+        }
+        this.popBadge(entry.badge);
+        mark.call(this.host, 'near_chest');
+        break;
+      }
+    }
+  }
+
+  /** 头顶圆徽放大弹三下(位置每帧由 stepPoiCues 上下浮动,这里只动缩放)。 */
+  private popBadge(node: Node | null): void {
+    if (!node || !node.isValid) {
+      return;
+    }
+    Tween.stopAllByTarget(node);
+    node.setScale(1, 1, 1);
+    tween(node).repeat(3, tween<Node>()
+      .to(0.16, { scale: new Vec3(1.75, 1.75, 1) }, { easing: 'quadOut' })
+      .to(0.24, { scale: new Vec3(1, 1, 1) }, { easing: 'quadIn' })
+      .delay(0.14)).start();
   }
 
   /** 领取失败(网络 / 服务端拒绝)时放开,走开再走近可重试。 */

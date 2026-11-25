@@ -60,8 +60,10 @@ export class LobbyTopHudRenderer {
     const badges = this.host.currentLobbyBadges?.() ?? null;
     const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
     const idle = this.host.currentIdleSummary?.() ?? null;
-    // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤),或有刚开放还没点过的功能(docs/57 §11)
-    const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable || !!this.host.lobbyHasFreshFeature?.();
+    // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤),或有刚开放还没点过的功能(docs/57 §11),
+    // 或有情境提示(装备 / 水晶,docs/57 §5)等着在终端里看
+    const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable || !!this.host.lobbyHasFreshFeature?.()
+      || !!this.host.terminalTipPending?.();
     const evolutionPending = this.host.evolutionPendingCount?.() ?? 0;
     // 从右往左排:终端 / 邮件 / 商店 / 召唤 / 进化(没开放的召唤 / 商店不显示,后面的往右补位;原型间距 ≈ 110)
     const items: Array<{ key: string; label: string; icon: string; hot: boolean; strong: boolean; count?: number; onTap: () => void }> = [

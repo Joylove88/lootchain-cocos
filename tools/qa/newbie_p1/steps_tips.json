@@ -1,0 +1,71 @@
+[
+ {
+  "label": "情境_有未穿装备_终端钮红点",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; if (root.worldDialog) root.closeWorldDialog(); if (root.worldPoiDialog) root.closeWorldPoiDialog(); if (root.evolutionPick) root.closeEvolutionPickLater(); if (view() !== 'lobby') { root.returnToLobbyFromScenePage(); await sleep(1500); refresh(); } const api = root.api.lobbyBadge; if (!window.__origBadges) window.__origBadges = api.badges.bind(api); window.__badgePatch = { unwornEquip: 2 }; api.badges = async () => Object.assign(await window.__origBadges(), window.__badgePatch); await root.loadLobbyBadges(true); await sleep(1500); refresh(); const icon = find('LobbySystemIcon_terminal'); return JSON.stringify({ tip: root.terminalTip(), pending: root.terminalTipPending(), dot: !!(icon && icon.getChildByName('LobbyRedDot')), seen: root.guideTips.seen('equip') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_开终端_英雄格脉冲加气泡",
+  "js": "refresh(); root.openLobbyTerminalPanel(); for (let i = 0; i < 20; i++) { await sleep(300); if (find('LobbyTerminalTip')) break; } await sleep(1200); refresh(); return JSON.stringify({ tip: !!find('LobbyTerminalTip'), ring: !!find('WeakTipRing'), text: texts(300).filter(s => s.indexOf('装备') >= 0), intro: root.featureIntroOpen });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_点气泡收起_记看过",
+  "tap": "refresh(); return scr(find('WeakTipBubble'));",
+  "after": "await sleep(800); refresh(); return JSON.stringify({ tip: !!find('LobbyTerminalTip'), seen: root.guideTips.seen('equip'), next: root.terminalTip() });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "情境_水晶可升级_新开放格脉冲",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; window.__lv = root.worldState.playerLevel; root.worldState.playerLevel = 15; window.__badgePatch = { unwornEquip: 2, crystalUpgradable: true }; await root.loadLobbyBadges(true); root.refreshLobbyViewPreservingBackground(); await sleep(2000); refresh(); root.openLobbyTerminalPanel(); for (let i = 0; i < 20; i++) { await sleep(300); if (find('LobbyTerminalTip')) break; } await sleep(900); refresh(); return JSON.stringify({ tip: root.terminalTip(), node: !!find('LobbyTerminalTip'), pulses: ['crystal', 'raid', 'daily'].filter(k => !!find('FreshPulse_' + k)), fresh: ['crystal', 'raid', 'daily'].filter(k => root.terminalFeatureFresh(k)), intro: root.featureIntroOpen });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_点水晶格_记看过",
+  "tap": "refresh(); return scr(find('LobbyTerminalHit_Tile_crystal'));",
+  "after": "await sleep(1500); refresh(); const seen = root.guideTips.seen('crystal'); if (root.featureIntroOpen) root.dismissFeatureIntroCard(true); return JSON.stringify({ seen, crystal: !!root.lobbyGuardCrystalDialog, next: root.terminalTip() });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "情境_体力不足_第一次弱引导",
+  "js": "refresh(); if (root.lobbyGuardCrystalDialog) root.closeGuardCrystalDialog(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; await sleep(800); root.openLobbyDailyDungeonPanel(); for (let i = 0; i < 40; i++) { await sleep(400); refresh(); if (root.featureIntroOpen) root.dismissFeatureIntroCard(true); if (find('LobbyDailyGlassChip_stamina') && root.lobbyDailyDungeonState.summary) break; } await sleep(800); window.__origLoadProfile = root.loadLobbyProfile; root.loadLobbyProfile = async () => {}; const p = root.currentLobbyProfile(); window.__stamina = p.stamina; p.stamina = 0; root.startLobbyDailyDungeonBattle('DAILY_ARCANE_1'); await sleep(1300); refresh(); return JSON.stringify({ view: view(), tip: !!find('LobbyStaminaTip'), ring: !!find('WeakTipRing'), seen: root.guideTips.seen('stamina'), cost: root.lobbyDailyDungeonState.summary && root.lobbyDailyDungeonState.summary.staminaCost, text: texts(300).filter(s => s.indexOf('体力不足') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_点体力气泡_开商店体力页",
+  "tap": "refresh(); const tip = find('LobbyStaminaTip'); let b = null; if (tip) tip.walk(n => { if (!b && n.name === 'WeakTipBubble') b = n; }); return scr(b);",
+  "after": "await sleep(1500); refresh(); return JSON.stringify({ shop: !!root.lobbyShopDialog, kind: root.lobbyShopDialog && root.lobbyShopDialog.kind, tip: !!find('LobbyStaminaTip') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_体力不足_第二次只说一句",
+  "js": "refresh(); if (root.lobbyShopDialog) root.closeLobbyShopDialog(); await sleep(700); root.startLobbyDailyDungeonBattle('DAILY_ARCANE_1'); await sleep(1000); refresh(); const out = JSON.stringify({ tip: !!find('LobbyStaminaTip'), ring: !!find('WeakTipRing'), toast: texts(300).filter(s => s.indexOf('体力不足') >= 0), view: view() }); const p = root.currentLobbyProfile(); p.stamina = window.__stamina; root.loadLobbyProfile = window.__origLoadProfile; return out;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_野外走近采集点或隐藏点_圆徽放大",
+  "js": "refresh(); root.closeLobbyDailyDungeonPanel(); await sleep(1500); refresh(); root.worldState.playerLevel = window.__lv; root.api.lobbyBadge.badges = window.__origBadges; await root.loadLobbyBadges(true); await sleep(800); refresh(); const want = !root.guideTips.seen('near_gather') ? 'gather' : !root.guideTips.seen('near_hidden') ? 'hidden' : null; if (!want) return JSON.stringify({ already: true, hidden: root.guideTips.seen('near_hidden'), gather: root.guideTips.seen('near_gather') }); let entry = null; for (const e of t.poiNodes.values()) { const k = e.poi.kind === 'HIDDEN' ? 'hidden' : (e.poi.kind === 'HERB' || e.poi.kind === 'ORE') ? 'gather' : null; if (!entry && k === want && !e.done && e.badge && e.badge.active) entry = e; } if (!entry) return JSON.stringify({ want, none: true }); const L = t.leaderPosition(); const dx = L.x - entry.poi.x; const dy = L.y - entry.poi.y; const d = Math.max(1, Math.hypot(dx, dy)); const ok = t.autoWalkTo(entry.poi.x + dx / d * 300, entry.poi.y + dy / d * 220); const target = want === 'hidden' ? entry.badge.getChildByName('Badge') : entry.badge; let maxScale = 1; for (let i = 0; i < 300; i++) { await sleep(100); if (target && target.isValid) maxScale = Math.max(maxScale, target.scale.x); if (root.guideTips.seen('near_' + want) && i > 0 && maxScale > 1.3) break; } return JSON.stringify({ want, walk: ok, code: entry.poi.code, maxScale: Math.round(maxScale * 100) / 100, seen: root.guideTips.seen('near_' + want) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "情境_出过的提示已存服务端",
+  "js": "await sleep(1500); refresh(); const f = await root.api.guide.flags(); const tips = f.filter(x => x.indexOf('tip:') === 0); return JSON.stringify({ tips, ok: ['tip:equip', 'tip:crystal', 'tip:stamina'].every(x => tips.indexOf(x) >= 0) && tips.some(x => x.indexOf('tip:near_') === 0), outbox: localStorage.getItem('lc_guide_outbox_{UID}') });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "情境_收尾回读世界状态",
+  "js": "refresh(); if (root.lobbyTownRenderer.isAutoWalking()) root.lobbyTownRenderer.cancelAutoWalk(); await root.loadWorldState(); await sleep(1500); refresh(); return JSON.stringify({ view: view(), level: root.worldState && root.worldState.playerLevel });",
+  "wait": 0,
+  "shot": false
+ }
+]

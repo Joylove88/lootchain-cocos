@@ -113,6 +113,7 @@ import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickS
 import { LobbyPopupQueue } from './lobby/LobbyPopupQueue';
 import { FeatureUnlockTracker, featureLockText, featureName, type FeatureKey } from './lobby/LobbyFeatureUnlocks';
 import { FeatureIntroTracker, renderFeatureIntroCard, type FeatureIntroKey, type FeatureIntroHost } from './lobby/LobbyFeatureIntro';
+import { GuideTipTracker, mountWeakTip, type GuideTipKey } from './lobby/LobbyWeakGuide';
 import { GuideFlags, GuideFlagSync } from './lobby/GuideFlagSync';
 import { mountZeroGuideBubble } from './GuideKit';
 import type { EvolutionState } from '../api/EvolutionApi';
@@ -469,6 +470,9 @@ export class LootChainGameRoot extends Component {
   /** docs/57 §4 功能说明卡:每个功能第一次打开时出一次(pending = 等页面真正打开再弹;open = 正开着)。 */
   private readonly featureIntros = new FeatureIntroTracker(this.guideFlags);
   private featureIntroPending: { key: FeatureIntroKey; at: number } | null = null;
+  /** docs/57 §5 情境提示「出过」(装备 / 水晶 / 体力 / 野外走近);终端「新」格本次登录开始脉冲的时刻(每个功能一次)。 */
+  private readonly guideTips = new GuideTipTracker(this.guideFlags);
+  private readonly freshPulseAt = new Map<string, number>();
   private featureIntroOpen: FeatureIntroKey | null = null;
   /** docs/57 §3 剧情强引导(V01 移动 / V04 免费召唤 / V05 升级英雄 / V06 编队):本会话已完成的(等世界状态回读前先压住)。 */
   private readonly storyGuideDone = new Set<string>();
@@ -1370,6 +1374,7 @@ export class LootChainGameRoot extends Component {
     this.updateNetOverlay();
     this.tickTerminalReturn();
     this.tickFeatureIntro();
+    this.tickWeakTips();
     // 视口变化(窗口缩放 / 手机转动)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
     // 输入框编辑中(软键盘弹出会改窗口尺寸)不同步也不重排,否则输入框被重建、键盘收起、字丢失。
     if (!isTextInputActive()) {
@@ -1827,6 +1832,11 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.markFeatureSeen(action);
+    // docs/57 §5:点了情境提示指着的格子 = 看过
+    const tip = this.terminalTip();
+    if (tip && tip.tile === action) {
+      this.dismissTerminalTip(tip.key);
+    }
     // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
     if (action === 'gift') {
       this.openLobbyGiftDialog();
@@ -6017,7 +6027,8 @@ export class LootChainGameRoot extends Component {
     if (!(defenderUserId > 0)) {
       return;
     }
-    this.openLobbyBattlePreviewPanel(raidPvpStageCode(defenderUserId, revengeOf));
+    const cost = this.lobbyRaidPvpState.home?.staminaCost ?? 0;
+    this.guardStamina(cost, 'LobbyRaidGlassChip_stamina', () => this.openLobbyBattlePreviewPanel(raidPvpStageCode(defenderUserId, revengeOf)));
   }
 
   private syntheticRaidPvpStage(stageCode: string): LobbyAdventureStageVO {
@@ -6086,7 +6097,8 @@ export class LootChainGameRoot extends Component {
       this.setStatus('矿境关卡码不合法,请刷新面板。');
       return;
     }
-    this.openLobbyBattlePreviewPanel(stageCode);
+    const cost = this.lobbyRaidState.stages?.stages.find((stage) => stage.stageCode === stageCode)?.staminaCost ?? 0;
+    this.guardStamina(cost, 'LobbyRaidGlassChip_stamina', () => this.openLobbyBattlePreviewPanel(stageCode));
   }
 
   private async loadLobbyRaidStages(force = false): Promise<void> {
@@ -6200,8 +6212,9 @@ export class LootChainGameRoot extends Component {
       this.setStatus('每日副本关卡码不合法，请刷新面板。');
       return;
     }
-    // 本地只做入口预检,开放日/次数/难度解锁最终由后端 battles/start 裁决。
-    this.openLobbyBattlePreviewPanel(stageCode);
+    // 本地只做入口预检,开放日/次数/难度解锁最终由后端 battles/start 裁决;体力服务端到结算才查 → 这里先看(docs/57 §5)
+    const cost = this.lobbyDailyDungeonState.summary?.staminaCost ?? 0;
+    this.guardStamina(cost, 'LobbyDailyGlassChip_stamina', () => this.openLobbyBattlePreviewPanel(stageCode));
   }
 
   /** 11-07 旧整页公告面板已删:旧入口转到 B 风格公告弹框。 */
@@ -10442,6 +10455,156 @@ export class LootChainGameRoot extends Component {
     return this.featureUnlocks.anyFresh();
   }
 
+  // ── docs/57 §5 情境提示(弱引导,各出一次)──
+
+  private tips(): GuideTipTracker {
+    this.guideTips.bind(this.api.tokenStore.userId() ?? 0);
+    return this.guideTips;
+  }
+
+  /**
+   * 终端里该出的情境提示(LobbyTerminalPanelHost;一次只出一条):有未穿戴的装备 → 指「英雄」格;守卫水晶可升级 → 指「守卫水晶」格。
+   * 新手村剧情强引导(V05 / V06)要用终端时让路;格子没开放不出。
+   */
+  terminalTip(): { key: GuideTipKey; tile: LobbyTerminalAction; text: string } | null {
+    const badges = this.lobbyBadges;
+    if (!badges || this.storyQuestActive('V05') || this.storyQuestActive('V06')) {
+      return null;
+    }
+    const tips = this.tips();
+    if (badges.unwornEquip > 0 && !tips.seen('equip') && !this.terminalFeatureLock('heroes')) {
+      return { key: 'equip', tile: 'heroes', text: '获得了装备,去「英雄」里给英雄穿上' };
+    }
+    if (badges.crystalUpgradable && !tips.seen('crystal') && !this.terminalFeatureLock('crystal')) {
+      return { key: 'crystal', tile: 'crystal', text: '守卫水晶可以升级了:升级解锁更多法术和法术位' };
+    }
+    return null;
+  }
+
+  /** 右上「终端」钮挂红点:有情境提示等着看(LobbyHudHost)。 */
+  terminalTipPending(): boolean {
+    return this.terminalTip() !== null;
+  }
+
+  /** 情境提示看过(点了气泡 / 点了指着的格子):记下来,右上终端钮的红点跟着重算。 */
+  dismissTerminalTip(key: GuideTipKey): void {
+    this.tips().markSeen(key);
+    this.remountTownSystemIcons();
+  }
+
+  /** docs/57 §5「新」角标脉冲一次:本次登录第一次画这格起 4 秒内都算(终端整刷重挂时接着扩)。 */
+  terminalFreshPulse(key: LobbyTerminalAction): boolean {
+    if (!this.featureUnlocks.isFresh(key)) {
+      return false;
+    }
+    const now = Date.now();
+    const at = this.freshPulseAt.get(key);
+    if (at === undefined) {
+      this.freshPulseAt.set(key, now);
+      return true;
+    }
+    return now - at < 4000;
+  }
+
+  /** 野外「可互动」圆徽第一次放大(LobbyTownHost):出过没有 / 记出过。 */
+  guideTipSeen(key: GuideTipKey): boolean {
+    return this.tips().seen(key);
+  }
+
+  markGuideTip(key: GuideTipKey): void {
+    this.tips().markSeen(key);
+  }
+
+  /**
+   * docs/57 §5「体力不足开战」:秘境试炼 / 矿境掠夺开战前看体力(秘境试炼服务端到结算才查,不拦就会白打一整场)。
+   * 本地缓存的体力不够先回读一次资料(体力按时间恢复,缓存可能是旧的),还不够才拦:第一次出弱引导
+   * (体力胶囊脉冲 + 气泡,点了开商店体力页),以后只说一句。
+   */
+  private guardStamina(cost: number, chipName: string, proceed: () => void): void {
+    const profile = this.currentLobbyProfile();
+    if (!(cost > 0) || profile.stamina >= cost) {
+      proceed();
+      return;
+    }
+    void this.loadLobbyProfile(profile.userId).catch(() => undefined).then(() => {
+      const fresh = this.currentLobbyProfile();
+      if (fresh.stamina >= cost) {
+        proceed();
+        return;
+      }
+      this.showStaminaTip(cost, fresh.stamina, chipName);
+    });
+  }
+
+  /**
+   * 第一次:体力胶囊脉冲 + 气泡「去补充 ›」(8 秒自己收);以后:只出气泡说一句(4 秒)。点气泡都开商店体力页。
+   * 挂根节点独立层:开战前回读资料 / 面板数据晚到都会整页重绘(只清内容根),挂内容根上会被当场拆掉(11-25 自验踩到)。
+   */
+  private showStaminaTip(cost: number, have: number, chipName: string): void {
+    gameAudio.sfx('ui_error');
+    const text = `体力不足:需要 ${cost},现有 ${have}。可以在商店补充`;
+    const tips = this.tips();
+    const first = !tips.seen('stamina');
+    tips.markSeen('stamina');
+    this.clearWeakTips();
+    const layout = this.resolveLayout();
+    const chip = first ? this.findNodeInTree(this.ensureContentRoot(), chipName) : null;
+    const k = Math.max(0.7, Math.min(1.25, layout.stageHeight / 841)) * (isPhoneDesign() ? 1.1 : 1);
+    const tip = mountWeakTip(this as unknown as import('./GuideKit').GuideKitHost, this.weakTipLayer(), 'LobbyStaminaTip', layout, k, chip, text, first ? '去补充 ›' : '', () => {
+      this.clearWeakTips();
+      this.openLobbyShopDialog('stamina');
+    });
+    this.weakTipView = this.currentView;
+    this.scheduleOnce(() => {
+      if (tip.isValid) {
+        tip.destroy();
+      }
+    }, first ? 8 : 4);
+  }
+
+  /** 弱引导独立层(根节点最上面,功能页整页重绘不拆);记下出提示时的视图,换了页就收。 */
+  private weakTipView: string | null = null;
+
+  private weakTipLayer(): Node {
+    let layer = this.node.getChildByName('LobbyWeakTipLayer');
+    if (!layer) {
+      layer = new Node('LobbyWeakTipLayer');
+      layer.layer = this.node.layer;
+      this.node.addChild(layer);
+      layer.addComponent(UITransform).setContentSize(new Size(10, 10));
+    }
+    layer.setSiblingIndex(this.node.children.length - 1);
+    return layer;
+  }
+
+  private clearWeakTips(): void {
+    this.node.getChildByName('LobbyWeakTipLayer')?.destroyAllChildren();
+    this.weakTipView = null;
+  }
+
+  /** 每帧:出提示的那一页已经换掉了就收(进了战斗 / 回了大厅)。 */
+  private tickWeakTips(): void {
+    if (this.weakTipView !== null && this.weakTipView !== this.currentView) {
+      this.clearWeakTips();
+    }
+  }
+
+  private findNodeInTree(root: Node, name: string): Node | null {
+    let found: Node | null = null;
+    const walk = (node: Node): void => {
+      if (found || !node.activeInHierarchy) {
+        return;
+      }
+      if (node.name === name) {
+        found = node;
+        return;
+      }
+      node.children.forEach(walk);
+    };
+    walk(root);
+    return found;
+  }
+
   /** 点进过某功能:清「新」角标。 */
   private markFeatureSeen(key: FeatureKey): void {
     this.featureUnlocks.markSeen(key);
@@ -10717,7 +10880,8 @@ export class LootChainGameRoot extends Component {
   private localGuideFlags(userId: number): string[] {
     this.featureIntros.bind(userId);
     this.featureUnlocks.bind(userId);
-    const flags = this.featureIntros.localFlags().concat(this.featureUnlocks.localFlags());
+    this.guideTips.bind(userId);
+    const flags = this.featureIntros.localFlags().concat(this.featureUnlocks.localFlags(), this.guideTips.localFlags());
     for (const code of STORY_GUIDE_CODES) {
       if (this.storyGuideSkippedLocally(userId, code)) {
         flags.push(GuideFlags.skip(code));
@@ -10733,6 +10897,8 @@ export class LootChainGameRoot extends Component {
   private applyServerGuideFlags(userId: number): void {
     let changed = this.featureIntros.mergeServer();
     changed = this.featureUnlocks.mergeServer() || changed;
+    this.guideTips.bind(userId);
+    changed = this.guideTips.mergeServer() || changed;
     for (const code of this.guideFlags.withPrefix(GuideFlags.skip(''))) {
       if (!this.storyGuideSkippedLocally(userId, code)) {
         try {

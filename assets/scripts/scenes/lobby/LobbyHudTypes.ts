@@ -143,6 +143,11 @@ export interface LobbyHudHost {
   heroDetailIsProtagonist?(): boolean;
   /** V06「编队」强引导要点的英雄(还没上阵、阵容有空位;没有返回 null)。 */
   formationGuideHero?(): { id: number; name: string } | null;
+  /** docs/57 §5:有情境提示(装备 / 水晶)等着在终端里看 → 右上终端钮挂红点。 */
+  terminalTipPending?(): boolean;
+  /** docs/57 §5 野外「可互动」圆徽第一次放大:出过没有 / 记出过。 */
+  guideTipSeen?(key: import('./LobbyWeakGuide').GuideTipKey): boolean;
+  markGuideTip?(key: import('./LobbyWeakGuide').GuideTipKey): void;
   currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
   /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
   lobbyMailUnreadCount?(): number;

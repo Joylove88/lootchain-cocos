@@ -2,6 +2,7 @@ import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Nod
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import { TERMINAL_ASSETS, TOWN_HUD_PROTO, type TownProtoFrame } from './LobbyTownHudProto';
 import { buildHeroHeadCropFrame, resolveHeroAvatarPath } from './HeroHeadCrop';
+import { mountPulseRing, mountWeakTip } from './LobbyWeakGuide';
 import { currentLobbyProtagonistHero } from '../../api/LobbyHeroApi';
 
 export type LobbyTerminalAction =
@@ -21,6 +22,12 @@ export interface LobbyTerminalPanelHost extends LobbyHudHost {
   terminalFeatureLock?(key: LobbyTerminalAction): string | null;
   /** docs/57 §11:刚开放、还没点进去过的格子挂「新」角标。 */
   terminalFeatureFresh?(key: LobbyTerminalAction): boolean;
+  /** docs/57 §5:「新」角标这格要不要脉冲(本次登录第一次画起 4 秒内)。 */
+  terminalFreshPulse?(key: LobbyTerminalAction): boolean;
+  /** docs/57 §5 情境提示:指哪格、说什么(一次只出一条;没有返回 null)。 */
+  terminalTip?(): { key: import('./LobbyWeakGuide').GuideTipKey; tile: LobbyTerminalAction; text: string } | null;
+  /** 情境提示看过(点了气泡)。 */
+  dismissTerminalTip?(key: import('./LobbyWeakGuide').GuideTipKey): void;
 }
 
 /** 功能格(原型 proto_terminal_b2):列左沿 630 / 856 / 1083 / 1309 / 1536,宽 210;行顶 105 / 326 / 537,高 205 / 195 / 195。 */
@@ -86,6 +93,7 @@ export class LobbyTerminalPanelRenderer {
     this.renderCard(root, F.card);
     this.renderTiles(root, F.tile, F.other);
     this.renderBottom(root, P);
+    this.renderTip(root, layout, F.tile);
     // 关闭钮(原型 (1771, 55))
     this.hit(root, 'Close', 1771, 55, 90, 90, P, () => this.host.closeLobbyTerminalPanel());
   }
@@ -200,6 +208,8 @@ export class LobbyTerminalPanelRenderer {
       quest: (badges?.quest ?? 0) > 0,
       mail: unread > 0,
       idle: !!explore?.dot,
+      // 11-25:守卫水晶可升级原来终端上没任何提示(旧大厅水晶建筑有),补红点(docs/57 §4「红点 = 有可领 / 可升级」)
+      crystal: !!badges?.crystalUpgradable,
     };
     TILE_KEYS.forEach((row, r) => {
       row.forEach((key, c) => {
@@ -215,8 +225,12 @@ export class LobbyTerminalPanelRenderer {
           return;
         }
         if (this.host.terminalFeatureFresh?.(key)) {
-          // 刚开放、还没点进去过:右上「新」角标(盖住红点位置)
+          // 刚开放、还没点进去过:右上「新」角标(盖住红点位置);docs/57 §5 本次登录第一次看到时整格脉冲三下
           this.freshTag(root, key, x0 + 181, y0 + 27, P);
+          if (this.host.terminalFreshPulse?.(key)) {
+            const tf = hitNode.getComponent(UITransform);
+            mountPulseRing(this.host, root, `FreshPulse_${key}`, hitNode.position.x, hitNode.position.y, (tf?.width ?? P.S(TILE_W)) - P.S(10), (tf?.height ?? P.S(200)) - P.S(10), P.S(1), 3);
+          }
         } else if (dots[key]) {
           // 原型红点在格右上 (+181, +27)
           this.dot(root, x0 + 181, y0 + 27, P);
@@ -291,6 +305,24 @@ export class LobbyTerminalPanelRenderer {
     const label = this.host.addChildLabel(root, `LockText_${key}`, text, P.C(x0 + TILE_W / 2), bottom + bandH * 0.28, P.S(16), rgba(200, 182, 146),
       new Size(P.S(TILE_W - 20), P.S(24)), HorizontalTextAlignment.CENTER);
     label.overflow = Label.Overflow.SHRINK;
+  }
+
+  /**
+   * docs/57 §5 情境提示(装备 / 水晶):指着的格子一圈脉冲光环 + 「零」气泡,不挡操作;点气泡收起并记看过,
+   * 点格子本身由宿主记看过(runLobbyTerminalAction)。新手村剧情强引导要用终端时宿主返回 null。
+   */
+  private renderTip(root: Node, layout: UiLayout, P: TownProtoFrame): void {
+    const tip = this.host.terminalTip?.() ?? null;
+    const target = tip ? root.getChildByName(`LobbyTerminalHit_Tile_${tip.tile}`) : null;
+    if (!tip || !target) {
+      return;
+    }
+    const node = mountWeakTip(this.host, root, 'LobbyTerminalTip', layout, P.S(1), target, tip.text, '点击收起 ›', () => {
+      if (node.isValid) {
+        node.destroy();
+      }
+      this.host.dismissTerminalTip?.(tip.key);
+    });
   }
 
   /** 「新」角标:香槟胶囊 + 深色字,轻微呼吸(B 风格不发光)。 */

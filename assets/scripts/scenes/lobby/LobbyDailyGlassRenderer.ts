@@ -88,7 +88,9 @@ export class LobbyDailyGlassRenderer {
     const profile = this.host.currentLobbyProfile?.();
     const close = (): void => this.host.closeLobbyDailyDungeonPanel();
     mountGlassTopBar(kit, panel, 'LobbyDaily', panelW, panelH, '每日副本',
-      profile ? [{ key: 'stamina', icon: STAMINA_ICON, value: `${profile.stamina}/${profile.maxStamina}`, width: 190 }] : [],
+      // 体力「+」= 开商店体力页(同矿境页;docs/57 §5 体力不足的弱引导指这里)
+      profile ? [{ key: 'stamina', icon: STAMINA_ICON, value: `${profile.stamina}/${profile.maxStamina}`, width: 190,
+        onPlus: this.host.openLobbyShopDialog ? () => this.host.openLobbyShopDialog?.('stamina') : undefined }] : [],
       close, close, { chipRight: 1700, onHelp: () => { this.helpOpen = !this.helpOpen; this.host.refreshLobbyDailyDungeonPanel(); } });
     // 顶栏次按钮:输出榜(右)、特殊玩法守卫战(左)
     mountGlassButton(kit, panel, 'LobbyDailyRank', '输出榜', FX(1390), FY(44), S(150), S(44), k, 'secondary', () => this.owner.openRank(), 21);

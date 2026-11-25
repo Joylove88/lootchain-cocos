@@ -47,6 +47,8 @@ export interface LobbyDailyDungeonPanelHost {
   lobbyStageDisplayLabel?(stageCode: string): string;
   currentLobbyDailyDungeonState(): LobbyDailyDungeonPanelState;
   currentLobbyProfile?(): PlayerLobbyProfileVO;
+  /** 顶栏体力「+」:开商店体力页(docs/57 §5 体力不足的弱引导指这里)。 */
+  openLobbyShopDialog?(kind: 'stamina'): void;
   closeLobbyDailyDungeonPanel(): void;
   reloadLobbyDailyDungeonSummary(): void;
   /** 只允许提交 DAILY_{THEME}_{TIER} 关卡码;真正的开放日/次数/解锁校验以后端为准。 */

@@ -13,7 +13,7 @@ import { ApiError } from '../../net/HttpClient';
  *   服务端明确拒绝的(业务错误)直接丢,不无限重试。
  *
  * 标记码:intro:<功能> 说明卡看过 / skip:<剧情码> 强引导跳过 / new:<功能> 终端「新」角标挂上 /
- * newseen:<功能> 角标点掉 / tracker_walk 追踪条「点这里自动寻路」用过。
+ * newseen:<功能> 角标点掉 / tracker_walk 追踪条「点这里自动寻路」用过 / tip:<键> §5 情境提示出过。
  */
 export interface GuideFlagApi {
   flags(): Promise<string[]>;
@@ -32,6 +32,8 @@ export const GuideFlags = {
   freshSeen: (key: string): string => `newseen:${key}`,
   /** 追踪条「点这里自动寻路」用过。 */
   trackerWalk: 'tracker_walk',
+  /** docs/57 §5 情境提示出过(equip / crystal / stamina / near_hidden / near_chest / near_gather)。 */
+  tip: (key: string): string => `tip:${key}`,
 } as const;
 
 export class GuideFlagSync {
