@@ -1,0 +1,26 @@
+[
+ {
+  "label": "电脑_移动教学键帽",
+  "js": "await sleep(3000); refresh(); if (root.lobbyTerminalOpen) { root.closeLobbyTerminalPanel(); root.terminalReturn = null; } const q = root.worldState.quests.find(x => x.code === 'V01'); window.__v01 = { state: q.state, progress: q.progress }; q.state = 'ACCEPTED'; q.progress = 0; root.refreshLobbyViewPreservingBackground(); await sleep(1500); refresh(); const ok = t.startMoveGuide(() => { window.__mgSkip = 1; }, () => { window.__mgDone = 1; }); await sleep(1600); refresh(); return JSON.stringify({ ok, map: t.def.code, phone: !!find('MoveGuideHand'), keys: ['W', 'A', 'S', 'D'].map(k => !!find('MoveGuideKey_' + k)), arrows: !!find('MoveGuideArrows') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "电脑_按住W键帽亮",
+  "js": "refresh(); t.keys.add(87); await sleep(500); return JSON.stringify({ steps: t.moveGuide ? t.moveGuide.steps : null, moved: t.moveGuide ? Math.round(t.moveGuide.moved) : null });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "电脑_按住D走满收起",
+  "js": "refresh(); t.keys.delete(87); t.keys.add(68); await sleep(2200); t.keys.delete(68); await sleep(300); refresh(); return JSON.stringify({ active: t.moveGuideActive(), done: window.__mgDone === 1, hint: !!find('AutoWalkHint'), praise: texts(200).filter(s => s.indexOf('走得不错') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "电脑_收尾还原V01",
+  "js": "refresh(); const q = root.worldState.quests.find(x => x.code === 'V01'); if (window.__v01) { q.state = window.__v01.state; q.progress = window.__v01.progress; } root.refreshLobbyViewPreservingBackground(); await sleep(1000); return JSON.stringify({ v01: q.state });",
+  "wait": 0,
+  "shot": false
+ }
+]

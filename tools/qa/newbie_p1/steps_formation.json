@@ -1,0 +1,59 @@
+[
+ {
+  "label": "编队_真抽一次拿第二位英雄",
+  "js": "refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; if (root.worldDialog) root.closeWorldDialog(); if (root.worldPoiDialog) root.closeWorldPoiDialog(); if (root.evolutionPick) root.closeEvolutionPickLater(); if (view() !== 'lobby') { root.returnToLobbyFromScenePage(); await sleep(1500); } const fs = await root.api.gacha.freeStatus(); let drew = null; if (fs.available) { const r = await root.api.gacha.draw({ poolCode: fs.poolCode, drawCount: 1, requestId: 'qa-' + Date.now(), paymentMode: 'AUTO' }); drew = Object.keys(r || {}); } await root.loadLobbyHeroRoster(true); await sleep(800); refresh(); return JSON.stringify({ free: fs, drew, heroes: root.selectableLobbyHeroes().map(h => h.id + ':' + h.heroName + ':' + h.power), sel: root.resolveLobbyFormationHeroIds(), target: root.formationGuideHero() });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "编队_未接V06时只有旧软引导",
+  "js": "refresh(); root.openLobbyFormationPanel(undefined, 'roster'); for (let i = 0; i < 40; i++) { await sleep(500); refresh(); if (view() === 'formation' && find('LobbyFormationHeroPicker')) break; } await sleep(1500); refresh(); const out = JSON.stringify({ view: view(), overlay: !!find('LobbyGuideOverlay'), skip: !!find('GuideSkip'), story: root.storyQuestActive('V06'), target: root.formationGuideHero() }); return out;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "编队_关掉回大厅",
+  "js": "refresh(); root.closeLobbyFormationPanel(); for (let i = 0; i < 20; i++) { await sleep(400); if (view() === 'lobby') break; } await sleep(1500); refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; return view();",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "编队_模拟接到V06_终端聚光编队格",
+  "js": "refresh(); const q = root.worldState.quests.find(x => x.code === 'V06'); window.__v06 = { state: q.state, progress: q.progress }; q.state = 'ACCEPTED'; q.progress = 0; localStorage.removeItem('lc_story_guide_skip_{UID}_V06'); root.storyGuideDone.delete('V06'); root.refreshLobbyViewPreservingBackground(); await sleep(2500); root.openLobbyTerminalPanel(); for (let i = 0; i < 20; i++) { await sleep(300); if (find('LobbyGuideOverlay')) break; } await sleep(900); return JSON.stringify({ saved: window.__v06, guide: !!find('LobbyGuideOverlay'), skip: !!find('GuideSkip'), intro: root.featureIntroOpen });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "编队_点编队格进编队页聚光新英雄",
+  "tap": "refresh(); return scr(find('LobbyTerminalHit_Tile_formation'));",
+  "after": "for (let i = 0; i < 40; i++) { await sleep(500); refresh(); if (view() === 'formation' && find('LobbyGuideOverlay')) break; } await sleep(1500); refresh(); return JSON.stringify({ view: view(), guide: !!find('LobbyGuideOverlay'), target: root.formationGuideHero(), sel: root.resolveLobbyFormationHeroIds() });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "编队_点遮罩外下阵被拦",
+  "tap": "refresh(); return scr(find('LobbyFormationActorUnequip'));",
+  "after": "await sleep(800); refresh(); return JSON.stringify({ sel: root.resolveLobbyFormationHeroIds(), guide: !!find('LobbyGuideOverlay') });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "编队_点新英雄上阵_自动保存",
+  "tap": "refresh(); const h = root.formationGuideHero(); return h ? scr(find('LobbyFormationHeroCard_' + h.id)) : null;",
+  "after": "await sleep(1600); refresh(); const team = await root.api.lobbyTeam.getTeam(); return JSON.stringify({ guide: !!find('LobbyGuideOverlay'), done: root.storyGuideDone.has('V06'), sel: root.resolveLobbyFormationHeroIds(), server: team.heroIds, toast: texts(200).filter(s => s.indexOf('上阵了') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "编队_都在阵上时直接保存",
+  "js": "await sleep(3500); refresh(); root.storyGuideDone.delete('V06'); root.renderCurrentView(); await sleep(1300); refresh(); return JSON.stringify({ guide: !!find('LobbyGuideOverlay'), done: root.storyGuideDone.has('V06'), target: root.formationGuideHero(), toast: texts(200).filter(s => s.indexOf('已经在队伍里') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "编队_回大厅剧情状态回读",
+  "js": "refresh(); root.returnToLobbyFromScenePage(); for (let i = 0; i < 20; i++) { await sleep(400); if (view() === 'lobby') break; } await sleep(3000); refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; const q = root.worldState.quests.find(x => x.code === 'V06'); return JSON.stringify({ view: view(), v06: q.state + ' ' + q.progress });",
+  "wait": 0,
+  "shot": false
+ }
+]

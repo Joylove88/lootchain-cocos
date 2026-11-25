@@ -3,14 +3,19 @@
 
 流程:本地注册一个新号 → 写 localStorage 会话并刷新(第一段 --fresh --keep)→ 接管同一页依次跑
   steps_newplayer.json:建角(故意用已占用的名字「圣契64」,验证自动名撞名自动换)→ 序幕 → 觉醒(首次进村要接上)
-    → 契约之选(未选卡按钮禁用)→ 进村 HUD(召唤 / 商店未开放不显示、追踪条「点这里自动寻路」)→ 终端锁格 → 点锁格只提示
+    → 契约之选(未选卡按钮禁用)→ 进村 HUD(召唤 / 商店未开放不显示)
+    → docs/57 §3 V01 移动教学(契约后自动出 / 点遮罩外被拦 / 真实拖摇杆计步 / 走满收起 + 追踪条「点这里自动寻路」接力 / 重开点跳过记 skip:V01)
+    → 终端锁格 → 点锁格只提示
     → 点追踪条自动寻路 → 弹窗队列(对话 / 发现卡)→ 进化第一次教学 + 稍后再选 → 右上「进化」入口
   steps_features.json:契约禁用态 → 对话开着时发现隐藏点要排队 → 发现卡开着和 NPC 对话先收卡 → 终端锁格样式
     → 本地模拟接到 V04 的功能开放播报 +「新」角标 → 召唤默认免费池 → 古碑面板走远自动收 → 对话大立绘
     → 进化「升级只提醒」/「跨 5 级自动弹」两条分支(桩接口,不确认)
   steps_guides.json:docs/57 §4 功能说明卡(终端 / 背包 / 锻造 / 秘境 / 水晶 / 矿境 / 图鉴 / 世界地图 / 野外探索,只出一次)
     → §3 强引导:模拟接到 V04 召唤页聚光免费召唤 + 跳过;模拟接到 V05 终端→英雄格→第一位伙伴→升级,升级后当场收起
-    → docs/57 §12 服务端已存 intro:* / skip:V04 / tracker_walk、本机待发队列为空(换设备不重放另见 guide_flag_sync_check.py)
+    → docs/57 §12 服务端已存 intro:* / skip:V04 / skip:V01 / tracker_walk、本机待发队列为空(换设备不重放另见 guide_flag_sync_check.py)
+  steps_formation.json:§3 V06 编队强引导(真抽一次免费单抽拿第二位英雄 → 模拟接到 V06 → 终端聚光「编队」格 → 真实点进编队页
+    → 聚光还没上阵的英雄卡 / 点遮罩外下阵被拦 / 点卡上阵即自动保存(服务端阵容核对)→ 都在阵上时直接保存)
+  steps_move_pc.json(--pc 电脑 1600×900):移动教学电脑版 W A S D 键帽(按住哪个亮哪个、走满收起)
 截图 / log 在 <输出目录>(默认 %TEMP%/lootchain-qa/newbie_p1_<时间>);跑完按配置目录关掉无头 Edge。
 注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
       steps_features.json 里的「模拟接到 V04」只改页面内存,不碰服务端。
@@ -71,6 +76,8 @@ def main():
         run(out_dir, fill('steps_newplayer.json', os.path.join(out_dir, '_newplayer.json'), token, uid), '--keep')
         run(out_dir, fill('steps_features.json', os.path.join(out_dir, '_features.json'), token, uid), '--keep')
         run(out_dir, fill('steps_guides.json', os.path.join(out_dir, '_guides.json'), token, uid), '--keep')
+        run(out_dir, fill('steps_formation.json', os.path.join(out_dir, '_formation.json'), token, uid), '--keep')
+        run(out_dir, fill('steps_move_pc.json', os.path.join(out_dir, '_move_pc.json'), token, uid), '--keep', '--pc')
     finally:
         edge_guard.kill_profiles([os.path.join(SCRATCH, PROFILE_NAME)])
     print('结果:', os.path.join(out_dir, 'log.jsonl'), flush=True)

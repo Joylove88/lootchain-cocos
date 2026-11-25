@@ -8,6 +8,11 @@
   --pc:电脑 1600×900;默认手机横屏 1200×540 @2x(安卓 UA + 触屏),玩家大多在手机上
 步骤文件:[{"label": "登录页", "js": "...return 某个字符串;", "wait": 秒, "shot": true}, ...]
 js 里可用:cc / root / t(野外渲染器)/ sleep / find(节点名)/ tap(节点)/ texts()(当前屏上看得见的文字)/ buttons()(看得见的按钮名 + 文字)/ view()
+  / scr(节点) = 节点中心的页面 CSS 坐标
+真实输入(11-25,验遮罩挡不挡点击用;tap(节点) 是直接发节点事件,穿得过遮罩):
+  "tap": "return scr(find('X'));" → 浏览器真实按下抬起(手机触摸 / 电脑鼠标);
+  "drag": "return {x0, y0, x1, y1};" + "drag_ms" / "hold"(秒)/ "shot_hold"(松手前截一张 *_hold.png);
+  "after": 输入打完后再跑的 JS,结果记在 log 的 after。顺序:js → tap / drag → after → wait → 截图
 产物:<输出目录>/NN_<label>.png + log.jsonl(每步返回值 / 耗时 / 当前视图)+ exceptions.txt
 要求:本地游戏服 8081;正式包服务 7460(tools/local-serve/serve_release.py)。
 """
@@ -56,6 +61,9 @@ const find = name => { let f = null; const w = n => { if (f) return; if (n.name 
 const fakeEv = () => { const p = new cc.Vec2(0, 0); return { propagationStopped: false, propagationImmediateStopped: false, stopPropagation() {}, stopPropagationImmediate() {}, getLocation: () => p, getUILocation: () => p, getStartLocation: () => p, getUIStartLocation: () => p, getDelta: () => p, getUIDelta: () => p, touch: null, getTouches: () => [], target: null, currentTarget: null }; };
 const tap = n => { if (!n) return false; const b = n.getComponent(cc.Button); if (b) { n.emit(cc.Button.EventType.CLICK, b); } else { n.emit(cc.Node.EventType.TOUCH_START, fakeEv()); n.emit(cc.Node.EventType.TOUCH_END, fakeEv()); } return true; };
 const view = () => root ? root.currentView : 'noroot';
+// 节点中心 → 页面 CSS 坐标(给步骤里的 tap / drag 用:真实触摸 / 鼠标从浏览器打进去,遮罩挡不挡点击才验得出来)
+const scr = n => { if (!n) return null; const wp = n.getWorldPosition(); const vp = cc.view.getViewportRect(); const c = document.getElementById('GameCanvas'); const rc = c.getBoundingClientRect(); const dpr = c.width / rc.width;
+  return { x: rc.left + (vp.x + wp.x * cc.view.getScaleX()) / dpr, y: rc.top + (c.height - (vp.y + wp.y * cc.view.getScaleY())) / dpr }; };
 const texts = (max = 80) => { const out = []; try { cc.director.getScene().walk(n => { if (!n.activeInHierarchy) return; const l = n.getComponent(cc.Label);
   if (l && l.string && l.string.trim()) { const op = n.getComponent(cc.UIOpacity); if (op && op.opacity < 10) return; out.push(l.string.replace(/\s+/g, ' ').slice(0, 60)); } }); } catch (e) {}
   return [...new Set(out)].slice(0, max); };
@@ -140,6 +148,15 @@ async def run():
                 if data:
                     open(os.path.join(OUT, name), 'wb').write(base64.b64decode(data))
 
+            async def touch(kind, x, y):
+                # 手机模式发触摸(已开触摸模拟),电脑模式发鼠标
+                if MOBILE:
+                    pts = [] if kind == 'touchEnd' else [{'x': x, 'y': y, 'id': 1}]
+                    await call('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': pts})
+                else:
+                    mt = {'touchStart': 'mousePressed', 'touchMove': 'mouseMoved', 'touchEnd': 'mouseReleased'}[kind]
+                    await call('Input.dispatchMouseEvent', {'type': mt, 'x': x, 'y': y, 'button': 'left', 'buttons': 0 if kind == 'touchEnd' else 1, 'clickCount': 1})
+
             await call('Runtime.enable')
             await call('Page.enable')
             await call('Page.bringToFront')
@@ -156,13 +173,41 @@ async def run():
             for i, step in enumerate(json.load(open(STEPS, encoding='utf-8'))):
                 ts = time.time()
                 res = await ev(wrap(step['js']), step.get('timeout', 600)) if step.get('js') else None
+                name = f"{n0 + i:02d}_{re.sub(r'[^0-9A-Za-z_\u4e00-\u9fff-]+', '_', step.get('label', 'step'))}.png"
+                # tap:JS \u8fd4\u56de {x, y}(CSS \u5750\u6807,\u53ef\u7528 scr(node))\u2192 \u771f\u5b9e\u6309\u4e0b\u62ac\u8d77;
+                # drag:JS \u8fd4\u56de {x0, y0, x1, y1} \u2192 \u6309\u4e0b\u3001drag_ms \u5185\u79fb\u8fc7\u53bb\u3001\u505c hold \u79d2(shot_hold = \u677e\u624b\u524d\u622a\u4e00\u5f20)\u518d\u677e\u624b;
+                # after:\u8f93\u5165\u6253\u5b8c\u540e\u518d\u8dd1\u7684 JS(\u7ed3\u679c\u8bb0\u5728 after)
+                inp = None
+                if step.get('tap'):
+                    inp = await ev(wrap(step['tap']))
+                    if isinstance(inp, dict) and 'x' in inp:
+                        await touch('touchStart', inp['x'], inp['y'])
+                        await asyncio.sleep(0.07)
+                        await touch('touchEnd', inp['x'], inp['y'])
+                if step.get('drag'):
+                    inp = await ev(wrap(step['drag']))
+                    if isinstance(inp, dict) and 'x0' in inp:
+                        await touch('touchStart', inp['x0'], inp['y0'])
+                        n = max(1, int(float(step.get('drag_ms', 400)) / 16))
+                        for j in range(1, n + 1):
+                            await touch('touchMove', inp['x0'] + (inp['x1'] - inp['x0']) * j / n, inp['y0'] + (inp['y1'] - inp['y0']) * j / n)
+                            await asyncio.sleep(0.016)
+                        if step.get('hold'):
+                            await asyncio.sleep(float(step['hold']))
+                        if step.get('shot_hold'):
+                            await shot(name.replace('.png', '_hold.png'))
+                        await touch('touchEnd', inp['x1'], inp['y1'])
+                after = await ev(wrap(step['after']), step.get('timeout', 600)) if step.get('after') else None
                 if step.get('wait'):
                     await asyncio.sleep(float(step['wait']))
                 v = await ev(wrap("return view() + (t && t.isMounted && t.isMounted() ? ' @' + t.def.code : '');"))
-                name = f"{n0 + i:02d}_{re.sub(r'[^0-9A-Za-z_\u4e00-\u9fff-]+', '_', step.get('label', 'step'))}.png"
                 if step.get('shot', True):
                     await shot(name)
                 rec = {'step': step.get('label'), 'sec': round(time.time() - ts, 1), 'since_start': round(time.time() - t0, 1), 'view': v, 'result': res, 'shot': name if step.get('shot', True) else None}
+                if inp is not None:
+                    rec['input'] = inp
+                if step.get('after'):
+                    rec['after'] = after
                 logf.write(json.dumps(rec, ensure_ascii=False) + '\n')
                 logf.flush()
                 print(json.dumps(rec, ensure_ascii=False)[:2500], flush=True)

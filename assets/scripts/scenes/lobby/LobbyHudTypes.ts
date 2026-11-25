@@ -141,6 +141,8 @@ export interface LobbyHudHost {
   skipStoryGuide?(code: string): void;
   /** 英雄详情看的是主角(主角等级跟玩家走,不指升级钮)。 */
   heroDetailIsProtagonist?(): boolean;
+  /** V06「编队」强引导要点的英雄(还没上阵、阵容有空位;没有返回 null)。 */
+  formationGuideHero?(): { id: number; name: string } | null;
   currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
   /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
   lobbyMailUnreadCount?(): number;

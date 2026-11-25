@@ -48,6 +48,46 @@
   "shot": true
  },
  {
+  "label": "移动教学遮罩_契约后自动出",
+  "js": "refresh(); for (let i = 0; i < 40; i++) { if (t.moveGuideActive()) break; await sleep(250); } await sleep(1300); refresh(); return JSON.stringify({ active: t.moveGuideActive(), mask: !!find('LobbyMoveGuide'), skip: !!find('GuideSkip'), hand: !!find('MoveGuideHand'), keys: !!find('MoveGuideKey_W'), hint: !!find('AutoWalkHint'), busy: root.lobbyPopupBusy(), queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "移动教学_点追踪条被遮罩拦",
+  "tap": "refresh(); return scr(find('LobbyWorldQuestTracker'));",
+  "after": "await sleep(700); refresh(); return JSON.stringify({ walking: t.isAutoWalking(), active: t.moveGuideActive() });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "移动教学_拖摇杆走一步",
+  "drag": "refresh(); const p = scr(find('LobbyTownJoyBase')); return { x0: p.x, y0: p.y, x1: p.x + 10, y1: p.y - 60 };",
+  "drag_ms": 250,
+  "hold": 0.35,
+  "shot_hold": true,
+  "after": "await sleep(200); refresh(); return JSON.stringify({ active: t.moveGuideActive(), steps: t.moveGuide ? t.moveGuide.steps : null, moved: t.moveGuide ? Math.round(t.moveGuide.moved) : null });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "移动教学_走满收起_追踪条接力",
+  "drag": "refresh(); const p = scr(find('LobbyTownJoyBase')); return { x0: p.x, y0: p.y, x1: p.x + 60, y1: p.y - 10 };",
+  "drag_ms": 250,
+  "hold": 1.8,
+  "after": "await sleep(450); refresh(); return JSON.stringify({ active: t.moveGuideActive(), mask: !!find('LobbyMoveGuide'), hint: !!find('AutoWalkHint'), done: root.storyGuideDone.has('V01'), praise: texts(200).filter(s => s.indexOf('走得不错') >= 0), queue: root.popupQueue.size });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "移动教学_重开后点跳过",
+  "js": "refresh(); root.storyGuideDone.delete('V01'); root.moveGuideQueuedUid = 0; for (let i = 0; i < 40; i++) { if (t.moveGuideActive()) break; await sleep(250); } await sleep(700); return JSON.stringify({ again: t.moveGuideActive() });",
+  "tap": "refresh(); return scr(find('GuideSkip'));",
+  "after": "await sleep(900); refresh(); return JSON.stringify({ active: t.moveGuideActive(), local: localStorage.getItem('lc_story_guide_skip_{UID}_V01'), flag: root.guideFlags.has('skip:V01'), blocked: root.storyGuideBlocked('V01'), hint: !!find('AutoWalkHint') });",
+  "wait": 0,
+  "shot": true
+ },
+ {
   "label": "说明卡先记看过_本批不测",
   "js": "localStorage.setItem('lc_feature_intro_{UID}', JSON.stringify(['terminal', 'bag', 'forge', 'daily', 'crystal', 'raid', 'codex', 'guild', 'explore', 'worldmap'])); refresh(); root.featureIntros.uid = 0; return 'ok';",
   "wait": 0,

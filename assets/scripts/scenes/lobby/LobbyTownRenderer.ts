@@ -54,6 +54,7 @@ import { TOWN_SPAWN } from './LobbyTownConfig';
 import { TownWaypointFx } from './LobbyTownWaypointFx';
 import { REF_PLATE_DARK, mountRefSliced } from '../UiRefKit';
 import { TOWN_HUD_ASSETS, TOWN_MINIMAP_BUILDING_ICONS, mountRingBase, townProtoFrame } from './LobbyTownHudProto';
+import { MOVE_GUIDE_STEPS, MOVE_KEY_A, MOVE_KEY_D, MOVE_KEY_S, MOVE_KEY_W, MoveGuideOverlay, type MoveGuideHost } from './LobbyMoveGuide';
 import { GLASS_SLICES, mountGlassSlice } from '../UiGlassKit';
 import { GUARD_MONSTER_DB_SCALE } from './GuardBattleModel';
 import { mountHeroAvatar } from './HeroHeadCrop';
@@ -227,6 +228,8 @@ interface TownBuildingEntity {
 const HERO_SLOT_W = 180;
 const HERO_SLOT_H = 230;
 const LEADER_SPEED = 340;
+/** docs/57 §3 V01 移动教学:玩家自己走满这么远算一步(3 步 ≈ 1.5 秒)。 */
+const MOVE_GUIDE_STEP_PX = 150;
 const FOLLOW_SAMPLE = 8;
 const FOLLOW_GAP_SAMPLES = 16;
 /** 队员之间沿队长足迹的间距(世界单位);出生站位也用它,起步不会往回走。 */
@@ -712,6 +715,12 @@ export class LobbyTownRenderer {
   private coach: { step: number; count: number } | null = null;
   private coachNode: Node | null = null;
   private coachScale = 1;
+  /**
+   * 11-25 docs/57 §3 V01 移动教学(强引导):新号进村、契约之选选完后由 GameRoot 经弹窗队列开;
+   * moved = 玩家自己推摇杆 / 按方向键走过的距离(自动寻路不算),走满 3 步收起,追踪条「点这里自动寻路」接力。
+   */
+  private moveGuide: { moved: number; steps: number; lastX: number; lastY: number; onSkip: () => void; onDone: () => void } | null = null;
+  private readonly moveGuideView = new MoveGuideOverlay();
   /**
    * 11-22 脱困(策划通玩:训练场角落把人困住,没有任何出路提示):玩家推着方向(不是自动寻路)却 1.5 秒基本没挪,
    * 摇杆上方冒「卡住了?点此回到出生点」。只送出生点:服务端 warp 只认传送阵 / 出口 / 出生点附近(FieldPositionRegistry)。
@@ -2439,6 +2448,7 @@ export class LobbyTownRenderer {
     }
     this.stepQuestWalk();
     this.stepLeader(clamped);
+    this.stepMoveGuide();
     if (!this.trial) {
       this.stepFollowers(clamped);
     }
@@ -3693,6 +3703,10 @@ export class LobbyTownRenderer {
     this.nearKey = null;
     this.updateNearBuilding();
     this.updateMinimap();
+    // 移动教学进行中:HUD 整层重建会带走遮罩,补挂回去(压在 HUD 最上面)
+    if (this.moveGuide) {
+      this.mountMoveGuide();
+    }
   }
 
   private renderJoystick(hud: Node, layout: UiLayout, scale: number): void {
@@ -5633,7 +5647,8 @@ export class LobbyTownRenderer {
     node.on(Button.EventType.CLICK, () => this.host.openWorldQuestTracker?.(), this);
     this.host.applyImageButtonFeedback(node, 1.01, 0.99);
     // docs/57 §3 V01 弱引导:新手村里还没点过追踪条 → 主行右侧挂一个「点这里自动寻路」小胶囊(点过一次就不再出)
-    if (quest && quest.state !== 'LOCKED' && world?.stage === 'VILLAGE' && !this.questTrackerUsed()) {
+    // 移动教学(强引导)开着时先不挂,教完再挂出来接力(remountQuestTrackerHint)
+    if (quest && quest.state !== 'LOCKED' && world?.stage === 'VILLAGE' && !this.questTrackerUsed() && !this.moveGuide) {
       const hw = P.S(176);
       const hh = P.S(36);
       const hint = this.host.addChildPlainNode(node, 'AutoWalkHint', w / 2 + hw / 2 + P.S(6), h / 2 - P.S(18), hw, hh);
@@ -8641,6 +8656,146 @@ export class LobbyTownRenderer {
   startTrainingCoach(): void {
     this.coach = { step: 0, count: 0 };
     this.mountCoach();
+  }
+
+  // ── docs/57 §3 V01 移动教学(强引导,11-25)──
+
+  /** 移动教学进行中(统一弹窗队列不打断、返回键 = 跳过)。 */
+  moveGuideActive(): boolean {
+    return !!this.moveGuide;
+  }
+
+  /** GameRoot 经弹窗队列调:新手村、有队长、HUD 在时开;开不了(还没进图 / 不在晨风村)返回 false。 */
+  startMoveGuide(onSkip: () => void, onDone: () => void): boolean {
+    const leader = this.leader;
+    if (this.moveGuide || !this.isMounted() || this.trial || this.awakenLock || this.mapCode !== 'VILLAGE' || !leader || !this.hudNode?.isValid) {
+      return false;
+    }
+    this.cancelAutoWalk();
+    this.moveGuide = { moved: 0, steps: 0, lastX: leader.x, lastY: leader.y, onSkip, onDone };
+    this.hudNode.getChildByName('LobbyWorldQuestTracker')?.getChildByName('AutoWalkHint')?.destroy();
+    this.mountMoveGuide();
+    return true;
+  }
+
+  /** 右上「跳过引导」/ 返回键:记跳过(宿主存服务端),收起遮罩,追踪条提示接力。 */
+  skipMoveGuide(): void {
+    const guide = this.moveGuide;
+    if (!guide) {
+      return;
+    }
+    this.moveGuide = null;
+    this.moveGuideView.destroy();
+    guide.onSkip();
+    this.remountQuestTrackerHint();
+  }
+
+  private mountMoveGuide(): void {
+    const guide = this.moveGuide;
+    const hud = this.hudNode;
+    const layout = this.hudLayout;
+    const home = this.joyHome;
+    if (!guide || !hud || !hud.isValid || !layout || !home) {
+      this.moveGuideView.destroy();
+      return;
+    }
+    const P = townProtoFrame(layout);
+    const baseD = P.S(this.def.camps.length > 0 ? 210 : 187);
+    this.moveGuideView.mount(this.host as unknown as MoveGuideHost, hud, {
+      width: layout.width,
+      height: layout.height,
+      stageLeft: layout.stageLeft,
+      stageRight: layout.stageRight,
+      stageTop: layout.stageTop,
+      stageBottom: layout.stageBottom,
+      joyX: home.x,
+      joyY: home.y,
+      baseD,
+      knobD: baseD * 0.4,
+      travel: this.joyRadius,
+      k: P.S(1),
+      phone: isPhoneDesign(),
+    }, guide.steps, () => this.skipMoveGuide());
+  }
+
+  /** 每帧:玩家自己走的距离计步(自动寻路 / 被击退不算),走满收起;离开晨风村或 V01 已经交了就悄悄收掉。 */
+  private stepMoveGuide(): void {
+    const guide = this.moveGuide;
+    if (!guide) {
+      return;
+    }
+    const leader = this.leader;
+    const quest = this.host.currentWorldState?.()?.quests.find((item) => item.code === 'V01') ?? null;
+    if (!leader || this.trial || this.mapCode !== 'VILLAGE' || !quest || quest.state !== 'ACCEPTED') {
+      this.endMoveGuide(false);
+      return;
+    }
+    const v = this.inputVector();
+    const d = Math.hypot(leader.x - guide.lastX, leader.y - guide.lastY);
+    guide.lastX = leader.x;
+    guide.lastY = leader.y;
+    if ((v.x !== 0 || v.y !== 0) && !this.autoPath && d < 80) {
+      guide.moved += d;
+    }
+    guide.steps = Math.min(MOVE_GUIDE_STEPS, Math.floor(guide.moved / MOVE_GUIDE_STEP_PX));
+    if (guide.steps >= MOVE_GUIDE_STEPS) {
+      this.endMoveGuide(true);
+      return;
+    }
+    if (!this.moveGuideView.mounted) {
+      return;
+    }
+    const has = (a: KeyCode, b: KeyCode): boolean => this.keys.has(a) || this.keys.has(b);
+    const keys = (has(KeyCode.KEY_W, KeyCode.ARROW_UP) ? MOVE_KEY_W : 0)
+      | (has(KeyCode.KEY_A, KeyCode.ARROW_LEFT) ? MOVE_KEY_A : 0)
+      | (has(KeyCode.KEY_S, KeyCode.ARROW_DOWN) ? MOVE_KEY_S : 0)
+      | (has(KeyCode.KEY_D, KeyCode.ARROW_RIGHT) ? MOVE_KEY_D : 0);
+    this.moveGuideView.tick(Date.now(), guide.steps, keys, this.joy.active);
+  }
+
+  /** 收起移动教学:completed = 走满了(夸一句 + 宿主记本会话完成);否则只是条件没了(悄悄收)。 */
+  private endMoveGuide(completed: boolean): void {
+    const guide = this.moveGuide;
+    this.moveGuide = null;
+    this.moveGuideView.destroy();
+    if (!guide) {
+      return;
+    }
+    if (completed) {
+      guide.onDone();
+      const leader = this.leader;
+      if (leader) {
+        this.spawnFloater(leader.x, leader.y + 270, '走得不错!', rgba(255, 226, 150), 30);
+      }
+      gameAudio.sfx('reward_claim', 0.7);
+    }
+    this.remountQuestTrackerHint();
+  }
+
+  /**
+   * docs/57 §3「走出 3 步后收起,改弱引导指向追踪条」:追踪条重画一次把「点这里自动寻路」挂出来(层级不变),胶囊放大跳三下。
+   * 旧节点 destroy 要到帧末才摘,新节点按「不是旧的那个」找。
+   */
+  private remountQuestTrackerHint(): void {
+    const hud = this.hudNode;
+    const layout = this.hudLayout;
+    if (!hud || !hud.isValid || !layout || this.trial) {
+      return;
+    }
+    const old = hud.getChildByName('LobbyWorldQuestTracker');
+    const index = old ? old.getSiblingIndex() : -1;
+    this.renderQuestTracker(hud, layout, this.hudScale, this.host.currentWorldState?.() ?? null);
+    const fresh = hud.children.find((child) => child.name === 'LobbyWorldQuestTracker' && child !== old) ?? null;
+    if (!fresh) {
+      return;
+    }
+    if (index >= 0) {
+      fresh.setSiblingIndex(index);
+    }
+    const hint = fresh.getChildByName('AutoWalkHint');
+    if (hint) {
+      tween(hint).repeat(3, tween<Node>().to(0.22, { scale: new Vec3(1.16, 1.16, 1) }, { easing: 'sineOut' }).to(0.22, { scale: new Vec3(1, 1, 1) }, { easing: 'sineIn' })).start();
+    }
   }
 
   /** 出招计数:只认当前这一步要教的动作(技能在真放出去时才算,冷却中按了不算)。 */

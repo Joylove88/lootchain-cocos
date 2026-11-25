@@ -228,10 +228,12 @@ export class LobbyHudRenderer {
   }
 
   /**
-   * docs/57 §3 强引导(只做 5 处里的召唤 / 升级英雄;移动 / 战斗按键在训练场教学里):
+   * docs/57 §3 强引导(界面里的 3 处;V01 移动教学在跑图层 LobbyMoveGuide,V02 战斗按键在训练场教学里):
    * - V04「祭坛的回应」接了还没召唤:召唤页聚光「免费召唤」(确认今天的免费单抽还在、且选中的是免费池才上遮罩);
-   * - V05「变强」接了还没升级:终端聚光「英雄」格 → 名册聚光第一位伙伴(不是主角)→ 详情聚光「升级」(经验书 / 金币够才上遮罩)。
-   * 完成看剧情进度(服务端),换设备不重放;跳过 = 本条记完成(本机)。只在新手村阶段出。
+   * - V05「变强」接了还没升级:终端聚光「英雄」格 → 名册聚光第一位伙伴(不是主角)→ 详情聚光「升级」(经验书 / 金币够才上遮罩);
+   * - V06「编队」接了还没保存:终端聚光「编队」格 → 编队页聚光右栏一张还没上阵的英雄卡(上阵即自动保存 = 完成;
+   *   新伙伴已经都在阵上时 GameRoot.settleFormationStoryGuide 直接存,不上遮罩)。
+   * 完成看剧情进度(服务端),换设备不重放;跳过 = 本条记完成(服务端 skip:<剧情码>)。只在新手村阶段出。
    */
   private resolveStoryGuide(view: string): { code: string; targets: string[]; text: string } | null {
     const world = this.host.currentWorldState?.() ?? null;
@@ -254,6 +256,15 @@ export class LobbyHudRenderer {
       }
       if (view === 'heroDetail' && !this.host.heroDetailIsProtagonist?.() && this.host.heroDetailLevelUpAffordable() === true) {
         return { code: 'V05', targets: ['LobbyHeroDetailLevelUpButton'], text: '经验书已经备好了,点「升级」!' };
+      }
+    }
+    if (active('V06')) {
+      if (view === 'terminal') {
+        return { code: 'V06', targets: ['LobbyTerminalHit_Tile_formation'], text: '点「编队」,把新伙伴编进队伍' };
+      }
+      const hero = view === 'formation' ? this.host.formationGuideHero?.() ?? null : null;
+      if (hero) {
+        return { code: 'V06', targets: [`LobbyFormationHeroCard_${hero.id}`], text: `点「${hero.name}」上阵,阵容会自动保存` };
       }
     }
     return null;
@@ -370,9 +381,17 @@ export class LobbyHudRenderer {
     const bubbleH = 120 * scale;
     const avatarOver = bubbleH * GUIDE_BUBBLE_AVATAR_OVERHANG;
     const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
-    const above = local.y + needed < layout.stageTop - 6;
+    let above = local.y + needed < layout.stageTop - 6;
     // 上下都放不下(英雄卡这类很高的目标,手机布局下气泡掉出屏幕,2026-10-15 安卓真机):改放目标左 / 右侧,箭头横指
     const below = local.y - needed > layout.stageBottom + 6;
+    if (above && below && storyCode) {
+      // 剧情强引导右上有「跳过引导」:气泡放上面会压到它(11-25 编队页右栏英雄卡)就改放下面
+      const topEdge = local.y + ringHalfV + pointerH + 12 * scale + bubbleH;
+      const rightEdge = Math.max(layout.stageLeft + bubbleW / 2 + avatarOver + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x)) + bubbleW / 2;
+      if (topEdge > layout.stageTop - (50 + 22 + 8) * scale && rightEdge > layout.stageRight - (148 + 24 + 8) * scale) {
+        above = false;
+      }
+    }
     const side = !above && !below ? (local.x < (layout.stageLeft + layout.stageRight) / 2 ? 1 : -1) : 0;
     const dir = above ? 1 : -1;
     // 指引箭头(image2 素材,默认朝下;翻转时角度 180,横放 ±90):上下 / 左右浮动

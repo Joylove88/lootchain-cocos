@@ -338,7 +338,7 @@ const LOBBY_ADVENTURE_RETIRED = true;
 /** 英雄契约里程碑副标题前缀:来源剧情任务码 → 剧情名(按等级解锁的显示 Lv.N)。 */
 const LEVEL_CONTRACT_SOURCE: Record<string, string> = { V04: '祭坛的回应', V09: '林地之王已除' };
 /** docs/57 §3 剧情强引导的剧情码(LobbyHudRenderer.resolveStoryGuide);登录同步时把本机的跳过记录补报服务端。 */
-const STORY_GUIDE_CODES = ['V04', 'V05'] as const;
+const STORY_GUIDE_CODES = ['V01', 'V04', 'V05', 'V06'] as const;
 
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
@@ -470,8 +470,14 @@ export class LootChainGameRoot extends Component {
   private readonly featureIntros = new FeatureIntroTracker(this.guideFlags);
   private featureIntroPending: { key: FeatureIntroKey; at: number } | null = null;
   private featureIntroOpen: FeatureIntroKey | null = null;
-  /** docs/57 §3 剧情强引导(V04 免费召唤 / V05 升级英雄):本会话已完成的(等世界状态回读前先压住)。 */
+  /** docs/57 §3 剧情强引导(V01 移动 / V04 免费召唤 / V05 升级英雄 / V06 编队):本会话已完成的(等世界状态回读前先压住)。 */
   private readonly storyGuideDone = new Set<string>();
+  /** docs/57 §3 V01 移动教学:本会话入过队的账号(一次)/ 开不了时下次重试的时间。 */
+  private moveGuideQueuedUid = 0;
+  private moveGuideRetryAt = 0;
+  /** 契约之选已经选过(或这个号不用选)的账号 + 时刻:移动教学排在契约之选后面,等「契约成立」飘字看完再出。 */
+  private starterContractSettledUid = 0;
+  private starterContractSettledAt = 0;
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
   private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
@@ -1388,6 +1394,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyTownRenderer.step(deltaTime);
       this.tickRealmTrial();
       this.stepAwakenCinematic();
+      this.checkMoveGuide();
       this.pumpPopupQueue();
       this.tickSteleDialogLeave();
       // docs/50:切图那一刻素材组还在加载会被加载门挡住、地图没建;加载完没人补刷 → 地图一直空着。这里兜底补一次(1 秒限频)
@@ -2254,7 +2261,9 @@ export class LootChainGameRoot extends Component {
 
   private renderLobbyFormationPanel(layout: UiLayout): void {
     this.lobbyFormationPanelRenderer.render(layout);
-    // 布阵页软引导(docs/45 §15):第一次进来讲上阵与阵容战力
+    // docs/57 §3 V06:新伙伴已经都在阵上时没有「点卡上阵」可教,直接存一次阵容
+    this.settleFormationStoryGuide();
+    // V06 剧情强引导(聚光一张还没上阵的英雄卡);否则布阵页软引导(docs/45 §15):第一次进来讲上阵与阵容战力
     this.lobbyHudRenderer.mountGuideOverlay(layout, 'formation');
   }
 
@@ -2514,6 +2523,11 @@ export class LootChainGameRoot extends Component {
     }
     if (this.contractPick) {
       // 契约之选必须选一张,返回键不关
+      return;
+    }
+    if (this.currentView === 'lobby' && this.lobbyTownRenderer.moveGuideActive()) {
+      // 移动教学遮罩开着:返回键 = 跳过引导
+      this.lobbyTownRenderer.skipMoveGuide();
       return;
     }
     const contentRoot = this.ensureContentRoot();
@@ -5661,6 +5675,14 @@ export class LootChainGameRoot extends Component {
       }
       this.selectedLobbyFormationHeroIds = this.normalizeLobbyFormationHeroIds(next);
       this.setStatus(`${hero.heroName} 已加入本次阵容。`);
+      if (this.storyQuestActive('V06')) {
+        // docs/57 §3 V06 强引导:上阵即保存(下面 persist)= 任务完成;先记本会话完成,整页重画时遮罩不会跳去指下一位。
+        // 布阵页旧软引导(讲上阵与战力)一并记看过:不然重画后它的气泡和零的提示叠在顶部
+        this.storyGuideDone.add('V06');
+        lobbyGuide.markVisited('formation');
+        this.removeNodeFromContent('LobbyGuideOverlay');
+        this.showZeroToastAfterRender(`「${hero.heroName}」上阵了,阵容已自动保存。去找训练场的教官交任务吧!`);
+      }
     }
     this.invalidateLobbyBattleSessionForFormationChange();
     // 每次布阵变更后回写服务端,下次登录还原(不再回落默认前 5 战力)。
@@ -10322,8 +10344,8 @@ export class LootChainGameRoot extends Component {
     if (userId && isAwakenPending(userId)) {
       return true;
     }
-    // 训练场教学(圈住按钮一步步教)进行中不打断
-    if (this.lobbyTownRenderer.trainingCoachActive()) {
+    // 训练场教学(圈住按钮一步步教)/ 移动教学(遮罩)进行中不打断
+    if (this.lobbyTownRenderer.trainingCoachActive() || this.lobbyTownRenderer.moveGuideActive()) {
       return true;
     }
     return this.lobbyHasOpenLayer();
@@ -10554,6 +10576,118 @@ export class LootChainGameRoot extends Component {
     this.storyGuideDone.add(code);
     this.removeNodeFromContent('LobbyGuideOverlay');
     gameAudio.sfx('panel_close');
+  }
+
+  /** 新手村剧情任务 code 接了还没做完、引导也没跳过 / 本会话没做完(强引导该不该出的统一判据)。 */
+  private storyQuestActive(code: string): boolean {
+    const world = this.worldState;
+    if (!world || world.stage !== 'VILLAGE') {
+      return false;
+    }
+    const quest = world.quests.find((item) => item.code === code);
+    return !!quest && quest.state === 'ACCEPTED' && quest.progress < quest.target && !this.storyGuideBlocked(code);
+  }
+
+  private markStarterContractSettled(): void {
+    const userId = this.api.tokenStore.userId() ?? 0;
+    if (this.starterContractSettledUid !== userId) {
+      this.starterContractSettledUid = userId;
+      this.starterContractSettledAt = Date.now();
+    }
+  }
+
+  /**
+   * docs/57 §3 V01「醒来」移动教学(强引导):新号进晨风村、觉醒演完、契约之选选完(「契约成立」飘字看完)后,经统一弹窗队列出一次;
+   * 本会话一次,重登还在 V01 就再教一次(docs/57 §10「移动 / 战斗按键重登从头」);跳过记服务端 skip:V01。
+   * 优先级 78:排在契约之选(80)后面,隐藏点发现卡(75)/ 进化(70)/ 功能播报(40)前面。
+   */
+  private checkMoveGuide(): void {
+    const userId = this.api.tokenStore.userId() ?? 0;
+    const now = Date.now();
+    if (!userId || this.moveGuideQueuedUid === userId || this.starterContractSettledUid !== userId
+      || now < this.starterContractSettledAt + 1500 || now < this.moveGuideRetryAt) {
+      return;
+    }
+    if (!this.storyQuestActive('V01')) {
+      // 世界状态读到了、V01 却不在进行(老号 / 已交 / 已跳过):本会话不用再每帧查
+      if (this.worldState) {
+        this.moveGuideQueuedUid = userId;
+      }
+      return;
+    }
+    if (this.lobbyTownRenderer.currentMapCode() !== 'VILLAGE' || !this.lobbyTownRenderer.isMounted()) {
+      return;
+    }
+    this.moveGuideQueuedUid = userId;
+    this.popupQueue.push({
+      key: 'move-guide',
+      priority: 78,
+      show: () => {
+        if (this.currentView !== 'lobby' || !this.storyQuestActive('V01')) {
+          return false;
+        }
+        const ok = this.lobbyTownRenderer.startMoveGuide(() => this.skipStoryGuide('V01'), () => {
+          this.storyGuideDone.add('V01');
+        });
+        if (!ok) {
+          // 还没进图 / 队长没建好:2 秒后重新排队
+          this.moveGuideQueuedUid = 0;
+          this.moveGuideRetryAt = Date.now() + 2000;
+        }
+        return ok;
+      },
+    });
+  }
+
+  /**
+   * docs/57 §3 V06「编队」强引导要点的英雄:还没上阵、阵容还有空位时取战力最高的那位(同战力取后到的);
+   * 没有可上的(都在阵上 / 阵容满)返回 null,由 settleFormationStoryGuide 直接保存(LobbyHudHost)。
+   */
+  formationGuideHero(): { id: number; name: string } | null {
+    const deployed = this.resolveLobbyFormationHeroIds();
+    if (deployed.length >= LOBBY_FORMATION_MAX) {
+      return null;
+    }
+    const candidates = this.selectableLobbyHeroes().filter((hero) => !deployed.includes(hero.id));
+    if (candidates.length === 0) {
+      return null;
+    }
+    const pick = [...candidates].sort((a, b) => b.power - a.power || b.id - a.id)[0];
+    return { id: pick.id, name: pick.heroName };
+  }
+
+  /**
+   * V06 进编队页时新伙伴已经都在阵上(重登后默认阵容按战力自动填满、没存过服务端)/ 阵容满了:
+   * 没有「点卡上阵」这一步可教 → 直接把当前阵容存一次(服务端 TEAM_SAVE 计数 = 任务完成),零说一句。
+   * 名册没读完 / 服务端阵容还没还原时不动(免得存了个半截阵容)。
+   */
+  private settleFormationStoryGuide(): void {
+    if (!this.storyQuestActive('V06')) {
+      return;
+    }
+    const roster = this.lobbyHeroRosterLoader.currentState();
+    if (!roster.loaded || roster.loading || !this.lobbyFormationServerLoaded || this.formationGuideHero()) {
+      return;
+    }
+    const deployed = this.resolveLobbyFormationHeroIds();
+    if (deployed.length === 0) {
+      return;
+    }
+    this.storyGuideDone.add('V06');
+    lobbyGuide.markVisited('formation');
+    this.selectedLobbyFormationHeroIds = deployed;
+    this.persistLobbyFormationToServer();
+    this.showZeroToastAfterRender('新伙伴已经在队伍里了,阵容已保存。去找训练场的教官交任务吧!');
+  }
+
+  /** 功能页里零说一句:整页重绘会清空 UI 根,等这一轮重绘完(下一帧)再挂;那时已换页就不说了。 */
+  private showZeroToastAfterRender(text: string): void {
+    const view = this.currentView;
+    this.scheduleOnce(() => {
+      if (this.currentView === view) {
+        this.showZeroToast(text);
+      }
+    }, 0);
   }
 
   private storyGuideSkipKey(uid: number, code: string): string {
@@ -11025,6 +11159,7 @@ export class LootChainGameRoot extends Component {
     try {
       const state = await this.api.starterContract.state();
       if (state.picked || state.candidates.length < 3) {
+        this.markStarterContractSettled();
         return;
       }
       // 统一弹窗队列:最高优先级(没有它新号没有英雄),但也等大厅上别的界面关掉再弹
@@ -11117,6 +11252,7 @@ export class LootChainGameRoot extends Component {
         if (!state.picked) {
           throw new Error('契约没有订立成功,再试一次');
         }
+        this.markStarterContractSettled();
       }
       const hero = pick.candidates.find((item) => item.heroCode === pick.selected);
       this.contractPick = null;
