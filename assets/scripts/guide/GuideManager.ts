@@ -1,32 +1,14 @@
 import { sys } from 'cc';
 
 /**
- * 新手引导 P2(完整闭环,2026-09-05):硬引导链带玩家走完一整套核心体验,每一步资源都有保证:
+ * 守卫战局内引导「出过」的记录(2026-10-25 策划审核 P1-22,docs/45 §15):第 1 层教合成、第 2 层教战术三选一、第 3 层教法术,各出一次。
+ * 按 userId 存本机 localStorage(lootchain.guide.<uid>.<flag>)。
  *
- * TOWER(打首战)→ SUMMON(去召唤)→ DRAW(免费单抽,后端每日免费保证)
- * → HERO(去英雄页)→ HERO_CARD(点开英雄)→ LEVEL_UP(升一级,注册送经验书+金币保证)
- * → QUEST(去任务页)→ CLAIM(领一次奖励,登录任务必可领)→ DONE。
- *
- * - 首战完成 = 主线推荐关卡已不是 MAIN_1_1(服务端进度权威,防本地作弊/换端丢失)。
- * - 其余步骤以"到访/动作完成"为准(localStorage 按 userId 记 flag):
- *   summon/hero/quest=到访目标页,draw=抽卡成功,herocard=打开英雄详情,levelup=升级成功,claim=领取成功。
- * - 老玩家豁免:主线进度已过第 5 关 → 全部视为完成,不打扰。
+ * 2026-11-26 docs/57 §7:旧硬引导链(打首战 → 召唤 → 抽卡 → 英雄 → 升级 → 任务 → 领奖)和局外软引导(穿装备 / 水晶 / 每日副本 / 布阵)已下线 ——
+ * 新手引导改由剧情任务带路(docs/57 §3 强 / 弱引导,LobbyHudRenderer.resolveStoryGuide、LobbyWeakGuide)、功能说明卡(§4)、情境提示(§5)承担;
+ * 这里只留守卫战局内 3 条(docs/57 §7「保留给特殊玩法 · 守卫战第一次进入时用」)。
  */
-export type GuideStep =
-  | 'TOWER'
-  | 'SUMMON'
-  | 'DRAW'
-  | 'HERO'
-  | 'HERO_CARD'
-  | 'LEVEL_UP'
-  | 'QUEST'
-  | 'CLAIM'
-  | 'DONE';
-
-export type GuideFlag =
-  | 'summon' | 'draw' | 'hero' | 'herocard' | 'levelup' | 'quest' | 'claim'
-  // 2026-10-25 策划审核 P1-22(docs/45 §15):冒险前 3 层局内各教一个操作 + 局外软引导,各自只出一次
-  | 'battleMerge' | 'battlePerk' | 'battleSpell' | 'formation' | 'equip' | 'daily' | 'crystal';
+export type GuideFlag = 'battleMerge' | 'battlePerk' | 'battleSpell';
 
 class LobbyGuideManager {
   private userId = 0;
@@ -48,45 +30,9 @@ class LobbyGuideManager {
     }
   }
 
-  resolveStep(firstBattleDone: boolean, veteran: boolean): GuideStep {
-    if (this.userId <= 0 || veteran) {
-      return 'DONE';
-    }
-    if (!firstBattleDone) {
-      return 'TOWER';
-    }
-    if (!this.visited('summon')) {
-      return 'SUMMON';
-    }
-    if (!this.visited('draw')) {
-      return 'DRAW';
-    }
-    if (!this.visited('hero')) {
-      return 'HERO';
-    }
-    if (!this.visited('herocard')) {
-      return 'HERO_CARD';
-    }
-    if (!this.visited('levelup')) {
-      return 'LEVEL_UP';
-    }
-    if (!this.visited('quest')) {
-      return 'QUEST';
-    }
-    if (!this.visited('claim')) {
-      return 'CLAIM';
-    }
-    return 'DONE';
-  }
-
-  /** 软引导 / 局内引导是否已出过(未绑定玩家时按已完成,不打扰)。 */
+  /** 局内引导是否已出过(未绑定玩家时按已完成,不打扰)。 */
   isDone(flag: GuideFlag): boolean {
     return this.userId <= 0 || this.visited(flag);
-  }
-
-  /** 当前是否处于免费单抽引导步(gacha 页自动选中免费池用)。 */
-  isDrawStep(firstBattleDone: boolean, veteran: boolean): boolean {
-    return this.resolveStep(firstBattleDone, veteran) === 'DRAW';
   }
 
   private visited(flag: GuideFlag): boolean {

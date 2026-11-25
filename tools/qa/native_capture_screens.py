@@ -76,9 +76,8 @@ SCREENS = [
     ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),
     ('codex', "root.openLobbyCodexPanel();", 3.5),
     ('formation', "root.openLobbyFormationPanel();", 4.0),
-    # 引导气泡自验:清掉布阵软引导的已看标记再进布阵(测试号 guidetest02 = 64),出「零」气泡
-    ('guide_formation', "try { localStorage.removeItem('lootchain.guide.' + root.currentLobbyProfile().userId + '.formation'); } catch (e) {} root.openLobbyFormationPanel();", 4.5),
-    ('adventure', "root.openLobbyAdventurePanel();", 3.5),
+    # (11-26 布阵软引导随 docs/57 §7 下线,原「guide_formation」截图项删掉;编队引导看 newbie_p1 的 steps_formation)
+    ('adventure',"root.openLobbyAdventurePanel();", 3.5),
     ('daily', "root.openLobbyDailyDungeonPanel();", 3.5),
     ('daily_rank', "root.openLobbyDailyDungeonPanel(); setTimeout(() => root.lobbyDailyDungeonPanelRenderer.openRankPopup(), 2500);", 5.0),
     # 输出周榜满榜样式自验:读完周榜后注入 7 人样例(本地周榜常为空),只改前端内存态

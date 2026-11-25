@@ -6,8 +6,8 @@
   "shot": false
  },
  {
-  "label": "编队_未接V06时只有旧软引导",
-  "js": "refresh(); root.openLobbyFormationPanel(undefined, 'roster'); for (let i = 0; i < 40; i++) { await sleep(500); refresh(); if (view() === 'formation' && find('LobbyFormationHeroPicker')) break; } await sleep(1500); refresh(); const out = JSON.stringify({ view: view(), overlay: !!find('LobbyGuideOverlay'), skip: !!find('GuideSkip'), story: root.storyQuestActive('V06'), target: root.formationGuideHero() }); return out;",
+  "label": "编队_未接V06时不出引导",
+  "js": "refresh(); root.openLobbyFormationPanel(undefined, 'roster'); for (let i = 0; i < 40; i++) { await sleep(500); refresh(); if (view() === 'formation' && find('LobbyFormationHeroPicker')) break; } await sleep(1500); refresh(); const out = JSON.stringify({ view: view(), overlay: !!find('LobbyGuideOverlay'), skip: !!find('GuideSkip'), story: root.storyQuestActive('V06'), target: root.formationGuideHero(), note: '11-26 布阵旧软引导已下线(docs/57 §7):没接 V06 时 overlay 应为 false' }); return out;",
   "wait": 0,
   "shot": true
  },

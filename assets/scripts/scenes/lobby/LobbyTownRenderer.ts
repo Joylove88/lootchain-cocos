@@ -35,7 +35,6 @@ import type { PlayerIdleSummaryVO } from '../../types/IdleTypes';
 import { safeText } from '../UiTextFormatter';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { packResourcesReady } from '../../app/AssetOfflineCache';
-import { lobbyGuide, type GuideFlag } from '../../guide/GuideManager';
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import {
   patchBattleUnitSpineRuntimeEnums,
@@ -173,12 +172,10 @@ export interface TownFieldEncounter {
 }
 
 export interface TownGuideTarget {
-  /** 主城建筑(旧引导);或 point = 地图上任意目标点(docs/50 任务追踪)。 */
+  /** 建筑键(找门口坐标用);point = 地图上任意目标点(docs/50 任务追踪,优先)。 */
   building: string;
   point?: { x: number; y: number; label: string };
   text: string;
-  /** 软引导:进了这栋建筑就算看过。 */
-  flag?: GuideFlag;
 }
 
 interface TownActor {
@@ -646,11 +643,6 @@ export class LobbyTownRenderer {
   private minimapScale = 0.04;
   private guide: TownGuideTarget | null = null;
   private guidePointer: Node | null = null;
-  private trackerLabel: Label | null = null;
-  /** 顶部追踪胶囊的灰色说明 / 距离(11-07 B 风格,随走动刷新)。 */
-  private trackerSub: Label | null = null;
-  private trackerDist: Label | null = null;
-  private trackerFont = 19;
   /** docs/50:当前所在地图 + 切图后的出生点。 */
   private mapCode: WorldMapCode = 'CITY';
   private pendingSpawn: { x: number; y: number } | null = null;
@@ -3658,9 +3650,6 @@ export class LobbyTownRenderer {
       this.startChannel(2, '采集中', () => this.host.claimWorldPoi?.(code), 'ring');
       return;
     }
-    if (this.guide?.flag && this.guide.building === near.building.key) {
-      lobbyGuide.markVisited(this.guide.flag);
-    }
     this.openBuildingAction(near.building.action);
   }
 
@@ -3691,16 +3680,15 @@ export class LobbyTownRenderer {
 
   // ── HUD ──
 
-  /** 每次大厅 render 重建 HUD 层(摇杆 / 进入 / 底栏 / 小地图 / 引导);guide 为引导当前指向的建筑。 */
-  renderHud(layout: UiLayout, guide: TownGuideTarget | null): void {
+  /** 每次大厅 render 重建 HUD 层(摇杆 / 进入 / 底栏 / 小地图 / 剧情任务带路)。 */
+  renderHud(layout: UiLayout): void {
     const phone = isPhoneDesign();
     const scale = Math.max(0.6, Math.min(1, layout.uiScale)) * (phone ? 1.25 : 1);
     this.hudScale = scale;
     const world = this.host.currentWorldState?.() ?? null;
+    // 只用剧情任务带路(2026-10-27 UI 审核:顶部旧引导条和左侧追踪条同时出现、指向不同;旧引导 11-26 docs/57 §7 下线)
     const questGuide = this.resolveQuestGuide(world);
-    // 跑图世界只用剧情任务带路(2026-10-27 UI 审核:顶部旧引导条和左侧追踪条同时出现、指向不同)
-    const effectiveGuide = world ? questGuide : guide;
-    this.guide = effectiveGuide;
+    this.guide = questGuide;
     const hud = this.host.createUiNode('LobbyTownHud');
     hud.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     this.hudNode = hud;
@@ -3729,8 +3717,7 @@ export class LobbyTownRenderer {
     this.renderAreaBanner(hud, layout, scale);
     this.renderLevelToast(hud, layout);
     // 任务追踪条在左侧;旧的顶部追踪条只在旧引导时出现
-    this.renderGuideTracker(hud, layout, scale, effectiveGuide === questGuide ? null : effectiveGuide);
-    this.mountGuidePointer(effectiveGuide);
+    this.mountGuidePointer(questGuide);
     this.refreshNpcMarkers(world);
     this.refreshWaypointGlow(world);
     this.refreshChests(world);
@@ -4178,89 +4165,6 @@ export class LobbyTownRenderer {
     }
   }
 
-  /**
-   * 顶部任务追踪胶囊(11-07 B 风格,原型 guide_bubble_b):深色玻璃胶囊 + 香槟定位针 + 白字「前往「X」」+ 灰字「· 说明」+ 右端灰色距离。
-   */
-  private renderGuideTracker(hud: Node, layout: UiLayout, scale: number, guide: TownGuideTarget | null): void {
-    this.trackerLabel = null;
-    this.trackerSub = null;
-    this.trackerDist = null;
-    if (!guide) {
-      return;
-    }
-    const cfg = this.guideTargetPoint(guide);
-    // 11-08 主城 v4 拆了功能建筑:软引导(穿装备 / 水晶 / 每日副本)找不到建筑时改提示「打开终端」,打开终端即记为已看过
-    const viaTerminal = !cfg && !!guide.flag;
-    if (!cfg && !viaTerminal) {
-      return;
-    }
-    const w = Math.min(560 * scale, layout.stageWidth * 0.5);
-    const h = 46 * scale;
-    const node = this.host.addChildPlainNode(hud, 'LobbyTownGuideTracker', (layout.stageLeft + layout.stageRight) / 2, layout.stageTop - 36 * scale, w, h);
-    const g = node.addComponent(Graphics);
-    g.fillColor = rgba(16, 19, 26, 215);
-    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-    g.fill();
-    g.strokeColor = rgba(255, 255, 255, 46);
-    g.lineWidth = Math.max(1, 1.2 * scale);
-    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-    g.stroke();
-    // 定位针:香槟水滴轮廓 + 中心小圆
-    const pinX = -w / 2 + h * 0.62;
-    const pin = this.host.addChildPlainNode(node, 'Pin', pinX, h * 0.02, h * 0.5, h * 0.6).addComponent(Graphics);
-    const pr = h * 0.17;
-    pin.strokeColor = rgba(227, 196, 138, 255);
-    pin.lineWidth = Math.max(1.4, 2.2 * scale);
-    pin.arc(0, pr * 0.35, pr, Math.PI * 1.25, Math.PI * -0.25, true);
-    pin.lineTo(0, -pr * 1.35);
-    pin.close();
-    pin.stroke();
-    pin.circle(0, pr * 0.35, pr * 0.38);
-    pin.stroke();
-    this.trackerFont = 20 * scale;
-    const textLeft = pinX + h * 0.42;
-    const main = this.host.addChildLabel(node, 'Label', '', textLeft, 0, this.trackerFont, rgba(242, 242, 242), new Size(w * 0.45, 28 * scale), HorizontalTextAlignment.LEFT);
-    main.isBold = true;
-    const sub = this.host.addChildLabel(node, 'Sub', '', textLeft, 0, this.trackerFont * 0.95, rgba(163, 168, 179), new Size(w * 0.4, 28 * scale), HorizontalTextAlignment.LEFT);
-    sub.overflow = Label.Overflow.SHRINK;
-    const dist = this.host.addChildLabel(node, 'Dist', '', w / 2 - h * 0.5, 0, this.trackerFont * 0.9, rgba(163, 168, 179), new Size(110 * scale, 28 * scale), HorizontalTextAlignment.RIGHT);
-    dist.overflow = Label.Overflow.SHRINK;
-    this.trackerLabel = main;
-    this.trackerSub = sub;
-    this.trackerDist = dist;
-    this.setTrackerText(cfg ? `前往「${cfg.label}」` : '打开「终端」', `· ${guide.text}`, '');
-  }
-
-  /** 当前软引导要靠终端完成(本图没有对应建筑)时的引导标记;终端打开时由根节点记为已看过。 */
-  terminalGuideFlag(): TownGuideTarget['flag'] | null {
-    const guide = this.guide;
-    if (!guide?.flag || guide.point || this.def.buildings.some((item) => item.key === guide.building)) {
-      return null;
-    }
-    return guide.flag;
-  }
-
-  /** 白字主句 + 紧跟其后的灰字说明(按字宽估算接续位置)+ 右端距离。 */
-  private setTrackerText(main: string, sub: string, dist: string): void {
-    const label = this.trackerLabel;
-    if (!label || !label.isValid) {
-      return;
-    }
-    label.string = main;
-    let width = 0;
-    for (const ch of Array.from(main)) {
-      width += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? this.trackerFont : this.trackerFont * 0.58;
-    }
-    const sx = label.node.position.x + width + this.trackerFont * 0.3;
-    if (this.trackerSub && this.trackerSub.isValid) {
-      this.trackerSub.string = sub;
-      this.trackerSub.node.setPosition(sx, 0, 0);
-    }
-    if (this.trackerDist && this.trackerDist.isValid) {
-      this.trackerDist.string = dist;
-    }
-  }
-
   /** 引导目标点:任务追踪给的地图点,或主城建筑门口。 */
   private guideTargetPoint(guide: TownGuideTarget): { x: number; y: number; label: string } | null {
     if (guide.point) {
@@ -4334,11 +4238,8 @@ export class LobbyTownRenderer {
       || this.monsters.some((monster) => !monster.dead && Math.hypot(monster.x - leader.x, monster.y - leader.y) < MONSTER_AGGRO_RADIUS + 320);
     holder.active = !near && !this.inCombat && !fighting;
     if (near) {
-      this.setTrackerText(`到了「${cfg.label}」`, '· 点交互提示', '');
       return;
     }
-    // 距离按 40 像素 ≈ 1 米(人物身高约 2 米)
-    this.setTrackerText(`前往「${cfg.label}」`, `· ${guide.text}`, `${Math.max(1, Math.round(distPx / 40))} 米`);
     // 箭头沿本地 +x 排开:按地面角度转(外层已纵向压扁,屏幕上的 dy 要先还原成地面距离)
     const rot = holder.getChildByName('Ground')?.getChildByName('Rot');
     if (rot) {

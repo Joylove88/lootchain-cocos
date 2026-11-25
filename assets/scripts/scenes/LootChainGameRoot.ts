@@ -1704,7 +1704,6 @@ export class LootChainGameRoot extends Component {
   private remountLobbyQuestDialogIfOpen(layout: UiLayout): void {
     if (this.lobbyQuestPanelOpen && this.currentView === 'lobby') {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
-      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
     }
     if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
       this.lobbyTerminalPanelRenderer.render(layout);
@@ -1721,11 +1720,6 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyTerminalOpen = true;
     this.terminalReturn = null;
-    // 主城 v4 没有功能建筑:指向终端的软引导打开终端即算看过
-    const guideFlag = this.lobbyTownRenderer?.terminalGuideFlag();
-    if (guideFlag) {
-      lobbyGuide.markVisited(guideFlag);
-    }
     const layout = this.resolveLayout();
     this.lobbyTerminalPanelRenderer.render(layout);
     // docs/57:第一次打开终端出说明卡;V05「变强」进行中时聚光「英雄」格(强引导)
@@ -2114,7 +2108,6 @@ export class LootChainGameRoot extends Component {
     }
     if (this.currentView === 'quest') {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
-      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
       return;
     }
     if (this.currentView === 'mail') {
@@ -2127,6 +2120,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderLobbyHud(layout: UiLayout): void {
+    // 守卫战局内 3 条引导按玩家记「出过」:原来靠旧引导链渲染时顺手绑定,旧引导下线后在这里绑
+    lobbyGuide.bind(this.api.tokenStore.userId() ?? 0);
     if (LOBBY_TOWN_ENABLED) {
       // 素材组还在下载(整页路径已画了加载闸门):HUD 局部刷新也不能把世界挂回来,否则队伍和摇杆压在加载条上
       if (this.uiSpriteFrameCache.groupProgress('town')) {
@@ -2215,7 +2210,6 @@ export class LootChainGameRoot extends Component {
     // 任务弹框模式(2026-09-10):HUD 局部重绘上面防御性拆了弹框节点,开着时重挂回大厅之上。
     if (this.lobbyQuestPanelOpen && this.currentView === 'lobby') {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
-      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
     }
     // 终端开着:HUD 局部重绘的新节点会盖在终端上(11-01 兑换成功回读资料时小地图 / 摇杆压到终端上),
     // 重挂终端(名片数值顺带更新)和兑换码弹框到最上层;旧终端先藏下一帧销毁(同 closeLobbyTerminalPanel)
@@ -4312,7 +4306,6 @@ export class LootChainGameRoot extends Component {
     if (!this.lobbyFormationPanelOpen) {
       return;
     }
-    lobbyGuide.markVisited('formation');
     this.returnToLobbyFromScenePage();
   }
 
@@ -4430,7 +4423,6 @@ export class LootChainGameRoot extends Component {
 
   private openLobbyHeroRosterPanel(): void {
     this.uiSpriteFrameCache.preloadGroup('heroes');
-    lobbyGuide.markVisited('hero');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyHeroRosterPanelOpen = true;
     this.currentView = 'heroes';
@@ -4466,7 +4458,6 @@ export class LootChainGameRoot extends Component {
       this.setStatus('该英雄当前不可查看详情。');
       return;
     }
-    lobbyGuide.markVisited('herocard');
     if (hero.protagonist && !this.realmState) {
       // 主角详情的称号 / 「境界」页要境界状态
       void this.loadRealmState().then(() => {
@@ -4589,7 +4580,6 @@ export class LootChainGameRoot extends Component {
       const powerOk = Number.isFinite(result.power) && result.power >= beforePower;
       this.lobbyHeroRosterState.patchHero(heroId, powerOk ? { level: result.level, power: result.power } : { level: result.level });
       this.lobbyHeroLevelUpBusyId = null;
-      lobbyGuide.markVisited('levelup');
       // docs/57 §3 V05 强引导:升级成功即完成(剧情进度要回大厅重读世界状态才更新,这里先压住,遮罩当场收掉)
       this.storyGuideDone.add('V05');
       this.removeNodeFromContent('LobbyGuideOverlay');
@@ -5512,9 +5502,6 @@ export class LootChainGameRoot extends Component {
         return;
       }
     }
-    if (tab === 'equip') {
-      lobbyGuide.markVisited('equip');
-    }
     if (this.lobbyHeroDetailTab === tab) {
       return;
     }
@@ -5687,9 +5674,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`${hero.heroName} 已加入本次阵容。`);
       if (this.storyQuestActive('V06')) {
         // docs/57 §3 V06 强引导:上阵即保存(下面 persist)= 任务完成;先记本会话完成,整页重画时遮罩不会跳去指下一位。
-        // 布阵页旧软引导(讲上阵与战力)一并记看过:不然重画后它的气泡和零的提示叠在顶部
         this.storyGuideDone.add('V06');
-        lobbyGuide.markVisited('formation');
         this.removeNodeFromContent('LobbyGuideOverlay');
         this.showZeroToastAfterRender(`「${hero.heroName}」上阵了,阵容已自动保存。去找训练场的教官交任务吧!`);
       }
@@ -5939,7 +5924,6 @@ export class LootChainGameRoot extends Component {
       this.openWithPackGate(['ui/daily'], '正在加载秘境试炼素材', () => this.openLobbyDailyDungeonPanel());
       return;
     }
-    lobbyGuide.markVisited('daily');
     this.queueFeatureIntro('daily');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelRenderer.resetTransientPopups();
@@ -6232,7 +6216,6 @@ export class LootChainGameRoot extends Component {
 
   private openLobbyGachaScene(): void {
     this.uiSpriteFrameCache.preloadGroup('gacha');
-    lobbyGuide.markVisited('summon');
     this.markFeatureSeen('gacha');
     this.gachaPreferFree = true;
     this.closeAllLobbyScenePanelFlags();
@@ -6261,8 +6244,8 @@ export class LootChainGameRoot extends Component {
     try {
       const status = await this.api.gacha.freeStatus();
       this.gachaSceneState = { ...this.gachaSceneState, freeSingle: { poolCode: status.poolCode, available: status.available } };
-      // 引导免费单抽步 / 刚进召唤页:自动选中免费池,玩家进页即对准"免费召唤"按钮,零多余操作。
-      if (status.available && (this.gachaPreferFree || this.isGuideDrawStepActive()) && this.gachaSceneState.pools.some((pool) => pool.poolCode === status.poolCode)
+      // 刚进召唤页(玩家还没自己点页签):自动选中免费池,进页即对准"免费召唤"按钮,零多余操作。
+      if (status.available && this.gachaPreferFree && this.gachaSceneState.pools.some((pool) => pool.poolCode === status.poolCode)
         && this.gachaSceneState.selectedPoolCode !== status.poolCode) {
         this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: status.poolCode, poolDetail: null, poolDetailError: '' };
         void this.loadGachaPity(status.poolCode);
@@ -6316,18 +6299,6 @@ export class LootChainGameRoot extends Component {
     return ownedBooks >= books && ownedGold >= gold;
   }
 
-  /** 当前引导是否停在 DRAW 步(免费单抽)。 */
-  private isGuideDrawStepActive(): boolean {
-    const adventure = this.currentLobbyAdventureState().adventure;
-    if (!adventure) {
-      return false;
-    }
-    const recommended = (adventure.recommendedStageCode ?? '').toUpperCase();
-    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
-    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended);
-    const firstBattleDone = recommended !== '' && recommended !== 'MAIN_1_1';
-    return lobbyGuide.isDrawStep(firstBattleDone, recommendedIndex >= 5);
-  }
 
   private selectGachaPool(poolCode: string): void {
     const pool = this.gachaSceneState.pools.find((item) => item.poolCode === poolCode || item.id === poolCode);
@@ -6400,8 +6371,8 @@ export class LootChainGameRoot extends Component {
       const pools = (await this.api.gacha.pools())
         .map((pool) => this.toGachaPreviewPool(pool))
         .filter((pool) => this.isVisibleGachaPool(pool));
-      // 引导免费单抽步:pools 就位后优先选中免费池(free-status 可能先于 pools 返回,选池必须在这里兜一次)。
-      const freePoolCode = this.gachaSceneState.freeSingle?.available && (this.gachaPreferFree || this.isGuideDrawStepActive())
+      // 免费单抽还在:pools 就位后优先选中免费池(free-status 可能先于 pools 返回,选池必须在这里兜一次)。
+      const freePoolCode = this.gachaSceneState.freeSingle?.available && this.gachaPreferFree
         ? pools.find((pool) => pool.poolCode === this.gachaSceneState.freeSingle?.poolCode)?.poolCode ?? null
         : null;
       const selectedPoolCode = freePoolCode
@@ -6690,7 +6661,6 @@ export class LootChainGameRoot extends Component {
             }
           });
         }
-        lobbyGuide.markVisited('draw');
         void this.loadGachaFreeStatus();
         this.presentPendingGachaDrawVideo(ticket);
       })
@@ -6920,7 +6890,6 @@ export class LootChainGameRoot extends Component {
   // ── 任务/成就面板(P1,2026-09-04;2026-09-10 用户拍板改弹框:不清大厅、不切 currentView,
   // 遮罩+面板直接叠在活的大厅之上;非大厅视图保留旧场景页语义兜底) ──
   private openLobbyQuestPanel(): void {
-    lobbyGuide.markVisited('quest');
     if (this.lobbyQuestPanelOpen) {
       return;
     }
@@ -6937,12 +6906,11 @@ export class LootChainGameRoot extends Component {
     void this.loadLobbyQuestSummary(true);
   }
 
-  /** 弹框模式渲染:重挂任务面板节点,并把引导覆盖层切到 quest 视图键(CLAIM 步指向面板内领取钮)。 */
+  /** 弹框模式渲染:重挂任务面板节点。 */
   private renderLobbyQuestDialog(): void {
     this.removeLobbyQuestPanel();
     const layout = this.resolveLayout();
     this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
-    this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
   }
 
   private closeLobbyQuestPanel(): void {
@@ -6955,7 +6923,6 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyQuestPanelOpen = false;
     this.removeLobbyQuestPanel();
-    this.lobbyHudRenderer.mountGuideOverlay(this.resolveLayout(), 'lobby');
   }
 
   private removeLobbyQuestPanel(): void {
@@ -6994,7 +6961,6 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentLobbyScenePage();
     void this.api.quest.claim(questCode)
       .then(async (quest) => {
-        lobbyGuide.markVisited('claim');
         gameAudio.sfx('reward_claim');
         this.setStatus(`已领取「${quest.questName}」奖励:${quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
         this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
@@ -8798,7 +8764,6 @@ export class LootChainGameRoot extends Component {
     if (!this.isLobbyViewActive()) {
       return;
     }
-    lobbyGuide.markVisited('crystal');
     this.queueFeatureIntro('crystal');
     this.lobbyGuardCrystalDialog = {
       info: this.lobbyGuardCrystalDialog?.info ?? null,
@@ -10870,7 +10835,6 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.storyGuideDone.add('V06');
-    lobbyGuide.markVisited('formation');
     this.selectedLobbyFormationHeroIds = deployed;
     this.persistLobbyFormationToServer();
     this.showZeroToastAfterRender('新伙伴已经在队伍里了,阵容已保存。去找训练场的教官交任务吧!');

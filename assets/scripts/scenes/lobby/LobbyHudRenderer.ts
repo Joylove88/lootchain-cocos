@@ -38,14 +38,13 @@ import {
   type UiLayout,
 } from './LobbyHudTypes';
 import { gameAudio } from '../../audio/GameAudio';
-import { lobbyGuide, type GuideFlag } from '../../guide/GuideManager';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday } from './ItemSourceRoutes';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
-import type { LobbyTownRenderer, TownGuideTarget } from './LobbyTownRenderer';
+import type { LobbyTownRenderer } from './LobbyTownRenderer';
 import { GUIDE_BUBBLE_AVATAR_OVERHANG, mountGuideTriangle, mountZeroGuideBubble, type GuideKitHost } from '../GuideKit';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
@@ -101,16 +100,15 @@ export class LobbyHudRenderer {
     this.renderCompactSceneEntrances(layout);
     this.renderCompactGoalTracker(layout);
     this.renderCompactActionEntrances(layout);
-    this.mountGuideOverlay(layout, 'lobby');
   }
 
   /**
    * 主城跑图版大厅 HUD(2026-10-25):顶栏(头像 / 货币 / 菜单)照旧,其余入口都是城里的建筑;
-   * 摇杆 / 进入钮 / 底栏 / 小地图由跑图渲染器画;新手引导不再上暗层,改成"前往某建筑"的追踪条 + 队长头顶指针。
+   * 摇杆 / 进入钮 / 底栏 / 小地图由跑图渲染器画;带路 = 剧情任务追踪条 + 队长脚下箭头(docs/50;旧「前往某建筑」引导 11-26 下线)。
    */
   renderTown(layout: UiLayout, town: LobbyTownRenderer): void {
     this.topHudRenderer.render(layout);
-    town.renderHud(layout, this.resolveTownGuideTarget());
+    town.renderHud(layout);
   }
 
   /** 只重画右上系统钮(进化待选数 / 功能开放变化时由根节点局部重挂)。 */
@@ -118,113 +116,17 @@ export class LobbyHudRenderer {
     this.topHudRenderer.render(layout);
   }
 
-  /** 跑图模式下引导指向的建筑:硬引导按步骤查表,走完后轮到软引导(装备 → 水晶 → 每日副本)。 */
-  resolveTownGuideTarget(): TownGuideTarget | null {
-    const profile = this.host.currentLobbyProfile();
-    lobbyGuide.bind(profile.userId);
-    const adventure = this.host.currentLobbyAdventureState().adventure;
-    if (!adventure) {
-      return null;
-    }
-    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
-    const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
-    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
-    const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
-    // docs/50:跑图世界上线后由剧情任务带路(新手村),旧的硬引导链不再出现,只保留软引导
-    const worldActive = !!(this.host as unknown as { currentWorldState?: () => unknown }).currentWorldState?.();
-    const veteran = recommendedIndex >= 5 || worldActive;
-    const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
-    switch (step) {
-      case 'TOWER':
-        // 2026-10-26:守卫战挪到秘境试炼塔「特殊玩法」,首战引导改指过去
-        return { building: 'tower', text: '特殊玩法:打你的第一场守卫战' };
-      case 'SUMMON':
-        return { building: 'temple', text: '首胜达成!今天有免费召唤' };
-      case 'DRAW':
-        return { building: 'temple', text: '今天有免费召唤' };
-      case 'HERO':
-        return { building: 'camp', text: '英雄到手!去看看你的队伍' };
-      case 'HERO_CARD':
-      case 'LEVEL_UP':
-        return { building: 'camp', text: '给英雄升级变强' };
-      case 'QUEST':
-      case 'CLAIM':
-        return { building: 'guild', text: '每日任务白拿奖励' };
-      default:
-        break;
-    }
-    const soft = this.resolveSoftGuide('lobby', adventure.maxCompletedStageCode ?? '');
-    if (!soft) {
-      return null;
-    }
-    const building = soft.flag === 'equip' ? 'camp' : soft.flag === 'crystal' ? 'crystal' : soft.flag === 'daily' ? 'tower' : null;
-    return building ? { building, text: soft.text, flag: soft.flag } : null;
-  }
-
   /**
-   * 新手引导覆盖层(P2 完整闭环,2026-09-05):硬引导——暗层拦输入只留目标洞,金圈+箭头+气泡指向;
-   * 按(步骤,当前视图)查表:大厅指入口按钮,面板内指向具体动作按钮(免费单抽/英雄卡/升级/领取)。
-   * 未列出的视图不打扰(玩家跑偏自己返回,主路径页面上引导自动续上)。步骤见 GuideManager。
+   * 新手强引导覆盖层(docs/57 §3,剧情任务带路):暗层拦输入只留目标洞 + 香槟细框 + 小三角 +「零」气泡 + 右上「跳过引导」。
+   * 只剩剧情强引导(resolveStoryGuide);2026-11-26 docs/57 §7 旧硬引导链(打首战 → 召唤 → 抽卡 → 英雄 → 升级 → 任务 → 领奖)
+   * 和局外软引导(穿装备 / 水晶 / 每日副本 / 布阵)下线 —— 穿装备 / 水晶由 §5 情境提示接手,编队由 V06 强引导接手。
    */
-  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest' | 'formation' | 'terminal'): void {
+  mountGuideOverlay(layout: UiLayout, view: 'gacha' | 'heroes' | 'heroDetail' | 'formation' | 'terminal'): void {
     this.findLobbyNode('LobbyGuideOverlay')?.destroy();
-    // docs/57 §3 剧情强引导(11-24):跟剧情任务走,优先于旧引导链
     const story = this.resolveStoryGuide(view);
     if (story) {
-      this.renderGuideEntry(layout, story, null, story.code);
-      return;
+      this.renderGuideEntry(layout, story, story.code);
     }
-    const profile = this.host.currentLobbyProfile();
-    lobbyGuide.bind(profile.userId);
-    const adventure = this.host.currentLobbyAdventureState().adventure;
-    if (!adventure) {
-      return;
-    }
-    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
-    const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
-    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
-    const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
-    // docs/50:跑图世界上线后由剧情任务带路(新手村),旧的硬引导链不再出现,只保留软引导
-    const worldActive = !!(this.host as unknown as { currentWorldState?: () => unknown }).currentWorldState?.();
-    const veteran = recommendedIndex >= 5 || worldActive;
-    const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
-    // 硬引导走完后才轮到软引导(docs/45 §15):一次只出一条,不加暗层,点气泡关闭
-    const soft = step === 'DONE' ? this.resolveSoftGuide(view, adventure.maxCompletedStageCode ?? '') : null;
-    if (step === 'DONE' && !soft) {
-      return;
-    }
-    // 场景热点(圣契召唤牌匾)已不渲染(大厅改挂机演出):先指左侧活动栏的召唤入口,否则引导找不到目标会卡在这一步(2026-10-25)
-    const summonEntry = { targets: ['LobbyActivityItem_summon', 'LobbyHotspot_圣契召唤', 'LobbyCompactAction_召唤'], text: '去召唤,今天有免费召唤!' };
-    const heroEntry = { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '去英雄页,给英雄升级变强!' };
-    const questEntry = { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,去领取!' };
-    const heroCardEntry = { targets: ['LobbyHeroRosterCard_0'], text: '点击英雄,查看详情' };
-    const config: Record<string, Partial<Record<string, { targets: string[]; text: string }>>> = {
-      TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_冒险'], text: '点这里,开始你的第一场矿境守卫战!' } },
-      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去召唤,今天有免费召唤!' } },
-      DRAW: { lobby: summonEntry, gacha: { targets: ['GachaSummonOnceButton'], text: '点击免费召唤,获得新英雄!' } },
-      HERO: { lobby: { ...heroEntry, text: '英雄到手!去看看你的队伍' } },
-      HERO_CARD: { lobby: heroEntry, heroes: heroCardEntry },
-      LEVEL_UP: {
-        lobby: heroEntry,
-        heroes: heroCardEntry,
-        heroDetail: { targets: ['LobbyHeroDetailLevelUpButton'], text: '已送你经验书和金币,点击升级!' },
-      },
-      QUEST: { lobby: questEntry },
-      CLAIM: { lobby: questEntry, quest: { targets: ['LobbyQuestClaimReady'], text: '任务完成了,点击领取奖励!' } },
-    };
-    const entry = soft ?? config[step]?.[view];
-    if (!entry) {
-      return;
-    }
-    // DRAW 步在召唤页:只有确认今日免费可用才上硬遮罩——否则玩家没资源抽卡又被暗层锁死出不去。
-    if (step === 'DRAW' && view === 'gacha' && this.host.gachaFreeSingleAvailable() !== true) {
-      return;
-    }
-    // LEVEL_UP 步在详情页:只有确认材料足够才上硬遮罩——材料不足时点升级只会失败,玩家会被暗层困死。
-    if (step === 'LEVEL_UP' && view === 'heroDetail' && this.host.heroDetailLevelUpAffordable() !== true) {
-      return;
-    }
-    this.renderGuideEntry(layout, entry, soft, null);
   }
 
   /**
@@ -270,8 +172,8 @@ export class LobbyHudRenderer {
     return null;
   }
 
-  /** 引导覆盖层本体:soft = 软引导(不压暗,点气泡关闭);storyCode = 剧情强引导(右上「跳过引导」)。 */
-  private renderGuideEntry(layout: UiLayout, entry: { targets: string[]; text: string }, soft: { flag: GuideFlag } | null, storyCode: string | null): void {
+  /** 引导覆盖层本体(剧情强引导;右上「跳过引导」= 本条记完成)。 */
+  private renderGuideEntry(layout: UiLayout, entry: { targets: string[]; text: string }, storyCode: string): void {
     let target: Node | null = null;
     for (const name of entry.targets) {
       target = this.findLobbyNode(name);
@@ -311,7 +213,7 @@ export class LobbyHudRenderer {
       ['DimRight', (holeR + halfW) / 2, local.y, Math.max(0, halfW - holeR), holeT - holeB],
     ];
     for (const [name, bx, by, bw, bh] of blocks) {
-      if (soft || bw <= 0 || bh <= 0) {
+      if (bw <= 0 || bh <= 0) {
         continue;
       }
       const block = this.addChildPlainNode(overlay, `Guide${name}`, bx, by, bw, bh);
@@ -384,7 +286,7 @@ export class LobbyHudRenderer {
     let above = local.y + needed < layout.stageTop - 6;
     // 上下都放不下(英雄卡这类很高的目标,手机布局下气泡掉出屏幕,2026-10-15 安卓真机):改放目标左 / 右侧,箭头横指
     const below = local.y - needed > layout.stageBottom + 6;
-    if (above && below && storyCode) {
+    if (above && below) {
       // 剧情强引导右上有「跳过引导」:气泡放上面会压到它(11-25 编队页右栏英雄卡)就改放下面
       const topEdge = local.y + ringHalfV + pointerH + 12 * scale + bubbleH;
       const rightEdge = Math.max(layout.stageLeft + bubbleW / 2 + avatarOver + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x)) + bubbleW / 2;
@@ -414,66 +316,30 @@ export class LobbyHudRenderer {
     const bubbleX = side !== 0
       ? pointerX + side * (pointerH / 2 + bubbleW / 2 + 6 * scale + (side > 0 ? avatarOver : 0))
       : Math.max(layout.stageLeft + bubbleW / 2 + avatarOver + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
-    // 软引导点气泡即关闭 → 右下角「点击继续 ›」;硬引导要点目标本身,不出这行
-    const bubble = mountZeroGuideBubble(this.guideKitHost(), overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH, entry.text, soft ? '点击继续 ›' : undefined);
-    if (soft) {
-      // 软引导:点气泡即关闭并记为已看过;点高亮的入口本身也会在对应页面记为已看过
-      bubble.addComponent(Button);
-      bubble.on(Button.EventType.CLICK, () => {
-        lobbyGuide.markVisited(soft.flag);
+    // 强引导要点目标本身,气泡只说话(不可点)
+    mountZeroGuideBubble(this.guideKitHost(), overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH, entry.text);
+    // docs/57 §9:每条强引导都带「跳过」(跳过 = 本条记完成)。右上深色玻璃胶囊,压在暗层上面才点得到
+    const skipW = 148 * scale;
+    const skipH = 50 * scale;
+    const skip = this.addChildPlainNode(overlay, 'GuideSkip', layout.stageRight - skipW / 2 - 24 * scale, layout.stageTop - skipH / 2 - 22 * scale, skipW, skipH);
+    const sg = skip.addComponent(Graphics);
+    sg.fillColor = rgba(16, 19, 26, 225);
+    sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
+    sg.fill();
+    sg.strokeColor = rgba(255, 255, 255, 60);
+    sg.lineWidth = Math.max(1, 1.2 * scale);
+    sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
+    sg.stroke();
+    const label = this.addChildLabel(skip, 'Text', '跳过引导 ›', 0, 0, Math.max(20, 20 * scale), rgba(214, 218, 228), new Size(skipW - 12 * scale, skipH), HorizontalTextAlignment.CENTER);
+    label.overflow = Label.Overflow.SHRINK;
+    skip.addComponent(Button);
+    skip.on(Button.EventType.CLICK, () => {
+      this.host.skipStoryGuide?.(storyCode);
+      if (overlay.isValid) {
         overlay.destroy();
-      }, this);
-    }
-    if (storyCode) {
-      // docs/57 §9:每条强引导都带「跳过」(跳过 = 本条记完成)。右上深色玻璃胶囊,压在暗层上面才点得到
-      const skipW = 148 * scale;
-      const skipH = 50 * scale;
-      const skip = this.addChildPlainNode(overlay, 'GuideSkip', layout.stageRight - skipW / 2 - 24 * scale, layout.stageTop - skipH / 2 - 22 * scale, skipW, skipH);
-      const sg = skip.addComponent(Graphics);
-      sg.fillColor = rgba(16, 19, 26, 225);
-      sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
-      sg.fill();
-      sg.strokeColor = rgba(255, 255, 255, 60);
-      sg.lineWidth = Math.max(1, 1.2 * scale);
-      sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
-      sg.stroke();
-      const label = this.addChildLabel(skip, 'Text', '跳过引导 ›', 0, 0, Math.max(20, 20 * scale), rgba(214, 218, 228), new Size(skipW - 12 * scale, skipH), HorizontalTextAlignment.CENTER);
-      label.overflow = Label.Overflow.SHRINK;
-      skip.addComponent(Button);
-      skip.on(Button.EventType.CLICK, () => {
-        this.host.skipStoryGuide?.(storyCode);
-        if (overlay.isValid) {
-          overlay.destroy();
-        }
-      }, this);
-      this.applyImageButtonFeedback(skip, 1.04, 0.96);
-    }
-  }
-
-  /**
-   * 局外软引导(2026-10-25 策划审核 P1-22,docs/45 §15),各自只出一次:
-   * 大厅按 有未穿戴装备 → 水晶可升级 → 每日副本已开放(通关第 10 层)的顺序取一条;布阵页第一次进入讲阵容战力。
-   */
-  private resolveSoftGuide(view: string, maxCompletedStageCode: string): { targets: string[]; text: string; flag: GuideFlag } | null {
-    if (view === 'formation') {
-      return lobbyGuide.isDone('formation') ? null : { targets: ['LobbyFormationPowerBanner'], text: '主角固定带队,再选 3 名英雄上阵;阵容战力和推荐战力比一比', flag: 'formation' };
-    }
-    if (view !== 'lobby') {
-      return null;
-    }
-    const badges = this.host.currentLobbyBadges?.() ?? null;
-    if (badges && badges.unwornEquip > 0 && !lobbyGuide.isDone('equip')) {
-      return { targets: ['LobbyNavItem_hero'], text: '获得了装备!去英雄详情给英雄穿上', flag: 'equip' };
-    }
-    if (badges && badges.crystalUpgradable && !lobbyGuide.isDone('crystal')) {
-      return { targets: ['LobbyNavItem_crystal'], text: '水晶可以升级了:用金币和晶核升级,解锁更多法术', flag: 'crystal' };
-    }
-    const match = /^MAIN_(\d+)_(\d+)$/.exec((maxCompletedStageCode || '').toUpperCase());
-    const order = match ? (Number(match[1]) <= 1 ? Number(match[2]) : 9 + (Number(match[1]) - 2) * 16 + Number(match[2])) : 0;
-    if (order >= 10 && !lobbyGuide.isDone('daily')) {
-      return { targets: ['LobbyActivityItem_event'], text: '每日副本开放了:每天不同主题,产出养成材料', flag: 'daily' };
-    }
-    return null;
+      }
+    }, this);
+    this.applyImageButtonFeedback(skip, 1.04, 0.96);
   }
 
   private get node(): Node {
