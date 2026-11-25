@@ -86,7 +86,7 @@ import { UiContentRootController, type UiContentRootHost } from './UiContentRoot
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
 import { mountKitButton, mountKitLoading, mountKitSection, type UiKitHost, type UiKitLoadingHost } from './UiKit';
 import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
-import { preloadHeroAvatars } from './lobby/HeroHeadCrop';
+import { preloadHeroAvatars, resolveHeroRosterArtPath } from './lobby/HeroHeadCrop';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
 import type { ProfileRenameState } from './lobby/LobbyProfileState';
@@ -6667,8 +6667,13 @@ export class LootChainGameRoot extends Component {
         pending.result = result;
         pending.highestRarity = this.resolveGachaDrawResultHighestRarity(result);
         // 网页分层下载:抽到的英雄素材趁召唤动画播放时下到本地;结果页要等它齐了才出(见 presentPendingGachaDrawResult)
+        // 11-26 B 风格结果卡用名册横版卡面(ui/hero/roster/<英雄码>,开局包只有 R),一起进这道门
         const heroPrefixes = result.items.filter((item) => item.rewardType === 'HERO' || item.rewardType === 'HERO_FRAGMENT')
-          .flatMap((item) => heroPackPrefixes(item.rewardCode));
+          .flatMap((item) => heroPackPrefixes(item.rewardCode))
+          .concat(result.items.filter((item) => item.rewardType === 'HERO')
+            .map((item) => resolveHeroRosterArtPath(item.rewardCode))
+            .filter((path): path is string => !!path)
+            .map((path) => path.replace(/\/spriteFrame$/, '')));
         if (!packResourcesReady(heroPrefixes)) {
           this.gachaResultPackReady = false;
           void ensurePackResources(heroPrefixes, (got, total) => {
@@ -6779,7 +6784,7 @@ export class LootChainGameRoot extends Component {
     this.gachaResultMode = pending.mode;
     this.currentView = 'gachaResult';
     this.renderCurrentView();
-    this.setStatus(`召唤完成：${result.drawNo}`);
+    // 11-26 结果页改 B 风格:不再在底部状态行写「召唤完成:召唤单号」(蓝字压在结果卡上,单号对玩家没用)
     gameAudio.sfx(pending.highestRarity === 'SSR' || pending.highestRarity === 'UR' ? 'gacha_rare' : 'gacha_common');
     void this.loadGachaPity(pending.poolCode);
     void this.refreshReadonlyAssetsAfterGacha();

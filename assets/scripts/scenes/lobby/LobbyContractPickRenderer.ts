@@ -43,6 +43,11 @@ const HERO_BLURB: Record<string, { role: string; tags: [string, string] }> = {
 for (const hero of YIJIE_HEROES) {
   HERO_BLURB[hero.code] = { role: hero.role, tags: hero.tags };
 }
+
+/** 英雄定位 + 两个特点标签(契约卡同一份);召唤结果大卡也用(2026-11-26)。没有登记的英雄返回 null。 */
+export function contractHeroBlurb(heroCode: string | null | undefined): { role: string; tags: [string, string] } | null {
+  return HERO_BLURB[(heroCode ?? '').trim().toUpperCase()] ?? null;
+}
 const ZERO_PORTRAIT = 'ui/protagonist/b/zero_m_round/spriteFrame';
 /** 右上职业标识:亮金线条职业图标(原型右上角样式,tools/qa/class_gold_icons.py 入库)。 */
 const CLASS_ICONS: Record<string, string> = {

@@ -329,3 +329,8 @@ export function resolveHeroCardArtPath(heroCode: string | null | undefined): str
 function resolveHeroClassFallback(heroCode: string): string | null {
   return HERO_CLASS_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }
+
+/** 英雄码 → 职业(战士 / 法师 / …);召唤结果卡等拿不到名册 VO 的地方用(2026-11-26)。 */
+export function heroClassByCode(heroCode: string | null | undefined): string | null {
+  return heroCode ? resolveHeroClassFallback(heroCode) : null;
+}

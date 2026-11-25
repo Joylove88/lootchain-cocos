@@ -72,6 +72,8 @@ export interface GachaMockResultItem extends GachaPreviewCard {
   obtainCount?: number;
   /** 英雄重复获得(已转碎片)。 */
   duplicate?: boolean;
+  /** 重复获得转化的碎片数(B 风格结果卡副行用)。 */
+  fragmentCount?: number;
 }
 
 export interface GachaActionItem {

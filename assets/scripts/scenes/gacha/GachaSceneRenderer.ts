@@ -13,6 +13,7 @@ import {
   Sprite,
   ScrollView,
   sp,
+  sys,
   UITransform,
   UIOpacity,
   Vec3,
@@ -20,6 +21,7 @@ import {
   VideoPlayer,
   AudioClip,
   AudioSource,
+  Tween,
   tween,
 } from 'cc';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
@@ -87,18 +89,22 @@ import {
   gachaRarityTone,
   gachaResultFrameColor,
   type GachaActionKey,
+  type GachaFrameColor,
   type GachaMockResultItem,
   type GachaPreviewPool,
   type GachaRarity,
   type GachaRevealStep,
 } from './GachaSceneConfig';
-import { equipIconAssetByCode, equipSlotKeyByCode } from '../lobby/EquipIconAssets';
-import { mountEquipIconBacking } from '../lobby/EquipRarityShine';
+import { equipIconAssetByCode, equipQualityColorByCode, equipSlotKeyByCode } from '../lobby/EquipIconAssets';
+import { mountEquipIconBacking, mountItemRarityBacking } from '../lobby/EquipRarityShine';
 import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
+import { mountCoverArt, resolveHeroRosterArtPath } from '../lobby/HeroHeadCrop';
+import { contractHeroBlurb } from '../lobby/LobbyContractPickRenderer';
+import { heroClassByCode } from '../../api/LobbyHeroApi';
 import { renderLockGlyph } from '../UiLockGlyph';
-import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_GACHA_POOL_ICON, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassCheckbox, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { fitButtonLabel, phoneReadableFontSize } from '../UiPrimitiveFactory';
+import { glassLabel, glassProtoMap, glassStyleEnabled, glassTagPillWidthOf, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_GACHA_POOL_ICON, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassCheckbox, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill, mountGlassTopBar } from '../UiGlassKit';
 
 /** 2026-10-29 B 风格(毛玻璃)开关:手机横屏召唤主界面按原型 gacha_b 1:1。 */
 const GACHA_GLASS = true;
@@ -108,6 +114,30 @@ const GACHA_GLASS_BG = { path: 'ui/common/ref/hall_bg_glass/spriteFrame', ratio:
 const GACHA_GLASS_REF = { w: 1600, h: 720, k: Math.min(1600 / 1870, 720 / 841) };
 /** B 风格中央卡池骨骼放大倍数(原型人物约占屏高 72%)。 */
 const GACHA_GLASS_SPINE_BOOST = 1.75;
+/** B 风格结果卡左上稀有度扁签底色(与名册 / 编队名牌同色);框色 = 英雄 / 碎片按稀有度、装备按自身品质、材料按固定表。 */
+const GACHA_GLASS_TAG_FILL: Record<GachaFrameColor, Color> = {
+  red: new Color(168, 58, 52, 235),
+  orange: new Color(176, 112, 40, 235),
+  purple: new Color(104, 70, 150, 235),
+  blue: new Color(58, 82, 116, 235),
+  green: new Color(60, 104, 72, 235),
+};
+/** 高稀有度结果卡的细描边 + 淡外晕(UR 红 / SSR 橙金);其余卡只有玻璃框本身的淡白边。不发光、不挂骨骼特效(B 主题口径)。 */
+const GACHA_GLASS_RARE_EDGE: Partial<Record<GachaFrameColor, Color>> = {
+  red: new Color(230, 116, 96, 255),
+  orange: new Color(232, 196, 128, 255),
+};
+/** 装备品质字(扁签上显示装备自己的品质,抽卡档位 R / SR 和装备颜色对不上)。 */
+const GACHA_EQUIP_QUALITY_TEXT: Record<string, string> = { white: '白', green: '绿', blue: '蓝', purple: '紫', orange: '橙', red: '红' };
+/** 结果卡右上职业标识(契约之选同款亮金线条图标)。 */
+const GACHA_GLASS_CLASS_ICON: Record<string, string> = {
+  战士: 'ui/glass/class_gold_warrior/spriteFrame',
+  法师: 'ui/glass/class_gold_mage/spriteFrame',
+  刺客: 'ui/glass/class_gold_assassin/spriteFrame',
+  射手: 'ui/glass/class_gold_archer/spriteFrame',
+  辅助: 'ui/glass/class_gold_support/spriteFrame',
+  坦克: 'ui/glass/class_gold_tank/spriteFrame',
+};
 /** 粗估文字宽(中文按字号、其余按 0.56 字号)。 */
 function estimateGlassTextWidth(text: string, fontSize: number): number {
   let w = 0;
@@ -117,7 +147,38 @@ function estimateGlassTextWidth(text: string, fontSize: number): number {
   return w;
 }
 
-const GACHA_REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
+/**
+ * 网页召唤视频的 DOM 跳过钮(11-26):引擎 VideoPlayer 的 <video> 叠在画布上面,画布里的「跳过」被盖住 → 在 #GameDiv 里叠一个按钮
+ * (样式同序幕视频的跳过:半透明暗玻璃胶囊 + 白字;挂 #GameDiv 内,手机竖握旋转时跟着转)。返回撤掉它的函数;不是浏览器返回 null。
+ */
+function mountDomVideoSkipButton(onSkip: () => void): (() => void) | null {
+  if (!sys.isBrowser || typeof document === 'undefined') {
+    return null;
+  }
+  const container = document.getElementById('GameDiv') ?? document.body;
+  const button = document.createElement('button');
+  button.textContent = '跳过 ›';
+  button.setAttribute('data-lc', 'gacha-video-skip');
+  button.style.cssText = 'position:absolute;right:3%;top:2.4%;z-index:10001;height:5.6%;min-height:30px;padding:0 1.6em;border-radius:999px;'
+    + 'border:1px solid rgba(255,255,255,.22);background:rgba(18,24,36,.62);color:#F2F2F2;font-size:clamp(14px,2.6vh,22px);'
+    + 'font-family:"PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.06em;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);';
+  let done = false;
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (done) {
+      return;
+    }
+    done = true;
+    onSkip();
+  });
+  container.appendChild(button);
+  return () => {
+    done = true;
+    button.remove();
+  };
+}
+
+const GACHA_REF_ROW_SELECTED: RefKitItem ={ path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
 const GACHA_REF_SQUARE: RefKitItem = { path: 'ui/formation/ref/btn_square/spriteFrame', w: 96, h: 96, inset: [24, 24, 24, 24] };
 const GACHA_CHECK_GOLD_ASSET = 'ui/formation/check_gold/spriteFrame';
 
@@ -214,6 +275,12 @@ export class GachaSceneRenderer {
   /** 当前结果页的结果卡列表(用于同批多件同编码装备逐件对应实例)。 */
   private currentResultItems: GachaMockResultItem[] | null = null;
   private resultTooltipSticky = false;
+  /** B 风格结果页的原型映射比例(详情浮层用);0 = 旧版结果页。 */
+  private resultGlassK = 0;
+  /** 已经播过入场动画的那一抽(整页重绘时卡片不再重复弹出)。 */
+  private resultAnimatedKey = '';
+  /** B 风格结果页点开详情的那张卡(整页重绘后接着挂回去;点空白收起时清掉)。 */
+  private resultStickyDetail: { key: string; index: number } | null = null;
   private abyssSpineData: sp.SkeletonData | null = null;
   private abyssSpineLoading = false;
   private abyssSpineLoadFailed = false;
@@ -266,6 +333,11 @@ export class GachaSceneRenderer {
   }
 
   renderResultScene(layout: UiLayout, mode: GachaPreviewResultMode, state: GachaSceneState): void {
+    if (GACHA_GLASS && glassStyleEnabled()) {
+      this.renderGlassResultScene(layout, mode, state);
+      return;
+    }
+    this.resultGlassK = 0;
     const scale = this.resolveScale(layout);
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -303,24 +375,17 @@ export class GachaSceneRenderer {
     root.addComponent(BlockInputEvents);
 
     this.renderSummonVideoContent(root, layout, scale, mode, rarity);
-    // 播放中右上跳过:直接走收尾(结果页+回读),与自然播完同一出口。
-    const skipW = 130 * scale;
-    const skipH = 44 * scale;
-    const skip = this.host.addChildPlainNode(root, 'GachaSummonSkipButton', layout.width / 2 - skipW / 2 - 26 * scale, layout.height / 2 - skipH / 2 - 24 * scale, skipW, skipH);
-    const sg = skip.addComponent(Graphics);
-    sg.fillColor = rgba(8, 7, 8, 196);
-    sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
-    sg.fill();
-    sg.strokeColor = rgba(214, 176, 100, 220);
-    sg.lineWidth = 1.6 * scale;
-    sg.roundRect(-skipW / 2, -skipH / 2, skipW, skipH, skipH / 2);
-    sg.stroke();
-    const skipLabel = this.host.addChildLabel(skip, 'GachaSummonSkipLabel', '跳过 »', 0, 1 * scale, 19 * scale, rgba(240, 218, 168), new Size(skipW - 18 * scale, skipH - 8 * scale));
-    skipLabel.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(skipLabel, scale, true);
-    skip.addComponent(Button);
-    skip.on(Button.EventType.CLICK, () => this.host.finishGachaSummonVideoScene(), this);
-    this.host.applyImageButtonFeedback(skip, 1.05, 0.95);
+    // 播放中右上跳过:直接走收尾(结果页+回读),与自然播完同一出口。11-26 改 B 风格次钮(顶栏关闭钮的位置)。
+    const { RX, FY, S, k } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    mountGlassButton(this.host, root, 'GachaSummonSkipButton', '跳过 ›', RX(1735), FY(46), S(170), S(56), k, 'secondary', () => this.host.finishGachaSummonVideoScene(), 24);
+    // 网页:引擎 VideoPlayer 的 <video> 盖在画布上面,画布里的跳过钮看不见也点不到(安卓原生改走 NativeUnderlayVideo 垫在画面下面,没这个问题)
+    // → 同位置叠一个 DOM 跳过钮(样式同序幕视频的跳过),场景节点销毁时一起撤掉
+    if (!nativeUnderlayVideoSupported()) {
+      const removeDomSkip = mountDomVideoSkipButton(() => this.host.finishGachaSummonVideoScene());
+      if (removeDomSkip) {
+        root.once(Node.EventType.NODE_DESTROYED, removeDomSkip);
+      }
+    }
   }
 
   private createUiNode(name: string): Node {
@@ -2388,6 +2453,318 @@ export class GachaSceneRenderer {
     this.renderMockResultActionButtons(panel, panelWidth, panelHeight, scale);
   }
 
+  /**
+   * 2026-11-26 B 风格召唤结果(策划通玩 P1:结果页还是旧红金整框 + 五色卡框,还露「召唤单号」):
+   * 召唤主页同款虚化大厅底 + 压暗 + 四周渐暗;玻璃顶栏(‹ 召唤结果 / 货币 / ×);单抽 = 契约之选同款大竖卡(354×515),
+   * 十连 = 5×2 小竖卡;底部「返回召唤」次钮 +「再召唤 N 次」主钮 + 消耗行,位置同召唤主页。坐标取原型 1870×841 映射。
+   * 不再显示召唤单号(玩家看不懂也用不上,抽卡记录按时间查)。
+   */
+  private renderGlassResultScene(layout: UiLayout, mode: GachaPreviewResultMode, state: GachaSceneState): void {
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const root = this.createUiNode('GachaResultSceneRoot');
+    root.setPosition(new Vec3(centerX, centerY, 0));
+    root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    root.addComponent(BlockInputEvents);
+    const { FX, FY, S, k } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    this.resultGlassK = k;
+    const detailScale = this.resolveScale(layout);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+
+    // 背景:召唤主页同款虚化大厅,铺满整个窗口(含安全区外);压暗 + 四周渐暗,卡片是唯一的视觉中心
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgW = Math.max(coverW, coverH * GACHA_GLASS_BG.ratio);
+    this.host.addSprite('GachaResultBackground', GACHA_GLASS_BG.path, 0, 0, bgW, bgW / GACHA_GLASS_BG.ratio, root);
+    const veil = this.host.addChildPlainNode(root, 'GachaResultVeil', 0, 0, coverW, coverH).addComponent(Graphics);
+    veil.fillColor = rgba(8, 12, 22, 200);
+    veil.rect(-coverW / 2, -coverH / 2, coverW, coverH);
+    veil.fill();
+    // 四周渐暗(同契约之选):Graphics 没有径向渐变,用互不重叠的边框带,越靠外越黑
+    const bands = 8;
+    for (let i = 0; i < bands; i += 1) {
+      const ox = coverW * 0.2 * (i / bands);
+      const oy = coverH * 0.18 * (i / bands);
+      const bx = coverW * 0.2 * ((i + 1) / bands) - ox;
+      const by = coverH * 0.18 * ((i + 1) / bands) - oy;
+      const x0 = -coverW / 2 + ox;
+      const y0 = -coverH / 2 + oy;
+      const bw = coverW - ox * 2;
+      const bh = coverH - oy * 2;
+      veil.fillColor = rgba(3, 5, 10, Math.round(120 * (1 - i / bands)));
+      veil.rect(x0, y0 + bh - by, bw, by);
+      veil.rect(x0, y0, bw, by);
+      veil.rect(x0, y0 + by, bx, bh - by * 2);
+      veil.rect(x0 + bw - bx, y0 + by, bx, bh - by * 2);
+      veil.fill();
+    }
+
+    const profile = this.host.currentLobbyProfile();
+    mountGlassTopBar(this.host, root, 'GachaResult', layout.stageWidth, layout.stageHeight, '召唤结果', [
+      { key: 'bound', icon: 'ui/bag/ai/icon_bound_diamond/spriteFrame', value: compactValue(profile.boundDiamond), width: 167 },
+      { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: compactValue(profile.diamond), width: 165 },
+    ], () => this.host.closeGachaMockResultScene(), () => this.host.closeGachaScene(), { chipRight: 1720 });
+
+    const drawResult = state.lastDrawResult;
+    const results = drawResult ? this.toResultPreviewItems(drawResult.items) : (mode === 'once' ? GACHA_MOCK_RESULT_ONCE : GACHA_MOCK_RESULT_TEN);
+    this.currentResultItems = results;
+    // 入场动画只在这一抽第一次画时播(之后资料回读引起的整页重绘不再重弹)
+    const animKey = drawResult ? drawResult.drawNo : `preview_${mode}`;
+    const animate = this.resultAnimatedKey !== animKey;
+    this.resultAnimatedKey = animKey;
+    if (results.length <= 1) {
+      if (results[0]) {
+        this.renderGlassResultCard(root, results[0], 0, FX(935), FY(392), S(354), S(515), S, k, true, animate ? 0.05 : -1, detailScale);
+      }
+    } else {
+      // 5 列;两行卡高 272、行距 18:上沿 104 让开顶栏,下沿 666 让开底部按钮(按钮上沿 684)
+      const cols = 5;
+      const rows = Math.ceil(results.length / cols);
+      const gapX = 26;
+      const gapY = 18;
+      const cardH = rows <= 2 ? 272 : (562 - (rows - 1) * gapY) / rows;
+      const cardW = cardH * 0.72;
+      const gridTop = 385 - (rows * cardH + (rows - 1) * gapY) / 2;
+      results.forEach((item, index) => {
+        const row = Math.floor(index / cols);
+        const inRow = Math.min(cols, results.length - row * cols);
+        const rowW = inRow * cardW + (inRow - 1) * gapX;
+        const px = 935 - rowW / 2 + cardW / 2 + (index % cols) * (cardW + gapX);
+        const py = gridTop + cardH / 2 + row * (cardH + gapY);
+        this.renderGlassResultCard(root, item, index, FX(px), FY(py), S(cardW), S(cardH), S, k, false, animate ? 0.05 + index * 0.05 : -1, detailScale);
+      });
+    }
+
+    // 底部(召唤主页同位置):返回召唤(次钮 535..918)/ 再召唤同样次数(主钮 951..1334),y 716;消耗行 y 778
+    const pool = this.resolveSelectedPool(state);
+    const enabled = !state.drawing && !pool.locked && !pool.previewOnly && pool.drawEnabled === true;
+    mountGlassButton(this.host, root, 'GachaResultReturnButton', '返回召唤', (FX(535) + FX(918)) / 2, FY(716), FX(918) - FX(535), S(63), k, 'secondary',
+      () => this.host.closeGachaMockResultScene(), 26);
+    mountGlassButton(this.host, root, 'GachaResultAgainButton', mode === 'ten' ? '再召唤10次' : '再召唤1次', (FX(951) + FX(1334)) / 2, FY(716), FX(1334) - FX(951), S(63), k,
+      enabled ? 'primary' : 'primaryOff', () => {
+        this.host.closeGachaMockResultScene();
+        this.host.startGachaDraw(mode);
+      }, 26);
+    this.renderGlassCostRow(root, 'GachaResultAgainButton', this.resolveSummonCostText(pool, mode), (FX(951) + FX(1334)) / 2, FY(778), S, T);
+
+    // 重绘前点开着详情(同一抽)→ 接着挂回去;换了一抽就忘掉
+    const sticky = this.resultStickyDetail;
+    if (sticky && sticky.key === animKey && results[sticky.index]) {
+      this.resultTooltipSticky = true;
+      this.showResultItemDetail(root, results[sticky.index], detailScale, true);
+    } else {
+      this.resultStickyDetail = null;
+      this.resultTooltipNode = null;
+      this.resultTooltipSticky = false;
+    }
+  }
+
+  /**
+   * B 风格结果竖卡(契约之选卡的做法):玻璃框底 → 上部立绘 cover 裁切(圆角遮罩)+ 下段渐暗压进卡底 → 名字 / 副行;
+   * 左上稀有度扁签(+ UP 暗金签)、右上职业标识(英雄);UR / SSR 加细描边 + 淡外晕;材料 / 装备 = 暗底稀有度描边 + 图标居中。
+   * large = 单抽大卡(354×515,多一个状态胶囊),否则十连小卡(按卡高等比)。delay ≥ 0 时卡片从 0.6 弹到 1(只动内层 Body,外层按钮的悬停缩放不受影响)。
+   */
+  private renderGlassResultCard(parent: Node, item: GachaMockResultItem, index: number, x: number, y: number, w: number, h: number,
+    S: (v: number) => number, k: number, large: boolean, delay: number, detailScale: number): void {
+    const card = this.host.addChildPlainNode(parent, `GachaResultCard_${index}`, x, y, w, h);
+    card.addComponent(Button);
+    card.on(Button.EventType.CLICK, () => {
+      // 记住点开的是哪张:抽完后资料回读会整页重绘几次,重绘完把详情接着挂回去
+      this.resultStickyDetail = { key: this.resultAnimatedKey, index };
+      this.showResultItemDetail(parent, item, detailScale, true);
+    }, this);
+    card.on(Node.EventType.MOUSE_ENTER, () => this.showResultItemDetail(parent, item, detailScale, false), this);
+    card.on(Node.EventType.MOUSE_LEAVE, () => this.hideResultTooltip(false), this);
+    this.host.applyImageButtonFeedback(card, 1.02, 0.985);
+    const body = this.host.addChildPlainNode(card, 'Body', 0, 0, w, h);
+    // 卡内尺寸(原型像素):大卡照契约之选实测;小卡按卡高 272 排
+    const u = (v: number): number => S(v) * (large ? 1 : h / S(272));
+    const L = large
+      ? { artH: 368, fade: 110, radius: 15, nameY: -122, name: 34, subY: -163, sub: 20, tagW: 50, tagH: 32, tag: 20, tagX: 21, tagTop: 17, badge: 58, badgeX: 45, badgeTop: 43, icon: 200 }
+      : { artH: 190, fade: 70, radius: 12, nameY: -86, name: 23, subY: -114, sub: 19, tagW: 42, tagH: 28, tag: 18, tagX: 10, tagTop: 10, badge: 40, badgeX: 26, badgeTop: 26, icon: 112 };
+    const inset = Math.max(2, u(3));
+    const artW = w - inset * 2;
+    const artH = u(L.artH);
+    const artTop = h / 2 - inset;
+    const artCy = artTop - artH / 2;
+    const frameColor = item.frameColor ?? gachaFrameColorByRarity(item.rarity);
+    const hero = item.kind === 'hero';
+    mountGlassSlice(this.host, body, 'Glass', GLASS_SLICES.frame, 0, 0, w, h, k);
+
+    if (hero) {
+      // 立绘:名册横版卡面 cover 裁切(契约之选同款);没有卡面的英雄退回紧裁立绘,等比贴底
+      const clip = this.host.addChildPlainNode(body, 'ArtClip', 0, artCy, artW, artH);
+      const mask = clip.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_STENCIL;
+      const mg = clip.getComponent(Graphics) ?? clip.addComponent(Graphics);
+      mg.roundRect(-artW / 2, -artH / 2, artW, artH, u(L.radius));
+      mg.fill();
+      const art = this.host.addChildPlainNode(clip, 'Art', 0, 0, artW, artH);
+      const rosterArt = resolveHeroRosterArtPath(item.rewardCode);
+      if (rosterArt) {
+        mountCoverArt(art, rosterArt, artW, artH);
+      } else if (item.heroArt) {
+        let dh = artH;
+        let dw = dh * item.heroArt.aspect;
+        if (dw > artW) {
+          dw = artW;
+          dh = dw / item.heroArt.aspect;
+        }
+        this.host.addSprite('FallbackArt', item.heroArt.asset, 0, -artH / 2 + dh / 2, dw, dh, art);
+      }
+      const fadeH = u(L.fade);
+      const fade = this.host.addChildPlainNode(body, 'Fade', 0, artTop - artH + fadeH / 2, artW, fadeH).addComponent(Graphics);
+      // 自上而下越来越实(底色与玻璃卡心一致);色带首尾严丝合缝(叠半像素会在接缝处出细黑线)
+      const steps = 22;
+      const edgeY = (i: number): number => fadeH / 2 - (fadeH * i) / steps;
+      for (let i = 0; i < steps; i += 1) {
+        fade.fillColor = new Color(18, 23, 33, Math.round(250 * Math.pow((i + 1) / steps, 1.15)));
+        fade.rect(-artW / 2, edgeY(i + 1), artW, edgeY(i) - edgeY(i + 1));
+        fade.fill();
+      }
+    } else {
+      // 材料 / 碎片 / 装备:图标居中在上部(暗底 + 稀有度细描边;装备同英雄详情的装备底)
+      const box = u(L.icon);
+      const iconY = artCy - u(large ? 10 : 4);
+      const equipAsset = item.equipCode ? equipIconAssetByCode(item.equipCode) : null;
+      if (equipAsset) {
+        mountEquipIconBacking(this.host, body, 'IconBacking', box, item.equipCode, { y: iconY });
+        this.host.addSprite('Icon', equipAsset, 0, iconY, box, box, body);
+      } else if (item.iconAsset) {
+        mountItemRarityBacking(this.host, body, 'IconBacking', box, item.rarity, { y: iconY });
+        this.host.addSprite('Icon', item.iconAsset, 0, iconY, box, box, body);
+      }
+    }
+
+    const edge = GACHA_GLASS_RARE_EDGE[frameColor];
+    if (edge) {
+      const radius = u(large ? 17 : 13);
+      const g = this.host.addChildPlainNode(body, 'RareEdge', 0, 0, w + u(16), h + u(16)).addComponent(Graphics);
+      g.strokeColor = new Color(edge.r, edge.g, edge.b, 60);
+      g.lineWidth = u(7);
+      g.roundRect(-w / 2 - u(2), -h / 2 - u(2), w + u(4), h + u(4), radius + u(3));
+      g.stroke();
+      g.strokeColor = edge;
+      g.lineWidth = Math.max(2, u(2.5));
+      g.roundRect(-w / 2 + u(1), -h / 2 + u(1), w - u(2), h - u(2), radius);
+      g.stroke();
+    }
+
+    // 左上:稀有度扁签(英雄 / 碎片 = R~UR;装备 = 自身品质字;材料不挂,稀有度看图标描边)+ UP 暗金签
+    const quality = item.equipCode ? equipQualityColorByCode(item.equipCode) : null;
+    const tagText = item.equipCode ? (GACHA_EQUIP_QUALITY_TEXT[quality ?? ''] ?? '') : item.kind === 'material' ? '' : item.rarity;
+    const tagH = u(L.tagH);
+    const tagY = h / 2 - u(L.tagTop) - tagH / 2;
+    let tagRight = -w / 2 + u(L.tagX);
+    if (tagText) {
+      const tagW = u(tagText.length > 2 ? L.tagW + 12 : L.tagW);
+      const tag = this.host.addChildPlainNode(body, 'RarityTag', tagRight + tagW / 2, tagY, tagW, tagH);
+      const tg = tag.addComponent(Graphics);
+      tg.fillColor = quality === 'white' ? new Color(96, 102, 114, 235) : GACHA_GLASS_TAG_FILL[frameColor];
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, u(6));
+      tg.fill();
+      tg.strokeColor = rgba(255, 255, 255, 46);
+      tg.lineWidth = 1;
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, u(6));
+      tg.stroke();
+      glassLabel(this.host, tag, 'Text', tagText, 0, 0, Math.max(12, Math.round(u(L.tag))), GLASS_COLOR.onGold, tagW, HorizontalTextAlignment.CENTER, true);
+      tagRight += tagW + u(6);
+    }
+    if (item.featured) {
+      const upW = u(large ? 52 : 42);
+      const up = this.host.addChildPlainNode(body, 'UpTag', tagRight + upW / 2, tagY, upW, tagH);
+      mountGlassSlice(this.host, up, 'Bg', GLASS_SLICES.tabGold, 0, 0, upW, tagH, k * 0.6);
+      glassLabel(this.host, up, 'Text', 'UP', 0, 0, Math.max(12, Math.round(u(L.tag))), GLASS_COLOR.onGold, upW, HorizontalTextAlignment.CENTER, true);
+    }
+
+    // 右上:职业标识(英雄)
+    const blurb = hero ? contractHeroBlurb(item.rewardCode) : null;
+    const heroClass = hero ? (blurb ? blurb.role.split(' ')[0] : heroClassByCode(item.rewardCode)) : null;
+    const classIcon = heroClass ? GACHA_GLASS_CLASS_ICON[heroClass] : undefined;
+    if (classIcon) {
+      const d = u(L.badge);
+      const badge = this.host.addChildPlainNode(body, 'ClassBadge', w / 2 - u(L.badgeX), h / 2 - u(L.badgeTop), d + 2, d + 2);
+      const bg = badge.addComponent(Graphics);
+      bg.fillColor = new Color(14, 17, 24, 190);
+      bg.circle(0, 0, d / 2);
+      bg.fill();
+      bg.strokeColor = new Color(200, 170, 112, 130);
+      bg.lineWidth = Math.max(1, u(1.4));
+      bg.circle(0, 0, d / 2);
+      bg.stroke();
+      this.host.addSprite('Icon', classIcon, 0, 0, d * 0.66, d * 0.66, badge);
+    }
+
+    // 名字 + 副行:大卡副行 = 定位;小卡副行 = 新获得 / 已有转碎片 / 数量
+    const count = Math.max(1, Math.trunc(item.obtainCount ?? 1));
+    const fragments = Math.max(0, Math.trunc(item.fragmentCount ?? 0));
+    const slotNames: Record<string, string> = { weapon: '武器', helmet: '头盔', chest: '胸甲', boots: '战靴', ring: '戒指', neck: '项链', necklace: '项链' };
+    let sub: string;
+    let subColor = GLASS_COLOR.sub;
+    if (hero) {
+      if (large) {
+        sub = blurb ? blurb.role : heroClass ?? '英雄';
+      } else if (item.duplicate) {
+        sub = fragments > 0 ? `已有 · 碎片 ×${fragments}` : '已有 · 转为碎片';
+      } else {
+        sub = '新获得';
+        subColor = GLASS_COLOR.champagne;
+      }
+    } else if (item.equipCode) {
+      sub = `装备 · ${slotNames[equipSlotKeyByCode(item.equipCode) ?? ''] ?? '装备'}`;
+    } else {
+      sub = `${item.kind === 'shard' ? '英雄碎片' : '材料'} ×${count}`;
+    }
+    const nameSize = Math.max(12, Math.round(u(L.name)));
+    glassLabel(this.host, body, 'Name', safeText(item.name), 0, u(L.nameY), nameSize, GLASS_COLOR.text, w - u(large ? 40 : 14), HorizontalTextAlignment.CENTER, true);
+    glassLabel(this.host, body, 'Sub', sub, 0, u(L.subY), Math.max(12, Math.round(u(L.sub))), subColor, w - u(large ? 40 : 14), HorizontalTextAlignment.CENTER);
+    if (large) {
+      // 大卡底部状态胶囊:新英雄入队(香槟字)/ 已拥有 · 转为碎片 ×N / 本次获得 ×N
+      let pill = '';
+      let pillColor = GLASS_COLOR.sub;
+      if (hero) {
+        if (item.duplicate) {
+          pill = fragments > 0 ? `已拥有 · 转为碎片 ×${fragments}` : '已拥有 · 转为碎片';
+        } else {
+          pill = '新英雄入队';
+          pillColor = GLASS_COLOR.champagne;
+        }
+      } else if (count > 1) {
+        pill = `本次获得 ×${count}`;
+      }
+      if (pill) {
+        const pillH = u(36);
+        const fontSize = u(18);
+        const pillW = glassTagPillWidthOf(pill, fontSize, pillH, estimateGlassTextWidth);
+        mountGlassTagPill(this.host, body, 'StatusPill', pill, -pillW / 2, u(-208), pillH, k, fontSize, estimateGlassTextWidth, pillColor);
+      }
+    }
+
+    if (delay >= 0) {
+      const st = { s: 0.6 };
+      body.setScale(st.s, st.s, 1);
+      tween(st).delay(delay).to(0.32, { s: 1 }, {
+        easing: 'backOut',
+        onUpdate: () => {
+          if (body.isValid) {
+            body.setScale(st.s, st.s, 1);
+          } else {
+            Tween.stopAllByTarget(st);
+          }
+        },
+      }).call(() => {
+        if (body.isValid) {
+          body.setScale(1, 1, 1);
+        }
+      }).start();
+    }
+  }
+
   private toResultPreviewItems(items: GachaDrawItemVO[]): GachaMockResultItem[] {
     return items.map((item) => {
       const rarity = this.normalizeRarity(item.rarity);
@@ -2405,6 +2782,7 @@ export class GachaSceneRenderer {
         heroArt: item.rewardType === 'HERO' ? heroCardArtProfileByCode(item.rewardCode) : null,
         rewardCode: item.rewardCode,
         duplicate: item.duplicate,
+        fragmentCount: Math.max(0, Math.trunc(Number(item.fragmentCount ?? 0) || 0)),
         obtainCount: Math.max(1, Math.trunc(Number(item.amount ?? 1) || 1)),
         featured: item.up,
       };
@@ -2579,15 +2957,19 @@ export class GachaSceneRenderer {
     }
     this.hideResultTooltip(true);
     let holder: Node = parent;
+    const glass = this.resultGlassK > 0;
     if (sticky) {
       const overlay = this.host.addChildPlainNode(parent, 'GachaResultInfoOverlay', 0, 0, 4000, 4000);
       overlay.addComponent(BlockInputEvents);
       const og = overlay.addComponent(Graphics);
-      og.fillColor = rgba(0, 0, 0, 152);
+      og.fillColor = glass ? rgba(6, 9, 16, 176) : rgba(0, 0, 0, 152);
       og.rect(-2000, -2000, 4000, 4000);
       og.fill();
       overlay.addComponent(Button);
-      overlay.on(Button.EventType.CLICK, () => this.hideResultTooltip(true), this);
+      overlay.on(Button.EventType.CLICK, () => {
+        this.resultStickyDetail = null;
+        this.hideResultTooltip(true);
+      }, this);
       holder = overlay;
     }
     let content: Node | null = null;
@@ -2597,10 +2979,10 @@ export class GachaSceneRenderer {
         content = renderEquipDetailCard(this.host, holder, equip, 0, 0, scale * 0.88, !sticky);
       }
     } else if (item.kind === 'hero') {
-      content = this.buildHeroResultCard(holder, item, scale);
+      content = glass ? this.buildGlassHeroResultCard(holder, item) : this.buildHeroResultCard(holder, item, scale);
     }
     if (!content) {
-      content = this.buildGenericResultInfo(holder, item, scale);
+      content = glass ? this.buildGlassResultInfo(holder, item) : this.buildGenericResultInfo(holder, item, scale);
     }
     this.resultTooltipNode = sticky ? holder : content;
     this.resultTooltipSticky = sticky;
@@ -2642,6 +3024,153 @@ export class GachaSceneRenderer {
       }
     }
     return 0;
+  }
+
+  /** 详情卡用的多行说明(自动换行,框高按行数给,放不下就整体缩字);x = 左沿,top = 框上沿。 */
+  private glassWrapLabel(parent: Node, name: string, text: string, x: number, top: number, width: number, lines: number, fontSize: number, lineHeight: number, color: Color): Label {
+    const label = this.host.addChildLabel(parent, name, text, x, top - (lines * lineHeight) / 2, fontSize, color, new Size(width, lines * lineHeight), HorizontalTextAlignment.LEFT);
+    label.enableWrapText = true;
+    label.overflow = Label.Overflow.SHRINK;
+    label.lineHeight = lineHeight;
+    // 顶端对齐:行数估多了时空白落在下面(当段间距),不会把字推到框中间、和标题之间空一截
+    label.verticalAlign = Label.VerticalAlign.TOP;
+    label.enableOutline = false;
+    return label;
+  }
+
+  /** B 风格稀有度扁签(详情卡标题旁);返回签宽。 */
+  private mountGlassRarityTag(parent: Node, name: string, text: string, color: GachaFrameColor, cx: number, cy: number, S: (v: number) => number): number {
+    const w = S(text.length > 2 ? 62 : 50);
+    const h = S(30);
+    const tag = this.host.addChildPlainNode(parent, name, cx, cy, w, h);
+    const g = tag.addComponent(Graphics);
+    g.fillColor = GACHA_GLASS_TAG_FILL[color];
+    g.roundRect(-w / 2, -h / 2, w, h, S(6));
+    g.fill();
+    g.strokeColor = rgba(255, 255, 255, 46);
+    g.lineWidth = 1;
+    g.roundRect(-w / 2, -h / 2, w, h, S(6));
+    g.stroke();
+    glassLabel(this.host, tag, 'Text', text, 0, 0, Math.max(12, Math.round(S(19))), GLASS_COLOR.onGold, w, HorizontalTextAlignment.CENTER, true);
+    return w;
+  }
+
+  /**
+   * B 风格英雄详情卡(结果页点英雄卡):玻璃面板;稀有度扁签 + 名字、职业 / 等级 / 星级 / 战力、新英雄 / 重复状态、属性双列、
+   * 技能(名字 + 解锁条件 + 说明,说明自动换行)。字号不低于 18(旧卡技能说明 14 号看不清);内容太长整卡等比缩到原型高 800 以内。
+   */
+  private buildGlassHeroResultCard(parent: Node, item: GachaMockResultItem): Node | null {
+    const rewardCode = (item.rewardCode || '').toUpperCase();
+    const hero = this.host.currentLobbyHeroRosterState().heroes.find((entry) => (entry.heroCode || '').toUpperCase() === rewardCode) ?? null;
+    if (!hero) {
+      return null;
+    }
+    const k = this.resultGlassK;
+    const S = (v: number): number => v * k;
+    const F = (v: number): number => Math.max(12, Math.round(S(v)));
+    const attrs = resolveAttributes(hero);
+    const skills = resolveSkills(hero).slice(0, 5);
+    const attrRows = Math.ceil(attrs.length / 2);
+    const W = 660;
+    const padX = 40;
+    const descW = W - padX * 2;
+    // 说明按实际生效的字号估行数(手机字号下限 20,比原型 18 映射出来的大),行高跟着字号走
+    const descFont = phoneReadableFontSize(F(18));
+    const descLineH = Math.max(26, (descFont + 6) / k);
+    const descLines = skills.map((skill) => Math.max(1, Math.min(4, Math.ceil(estimateGlassTextWidth(skill.description || '', descFont) * 1.06 / S(descW)))));
+    // 纵向排版(原型像素,自上而下)
+    const attrY0 = 214;
+    const skillHeadY = attrY0 + (attrRows - 1) * 38 + 56;
+    let cursor = skillHeadY + 40;
+    const skillTops = skills.map((_skill, index) => {
+      const top = cursor;
+      cursor += 30 + descLines[index] * descLineH + 14;
+      return top;
+    });
+    const H = cursor + 12;
+    const P = (py: number): number => S(H / 2 - py);
+    const card = this.host.addChildPlainNode(parent, 'GachaResultHeroCard', 0, 0, S(W), S(H));
+    // 两层玻璃叠起来压住后面的卡片(通用小窗 GlassPopupShell 同做法)
+    mountGlassSlice(this.host, card, 'GlassBase', GLASS_SLICES.panel, 0, 0, S(W), S(H), k);
+    mountGlassSlice(this.host, card, 'Glass', GLASS_SLICES.panel, 0, 0, S(W), S(H), k);
+    if (H > 800) {
+      card.setScale(800 / H, 800 / H, 1);
+    }
+    const frameColor = item.frameColor ?? gachaFrameColorByRarity(item.rarity);
+    const name = safeText(item.name);
+    const nameW = Math.min(S(W - 200), estimateGlassTextWidth(name, F(28)));
+    const tagW = S(item.rarity.length > 2 ? 62 : 50);
+    const groupW = tagW + S(12) + nameW;
+    this.mountGlassRarityTag(card, 'Rarity', item.rarity, frameColor, -groupW / 2 + tagW / 2, P(46), S);
+    glassLabel(this.host, card, 'Title', name, -groupW / 2 + tagW + S(12), P(46), F(28), GLASS_COLOR.text, nameW + S(8), HorizontalTextAlignment.LEFT, true);
+    const heroClass = heroClassByCode(rewardCode) ?? safeText(hero.heroClass ?? '');
+    const summary = [heroClass || '英雄', `Lv${Math.max(1, hero.level)}`, `${Math.max(1, Math.trunc(hero.star || 1))}星`, `战力 ${compactValue(hero.power)}`].join(' · ');
+    glassLabel(this.host, card, 'Summary', summary, 0, P(88), F(19), GLASS_COLOR.sub, S(W - padX * 2), HorizontalTextAlignment.CENTER);
+    const fragments = Math.max(0, Math.trunc(item.fragmentCount ?? 0));
+    const status = item.duplicate ? (fragments > 0 ? `重复获得 · 已转化为 ${fragments} 碎片` : '重复获得 · 已转化为同名碎片') : '新英雄入队';
+    glassLabel(this.host, card, 'Status', status, 0, P(120), F(19), item.duplicate ? GLASS_COLOR.sub : GLASS_COLOR.champagne, S(W - padX * 2), HorizontalTextAlignment.CENTER);
+    mountGlassLine(this.host, card, 'Divider', 0, P(148), S(W - padX * 2), Math.max(1, S(1)), new Color(200, 206, 220, 50));
+    mountGlassSectionHeader(this.host, card, 'AttrHead', '属性', S(-W / 2 + padX), P(178), k, 22);
+    attrs.forEach((attr, index) => {
+      const colX = S(-W / 2 + padX + 6 + (index % 2) * ((W - padX * 2) / 2));
+      const y = P(attrY0 + Math.floor(index / 2) * 38);
+      glassLabel(this.host, card, `AttrLabel_${index}`, attr.label, colX, y, F(20), GLASS_COLOR.sub, S(90));
+      glassLabel(this.host, card, `AttrValue_${index}`, String(attr.value), colX + S(92), y, F(20), GLASS_COLOR.text, S(170), HorizontalTextAlignment.LEFT, true);
+    });
+    mountGlassSectionHeader(this.host, card, 'SkillHead', '技能', S(-W / 2 + padX), P(skillHeadY), k, 22);
+    skills.forEach((skill, index) => {
+      const top = skillTops[index];
+      const ultimate = skill.kind === 'ultimate';
+      glassLabel(this.host, card, `SkillName_${index}`, skill.name, S(-W / 2 + padX), P(top + 13), F(20), ultimate ? GLASS_COLOR.champagne : skill.locked ? GLASS_COLOR.dim : GLASS_COLOR.text,
+        S((W - padX * 2) * 0.58), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, card, `SkillTag_${index}`, skill.tag, S(W / 2 - padX), P(top + 13), F(18), GLASS_COLOR.sub, S((W - padX * 2) * 0.4), HorizontalTextAlignment.RIGHT);
+      this.glassWrapLabel(card, `SkillDesc_${index}`, skill.description || '', S(-W / 2 + padX), P(top + 30), S(descW), descLines[index], descFont, S(descLineH), GLASS_COLOR.sub);
+    });
+    return card;
+  }
+
+  /** B 风格通用信息卡(材料 / 碎片 / 没取到实例的装备):玻璃面板;扁签 + 名字、类别、本次获得 / 已拥有、用途说明。 */
+  private buildGlassResultInfo(parent: Node, item: GachaMockResultItem): Node {
+    const info = this.resolveResultItemInfo(item);
+    const k = this.resultGlassK;
+    const S = (v: number): number => v * k;
+    const F = (v: number): number => Math.max(12, Math.round(S(v)));
+    const W = 580;
+    const padX = 40;
+    const rows = [
+      { text: info.obtainLine, color: GLASS_COLOR.text },
+      { text: info.ownedLine, color: GLASS_COLOR.champagne },
+    ].filter((row) => row.text.length > 0);
+    const noteW = W - padX * 2;
+    const noteFont = phoneReadableFontSize(F(18));
+    const noteLineH = Math.max(26, (noteFont + 6) / k);
+    const noteLines = Math.max(1, Math.min(4, Math.ceil(estimateGlassTextWidth(info.note, noteFont) * 1.06 / S(noteW))));
+    const rowsTop = 150;
+    const noteTop = rowsTop + rows.length * 38 + 8;
+    const H = noteTop + noteLines * noteLineH + 34;
+    const P = (py: number): number => S(H / 2 - py);
+    const dialog = this.host.addChildPlainNode(parent, 'GachaResultInfoDialog', 0, 0, S(W), S(H));
+    mountGlassSlice(this.host, dialog, 'GlassBase', GLASS_SLICES.panel, 0, 0, S(W), S(H), k);
+    mountGlassSlice(this.host, dialog, 'Glass', GLASS_SLICES.panel, 0, 0, S(W), S(H), k);
+    const frameColor = item.frameColor ?? gachaFrameColorByRarity(item.rarity);
+    const quality = item.equipCode ? equipQualityColorByCode(item.equipCode) : null;
+    const tagText = item.equipCode ? (GACHA_EQUIP_QUALITY_TEXT[quality ?? ''] ?? '') : item.kind === 'material' ? '' : item.rarity;
+    const name = safeText(item.name);
+    const nameW = Math.min(S(W - 180), estimateGlassTextWidth(name, F(28)));
+    const tagW = tagText ? S(tagText.length > 2 ? 62 : 50) : 0;
+    const gap = tagText ? S(12) : 0;
+    const groupW = tagW + gap + nameW;
+    if (tagText) {
+      this.mountGlassRarityTag(dialog, 'Rarity', tagText, frameColor, -groupW / 2 + tagW / 2, P(46), S);
+    }
+    glassLabel(this.host, dialog, 'Title', name, -groupW / 2 + tagW + gap, P(46), F(28), GLASS_COLOR.text, nameW + S(8), HorizontalTextAlignment.LEFT, true);
+    glassLabel(this.host, dialog, 'Category', info.category, 0, P(88), F(19), GLASS_COLOR.sub, S(W - padX * 2), HorizontalTextAlignment.CENTER);
+    mountGlassLine(this.host, dialog, 'Divider', 0, P(118), S(W - padX * 2), Math.max(1, S(1)), new Color(200, 206, 220, 50));
+    rows.forEach((row, index) => {
+      glassLabel(this.host, dialog, `InfoRow_${index}`, row.text, S(-W / 2 + padX), P(rowsTop + index * 38), F(20), row.color, S(W - padX * 2));
+    });
+    this.glassWrapLabel(dialog, 'Note', info.note, S(-W / 2 + padX), P(noteTop), S(noteW), noteLines, noteFont, S(noteLineH), GLASS_COLOR.sub);
+    return dialog;
   }
 
   // 英雄详情卡(结果页):名称/等级星级战力行 + 属性双列(与英雄详情属性栏同数据源)+ 技能列表。
