@@ -55,6 +55,8 @@ import { TownWaypointFx } from './LobbyTownWaypointFx';
 import { REF_PLATE_DARK, mountRefSliced } from '../UiRefKit';
 import { TOWN_HUD_ASSETS, TOWN_MINIMAP_BUILDING_ICONS, mountRingBase, townProtoFrame } from './LobbyTownHudProto';
 import { MOVE_GUIDE_STEPS, MOVE_KEY_A, MOVE_KEY_D, MOVE_KEY_S, MOVE_KEY_W, MoveGuideOverlay, type MoveGuideHost } from './LobbyMoveGuide';
+import { mountGroundPulse, mountPulseRing } from './LobbyWeakGuide';
+import type { GuideKitHost } from '../GuideKit';
 import { GLASS_SLICES, mountGlassSlice } from '../UiGlassKit';
 import { GUARD_MONSTER_DB_SCALE } from './GuardBattleModel';
 import { mountHeroAvatar } from './HeroHeadCrop';
@@ -73,7 +75,7 @@ import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapBgmKey, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapNpc, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapBgmKey, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapCampSlam, type WorldMapDef, type WorldMapNpc, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -133,6 +135,11 @@ export interface LobbyTownHost extends LobbyHudHost {
   /** docs/52 §7 普通小怪按只掉落:上报遭遇累计击杀(失败回调 null)。 */
   reportWorldFieldKills?(encounterId: number, stageCode: string, killed: number,
     onResult: (result: { drops: Array<{ index: number; items: Array<{ code: string; name: string; amount: number }> }>; rewards: Array<{ code: string; name: string; amount: number }>; capped: boolean } | null) => void): void;
+  /**
+   * docs/57 §3 野外弱引导:挂到根节点弱引导层(整页重绘不拆,seconds 秒后自己收,点气泡收)。
+   * target = 要套光环的节点(null = 只出气泡);bubbleTop = 气泡放屏幕上部(战斗中别挡技能键)。
+   */
+  showWeakTip?(name: string, target: Node | null, text: string, hint: string, seconds: number, opts?: { bubbleTop?: boolean }): void;
 }
 
 /** 地图页(鸟瞰,10-30 原型 proto_map_b)要的当前图快照:坐标都是世界坐标。 */
@@ -252,6 +259,8 @@ const GUIDE_GROUND_SQUASH = 0.55;
 const INTERACT_RADIUS = 180;
 /** 剧情收集物由哪种怪掉(服务端 StoryQuestCatalog COLLECT 的 dropFrom)。 */
 const QUEST_ITEM_DROP_FROM: Record<string, string> = { SPIDER_SILK: 'SMALL_SPIDER', BANDIT_LEDGER: 'BLUNT_MALE', SPIDER_GLAND: 'LARGE_SPIDER' };
+/** 收集类剧情的任务物品名(和服务端 StoryQuestCatalog 的任务说明一致),追踪条进度强调飘字用。 */
+const QUEST_ITEM_NAME: Record<string, string> = { SPIDER_SILK: '蛛丝', BANDIT_LEDGER: '走私账本', SPIDER_GLAND: '毒腺' };
 const ACTOR_RADIUS = 26;
 const WORLD_NODE_NAME = 'LobbyTownWorld';
 /** 明雷怪(docs/50):游走速度 / 追击速度 / 警戒半径 / 接触半径 / 战胜后刷新时长。 */
@@ -519,6 +528,11 @@ interface TownMonster {
   aura: Node | null;
   /** 训练靶贴图(camp.dummy);有它就不走 AI。 */
   dummySprite: Sprite | null;
+  /** 读条重击(camp.slam,11-25):下次起读的时刻(0 = 还没开打)/ 读满的时刻(0 = 没在读)/ 读条起点 / 脚下红圈。 */
+  slamAt: number;
+  castUntil: number;
+  castStart: number;
+  castNode: Node | null;
 }
 
 /** docs/51 P2 拾取:怪群清完掉落战利品袋,走到旁边出「拾取 · 战利品」提示,拾取时才向服务端结算发奖。 */
@@ -2466,6 +2480,7 @@ export class LobbyTownRenderer {
       this.updateExplore();
       this.updateHiddenPois();
       this.stepNearTips();
+      this.stepFieldTips();
       this.updatePositionReport();
     }
     if (Date.now() >= this.respawnCheckAt && !this.trial) {
@@ -3514,7 +3529,9 @@ export class LobbyTownRenderer {
    */
   private updateNearBuilding(): void {
     const list = this.nearbyInteracts();
-    const key = list.map((item) => item.key).join('|');
+    // docs/57 §3 V01 交任务:靠近村长时「对话」条套一圈脉冲光环(剧情状态变了要重建,并进 key)
+    const talkPulse = this.v01TalkPulse(list[0] ?? null);
+    const key = list.map((item) => item.key).join('|') + (talkPulse ? '#talk' : '');
     const root = this.promptRoot;
     if (root && root.isValid && key !== this.nearKey) {
       this.nearKey = key;
@@ -3554,6 +3571,9 @@ export class LobbyTownRenderer {
           bar.addComponent(Button);
           bar.on(Button.EventType.CLICK, () => this.performInteract(item), this);
           this.host.applyImageButtonFeedback(bar, 1.03, 0.97);
+          if (hot && talkPulse) {
+            mountPulseRing(this.host as unknown as GuideKitHost, bar, 'TalkPulse', 0, 0, w + P.S(6), h + P.S(6), P.S(1));
+          }
         });
       }
     }
@@ -3567,6 +3587,18 @@ export class LobbyTownRenderer {
         label.color = building.cfg.key === nearKey ? rgba(255, 255, 255) : rgba(214, 220, 228);
       }
     }
+  }
+
+  /** V01「醒来」还没交(要和村长说话)且最近的交互对象就是村长 → 「对话」条脉冲。 */
+  private v01TalkPulse(item: TownInteract | null): boolean {
+    if (!item || item.kind !== 'npc') {
+      return false;
+    }
+    const quest = this.host.currentWorldState?.()?.quests.find((entry) => entry.code === 'V01');
+    if (!quest || (quest.state !== 'ACCEPTED' && quest.state !== 'DONE')) {
+      return false;
+    }
+    return item.npc === quest.turnInNpc || item.npc === quest.objectiveTarget;
   }
 
   /** 提示条跟着队长:左缘在队长脚下右侧 100、首条比脚线高 97(原型像素);出屏则夹回。 */
@@ -4912,6 +4944,86 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** docs/57 §3 跟剧情走的野外弱引导:每 300ms 查一次。 */
+  private fieldTipCheckAt = 0;
+
+  /**
+   * - V03「野外第一次靠近怪群 → 靠近就开战」:新手村阶段在野外,离最近一只没开打的怪不到 680(警戒半径 260 外)时,
+   *   它脚下红色椭圆脉冲四下 + 气泡,出一次(tip:camp_engage);
+   * - V03 / V10 村口出口脉冲:剧情要去的图还没激活(第一次去)、追踪指着本图某个出口 → 出口金圈外扩脉冲 + 「走进金圈」小字。
+   */
+  private stepFieldTips(): void {
+    const now = Date.now();
+    const leader = this.leader;
+    if (!leader || now < this.fieldTipCheckAt) {
+      return;
+    }
+    this.fieldTipCheckAt = now + 300;
+    this.stepExitGuide();
+    const seen = this.host.guideTipSeen;
+    if (!seen || this.mapCode === 'VILLAGE' || this.inCombat || this.leaderDead || !this.villageStage() || seen.call(this.host, 'camp_engage')) {
+      return;
+    }
+    let best: TownMonster | null = null;
+    let bestD = MONSTER_AGGRO_RADIUS + 420;
+    for (const monster of this.monsters) {
+      if (monster.dead || monster.camp.dummy || !monster.node.isValid || this.encounters.has(monster.camp.stageCode)) {
+        continue;
+      }
+      const d = Math.hypot(monster.x - leader.x, monster.y - leader.y);
+      if (d < bestD && d > MONSTER_AGGRO_RADIUS) {
+        best = monster;
+        bestD = d;
+      }
+    }
+    if (!best) {
+      return;
+    }
+    this.host.markGuideTip?.('camp_engage');
+    const rx = best.camp.elite ? 130 : 88;
+    const pulse = mountGroundPulse(this.host as unknown as GuideKitHost, best.node, 'GuideEngagePulse', 0, 0, rx, rx * 0.42, 4, [255, 110, 90]);
+    pulse.setSiblingIndex(0);
+    this.host.showWeakTip?.('FieldTipEngage', null, `前面是「${best.camp.label}」:走近它们就会开战。${isPhoneDesign() ? '用右下角的按钮出招' : 'J 普攻 / K L I 技能'}`, '', 6, { bubbleTop: true });
+  }
+
+  /** 当前在脉冲的出口(TownExit_<key> 下的 ExitGuide 节点)。 */
+  private exitGuideKey: string | null = null;
+
+  private stepExitGuide(): void {
+    const world = this.host.currentWorldState?.() ?? null;
+    const quest = this.primaryQuest(world);
+    let want: string | null = null;
+    if (world && quest && quest.state !== 'LOCKED' && (world.stage === 'VILLAGE' || quest.code === 'C101') && quest.map !== this.mapCode
+      && !world.maps.find((map) => map.mapCode === quest.map)?.activated) {
+      const guide = this.resolveQuestGuide(world);
+      const point = guide?.point;
+      want = point ? this.def.exits.find((exit) => exit.x === point.x && exit.y === point.y)?.key ?? null : null;
+    }
+    const ground = this.groundRoot;
+    const current = this.exitGuideKey ? ground?.getChildByName(`TownExit_${this.exitGuideKey}`)?.getChildByName('ExitGuide') ?? null : null;
+    if (want === this.exitGuideKey && (want === null || (current && current.isValid))) {
+      return;
+    }
+    if (current && current.isValid) {
+      current.destroy();
+    }
+    this.exitGuideKey = null;
+    const exit = want ? this.def.exits.find((item) => item.key === want) : undefined;
+    const holder = exit && ground?.isValid ? ground.getChildByName(`TownExit_${exit.key}`) : null;
+    if (!exit || !holder || !holder.isValid) {
+      return;
+    }
+    this.exitGuideKey = exit.key;
+    const guide = this.host.addChildPlainNode(holder, 'ExitGuide', 0, 0, exit.radius * 3, exit.radius * 2);
+    mountGroundPulse(this.host as unknown as GuideKitHost, guide, 'Pulse', 0, 0, exit.radius, exit.radius * 0.56, 0);
+    const caption = this.host.addChildLabel(guide, 'Caption', '走进金圈就能过去', 0, exit.radius * 0.56 + 60, 24, rgba(255, 244, 214), new Size(320, 34));
+    caption.enableOutline = true;
+    caption.outlineColor = rgba(16, 8, 4, 255);
+    caption.outlineWidth = 2;
+    this.worldUi(caption.node);
+    tween(caption.node).repeatForever(tween<Node>().by(0.6, { position: new Vec3(0, 10, 0) }).by(0.6, { position: new Vec3(0, -10, 0) })).start();
+  }
+
   /** 头顶圆徽放大弹三下(位置每帧由 stepPoiCues 上下浮动,这里只动缩放)。 */
   private popBadge(node: Node | null): void {
     if (!node || !node.isValid) {
@@ -5244,6 +5356,7 @@ export class LobbyTownRenderer {
       hp: 0, maxHp: 0, hit: 1, ranged: false, dead: false, diedAt: 0, nextAttackAt: 0, windupUntil: 0,
       attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0, lastHitAt: 0, hpKey: '', nameLabel: label, victim: null, stagger: 0, staggeredUntil: 0, floatAt: 0, floatSeq: 0,
       curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null, aura: null, dummySprite: null,
+      slamAt: 0, castUntil: 0, castStart: 0, castNode: null,
     };
     this.mountCampAura(monster);
     // 点怪直接锁它
@@ -5361,6 +5474,11 @@ export class LobbyTownRenderer {
       const toVictim = victim ? Math.hypot(victim.x - monster.x, victim.y - monster.y) : Number.POSITIVE_INFINITY;
       const chasing = !!victim && !this.leaderDead && !leashed && (toLeader < MONSTER_AGGRO_RADIUS || (engaged && toVictim < MONSTER_AGGRO_RADIUS * 2.2));
       monster.victim = chasing ? victim : null;
+      if (!chasing && (monster.castUntil > 0 || monster.slamAt > 0)) {
+        // 脱战 / 队长倒下 / 拉回营地:读条作废,下次开打重新计时
+        this.cancelSlam(monster, false);
+        monster.slamAt = 0;
+      }
       let speed = MONSTER_WANDER_SPEED;
       if (chasing && victim) {
         if (!engaged) {
@@ -5375,7 +5493,10 @@ export class LobbyTownRenderer {
         monster.tx = victim.x + Math.cos(ang) * keep;
         monster.ty = victim.y + Math.sin(ang) * keep * 0.6;
         speed = MONSTER_CHASE_SPEED;
-        this.tryMonsterAttack(monster, victim, toVictim, now);
+        // 读条重击(camp.slam):读条中站定、不普攻
+        if (!(camp.slam && !this.trial && this.stepMonsterSlam(monster, camp.slam, toVictim, now))) {
+          this.tryMonsterAttack(monster, victim, toVictim, now);
+        }
       } else if (leashed) {
         monster.tx = monster.homeX;
         monster.ty = monster.homeY;
@@ -5393,7 +5514,7 @@ export class LobbyTownRenderer {
         monster.ty = monster.homeY + Math.sin(angle) * r * 0.6;
         monster.nextPickAt = now + 1800 + Math.random() * 2600;
       }
-      const winding = now < monster.windupUntil || now < monster.staggeredUntil || now < monster.animLockUntil;
+      const winding = now < monster.windupUntil || now < monster.staggeredUntil || now < monster.animLockUntil || monster.castUntil > 0;
       const dx = monster.tx - monster.x;
       const dy = monster.ty - monster.y;
       const dist = Math.hypot(dx, dy);
@@ -5729,6 +5850,39 @@ export class LobbyTownRenderer {
       label.overflow = Label.Overflow.SHRINK;
       tween(hint).repeatForever(tween<Node>().to(0.6, { position: new Vec3(hint.position.x + P.S(8), hint.position.y, 0) }).to(0.6, { position: new Vec3(hint.position.x, hint.position.y, 0) })).start();
     }
+    // docs/57 §3 V08:收集类剧情(蛛丝等)进度涨了 → 主行放大弹两下 +「蛛丝 +N」飘字 + 光环扩两圈(服务端清完一群才回进度,和上次画的比)
+    if (quest && quest.objective === 'COLLECT') {
+      const cur = Math.min(quest.progress, quest.target);
+      const prev = this.trackerProgress;
+      if (prev && prev.code === quest.code && cur > prev.progress) {
+        this.emphasizeTrackerRow(node, P, w, h, `${QUEST_ITEM_NAME[quest.objectiveTarget] ?? '任务物品'} +${cur - prev.progress}`);
+      }
+    }
+    this.trackerProgress = quest ? { code: quest.code, progress: Math.min(quest.progress, quest.target) } : null;
+  }
+
+  /** 追踪条上次画的剧情进度(收集类涨了才强调)。 */
+  private trackerProgress: { code: string; progress: number } | null = null;
+
+  private emphasizeTrackerRow(node: Node, P: ReturnType<typeof townProtoFrame>, w: number, h: number, text: string): void {
+    const lineY = h / 2 - P.S(18);
+    const main = node.getChildByName('Text_0');
+    if (main) {
+      tween(main).repeat(2, tween<Node>()
+        .to(0.14, { scale: new Vec3(1.16, 1.16, 1) }, { easing: 'quadOut' })
+        .to(0.22, { scale: new Vec3(1, 1, 1) }, { easing: 'quadIn' })
+        .delay(0.12)).start();
+    }
+    mountPulseRing(this.host as unknown as GuideKitHost, node, 'ProgressPulse', 0, lineY, w + P.S(10), P.S(44), P.S(1), 2);
+    const floater = this.host.addChildLabel(node, 'ProgressGain', text, w / 2 + P.S(70), lineY, P.S(24), rgba(255, 226, 150), new Size(P.S(200), P.S(32)));
+    floater.isBold = true;
+    floater.enableOutline = true;
+    floater.outlineColor = rgba(0, 0, 0, 220);
+    floater.outlineWidth = Math.max(1, P.S(2));
+    const fade = floater.node.addComponent(UIOpacity);
+    tween(floater.node).by(1.4, { position: new Vec3(0, P.S(34), 0) }, { easing: 'sineOut' }).start();
+    tween(fade).delay(0.9).to(0.5, { opacity: 0 }).call(() => floater.node.isValid && floater.node.destroy()).start();
+    gameAudio.sfx('coin', 0.6);
   }
 
   /** uid 缺省 = 当前玩家(登录同步时资料可能还没到,由调用方显式传)。 */
@@ -6744,6 +6898,12 @@ export class LobbyTownRenderer {
       for (const monster of this.monsters) {
         monster.windupUntil = monster.windupUntil > 0 ? monster.windupUntil + delta : 0;
         monster.animLockUntil += delta;
+        // 读条重击:断网冻结 / 顿帧期间红圈不能偷偷读满
+        monster.slamAt = monster.slamAt > 0 ? monster.slamAt + delta : 0;
+        if (monster.castUntil > 0) {
+          monster.castUntil += delta;
+          monster.castStart += delta;
+        }
       }
     }
     return false;
@@ -7767,6 +7927,7 @@ export class LobbyTownRenderer {
   private killMonster(monster: TownMonster): void {
     monster.dead = true;
     monster.diedAt = Date.now();
+    this.cancelSlam(monster, false);
     if (this.evoQualities.has('HUNT_3') && !monster.camp.dummy && this.leader && !this.leaderDead && this.leaderMaxHp > 0) {
       // docs/58 §10 猎杀第 3 层质变「嗜血」
       const heal = Math.round(this.leaderMaxHp * 0.03);
@@ -8034,6 +8195,15 @@ export class LobbyTownRenderer {
       }
     }
     this.refreshHaulCard();
+    // docs/57 §3 V03:新手村阶段第一次拿到野外掉落 → 光环套「本轮战果」卡 + 气泡「战利品自动拾取」
+    if (items.length > 0 && this.mapCode !== 'VILLAGE' && this.haulNode?.isValid && this.villageStage()) {
+      const seen = this.host.guideTipSeen;
+      if (seen && !seen.call(this.host, 'loot_auto')) {
+        this.host.markGuideTip?.('loot_auto');
+        // 气泡放屏幕上部:战果卡在左侧,气泡放卡下面会压住左下摇杆(气泡可点,压住的那块推不动摇杆,11-25 自验)
+        this.host.showWeakTip?.('FieldTipLoot', this.haulNode, '打怪掉的金币、经验和材料都会自动拾取,收获记在左边的「本轮战果」里', '', 6, { bubbleTop: true });
+      }
+    }
   }
 
   /** 每帧:脱战超过 HAUL_IDLE_MS 收起战果卡。 */
@@ -8239,6 +8409,147 @@ export class LobbyTownRenderer {
     }
   }
 
+  // ── 读条重击(camp.slam,11-25:docs/50 第 9 条「精英怪有技能读条要躲」+ docs/57 §3 V09 弱引导)──
+
+  /**
+   * 交战后 firstMs 第一次、之后每 everyMs 一次;目标进了圈才起读。读条站定不普攻,脚下红圈从中心往外填满;
+   * 读满圈内队员掉当前生命 × hpPct(非致命),队长翻滚无敌帧里躲开;读条中被打出破防 = 打断。返回 true = 本帧在读条。
+   */
+  private stepMonsterSlam(monster: TownMonster, slam: WorldMapCampSlam, toVictim: number, now: number): boolean {
+    if (monster.castUntil > 0) {
+      if (now < monster.staggeredUntil) {
+        this.cancelSlam(monster, true);
+        return false;
+      }
+      if (now >= monster.castUntil) {
+        this.resolveSlam(monster, slam, now);
+        return false;
+      }
+      this.drawSlam(monster, slam, now);
+      return true;
+    }
+    if (monster.slamAt === 0) {
+      monster.slamAt = now + slam.firstMs;
+      return false;
+    }
+    if (now >= monster.slamAt && now >= monster.staggeredUntil && monster.windupUntil === 0 && monster.maxHp > 0 && toVictim <= slam.radius * 0.8) {
+      this.startSlam(monster, slam, now);
+      return true;
+    }
+    return false;
+  }
+
+  private startSlam(monster: TownMonster, slam: WorldMapCampSlam, now: number): void {
+    monster.castStart = now;
+    monster.castUntil = now + slam.windupMs;
+    const ground = this.groundRoot;
+    if (ground && ground.isValid) {
+      const node = this.host.addChildPlainNode(ground, `SlamZone_${monster.camp.stageCode}`, monster.x, monster.y, slam.radius * 2.2, slam.radius * 1.3);
+      node.addComponent(Graphics);
+      monster.castNode = node;
+    }
+    this.drawSlam(monster, slam, now);
+    this.spawnFloater(monster.x, monster.y + (monster.camp.elite ? 330 : 220), `蓄力 · ${slam.name}`, rgba(255, 120, 96), 28);
+    gameAudio.sfx('wave_start', 0.6);
+    // docs/57 §3 V09:第一次看到红圈 → 弱引导(光环套翻滚钮、气泡放屏幕上部;新机制老玩家也说一次)
+    const seen = this.host.guideTipSeen;
+    if (seen && !seen.call(this.host, 'boss_cast')) {
+      this.host.markGuideTip?.('boss_cast');
+      const dodge = this.combatButtons.find((button) => button.node.name === 'LobbyFieldDodge' && button.node.isValid)?.node ?? null;
+      this.host.showWeakTip?.('FieldTipBossCast', dodge,
+        isPhoneDesign() ? '红圈 = 它要放大招!快点翻滚,或者走出红圈' : '红圈 = 它要放大招!按 Shift 翻滚,或者走出红圈',
+        '读条时打出破防能打断', 6, { bubbleTop: true });
+    }
+  }
+
+  /** 红圈:淡红底 + 从中心往外填满的深红 + 外沿实线(最后 1/4 外沿闪)。Graphics 不吃 UIOpacity,透明度画进颜色里。 */
+  private drawSlam(monster: TownMonster, slam: WorldMapCampSlam, now: number): void {
+    const g = monster.castNode?.isValid ? monster.castNode.getComponent(Graphics) : null;
+    if (!g) {
+      return;
+    }
+    const p = Math.min(1, Math.max(0, (now - monster.castStart) / Math.max(1, monster.castUntil - monster.castStart)));
+    const rx = slam.radius;
+    const ry = slam.radius * 0.56;
+    g.clear();
+    g.fillColor = rgba(210, 36, 28, 50);
+    g.ellipse(0, 0, rx, ry);
+    g.fill();
+    if (p > 0.02) {
+      g.fillColor = rgba(230, 44, 32, Math.round(70 + 70 * p));
+      g.ellipse(0, 0, rx * p, ry * p);
+      g.fill();
+    }
+    const blink = p > 0.75 && Math.floor(now / 110) % 2 === 0;
+    g.strokeColor = blink ? rgba(255, 220, 200, 255) : rgba(255, 70, 52, 225);
+    g.lineWidth = 5;
+    g.ellipse(0, 0, rx, ry);
+    g.stroke();
+  }
+
+  private resolveSlam(monster: TownMonster, slam: WorldMapCampSlam, now: number): void {
+    const cx = monster.castNode?.isValid ? monster.castNode.position.x : monster.x;
+    const cy = monster.castNode?.isValid ? monster.castNode.position.y : monster.y;
+    monster.castUntil = 0;
+    monster.slamAt = now + slam.everyMs;
+    monster.nextAttackAt = Math.max(monster.nextAttackAt, now + 900);
+    this.endSlamZone(monster, true);
+    if (monster.attackAnim) {
+      this.playMonsterOneShot(monster, monster.attackAnim);
+    }
+    this.shake(10, 0.3);
+    gameAudio.sfx('crystal_hit', 0.8);
+    const rx = slam.radius;
+    const ry = slam.radius * 0.56;
+    for (const actor of this.partyMembers()) {
+      if (((actor.x - cx) / rx) ** 2 + ((actor.y - cy) / ry) ** 2 > 1) {
+        continue;
+      }
+      if (actor === this.leader && now < this.iframesUntil) {
+        this.spawnFloater(actor.x, actor.y + 240, '闪避', rgba(150, 220, 255), 24);
+        continue;
+      }
+      const hp = actor === this.leader ? this.leaderHp : actor.hp;
+      // 非致命:最多扣到 1 点
+      const amount = Math.min(hp - 1, Math.max(1, Math.floor(hp * slam.hpPct)));
+      if (amount > 0) {
+        this.hurtActor(actor, amount);
+      }
+    }
+  }
+
+  /** 收红圈:读满 = 亮一下往外一扩再消失;打断 / 作废 = 直接拆。 */
+  private endSlamZone(monster: TownMonster, flash: boolean): void {
+    const node = monster.castNode;
+    monster.castNode = null;
+    if (!node || !node.isValid) {
+      return;
+    }
+    const g = flash ? node.getComponent(Graphics) : null;
+    if (!g) {
+      node.destroy();
+      return;
+    }
+    const slam = monster.camp.slam;
+    const rx = slam?.radius ?? 250;
+    const ry = rx * 0.56;
+    g.clear();
+    g.fillColor = rgba(255, 120, 90, 150);
+    g.ellipse(0, 0, rx, ry);
+    g.fill();
+    tween(node).to(0.2, { scale: new Vec3(1.12, 1.12, 1) }, { easing: 'quadOut' }).call(() => node.isValid && node.destroy()).start();
+  }
+
+  /** 读条作废(脱战 / 怪死)或被破防打断(interrupted:飘「打断」,冷却照常算)。 */
+  private cancelSlam(monster: TownMonster, interrupted: boolean): void {
+    if (monster.castUntil > 0 && interrupted) {
+      this.spawnFloater(monster.x, monster.y + (monster.camp.elite ? 330 : 220), '打断!', rgba(255, 226, 150), 30);
+      monster.slamAt = Date.now() + (monster.camp.slam?.everyMs ?? 10000);
+    }
+    monster.castUntil = 0;
+    this.endSlamZone(monster, false);
+  }
+
   private hurtActor(actor: TownActor, amount: number): void {
     // docs/58 §10 进化:铁壁按比例减伤;坚壁 = 生命低于 30% 时再 -30%
     const hp = actor === this.leader ? this.leaderHp : actor.hp;
@@ -8294,7 +8605,24 @@ export class LobbyTownRenderer {
     this.drawLeaderHp();
     if (this.leaderHp <= 0) {
       this.onLeaderDown();
+      return;
     }
+    // docs/57 §3 V07:新手村阶段第一次血量低于 40% → 弱引导(翻滚躲开 / 撤出战斗自动回血,脱战 4 秒每秒回 8%)
+    if (!this.trial && this.leaderMaxHp > 0 && this.leaderHp < this.leaderMaxHp * 0.4 && this.villageStage()) {
+      const seen = this.host.guideTipSeen;
+      if (seen && !seen.call(this.host, 'low_hp')) {
+        this.host.markGuideTip?.('low_hp');
+        const dodge = this.combatButtons.find((button) => button.node.name === 'LobbyFieldDodge' && button.node.isValid)?.node ?? null;
+        this.host.showWeakTip?.('FieldTipLowHp', dodge,
+          isPhoneDesign() ? '血量低了!点这个按钮翻滚躲开攻击;先撤出战斗,4 秒没挨打就会自动回血' : '血量低了!按 Shift 翻滚躲开攻击;先撤出战斗,4 秒没挨打就会自动回血',
+          '', 6, { bubbleTop: true });
+      }
+    }
+  }
+
+  /** 新手村剧情阶段(世界状态 stage = VILLAGE):§3 跟剧情走的弱引导只对这段出,不打扰出了村的老玩家。 */
+  private villageStage(): boolean {
+    return this.host.currentWorldState?.()?.stage === 'VILLAGE';
   }
 
   /** 队长倒下:2 秒后回本图传送阵满血复活(队友一起);交战中的怪群回满血(不掉东西)。 */

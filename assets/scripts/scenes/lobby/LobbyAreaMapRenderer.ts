@@ -9,6 +9,8 @@ import { townCoordText } from './LobbyTownPathfinder';
 import { POI_MAP_ICON, PRE25_ON, worldAsset } from './LobbyWorldMaps';
 import { PRE25_PAINTED } from './pre25/Pre25City';
 import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
+import { mountWeakTip } from './LobbyWeakGuide';
+import type { GuideKitHost } from '../GuideKit';
 
 /** 竖直方向尺寸(地图页 FY 用单独的竖向缩放;高度跟着它走)。 */
 function SY(P: { FY: (py: number) => number }, v: number): number {
@@ -82,6 +84,8 @@ export interface LobbyAreaMapHost {
   claimExploreTier?(mapCode: WorldMapCode, tier: number): void;
   /** 原地重画地图页(探索度下拉展开 / 收起)。 */
   redrawWorldMapPanel?(): void;
+  /** docs/57 §3 V10「远行」:世界地图上要脉冲的地点 + 气泡文案(null = 不出)。 */
+  worldMapGuide?(): { code: WorldMapCode; text: string } | null;
 }
 
 /**
@@ -658,6 +662,16 @@ export class LobbyAreaMapRenderer {
       node.addComponent(Button);
       node.on(Button.EventType.CLICK, () => this.host.selectWorldMapPoint(point.code));
       this.host.applyImageButtonFeedback(node, 1.06, 0.96);
+    }
+    // docs/57 §3 V10「远行」弱引导:要去的地点(主城)套脉冲光环 + 气泡指路;点气泡 = 选中它看详情
+    const guide = this.host.worldMapGuide?.() ?? null;
+    const guideTarget = guide ? map.getChildByName(`Point_${guide.code}`) : null;
+    const stageTf = parent.getComponent(UITransform);
+    if (guide && guideTarget && stageTf) {
+      const sw = stageTf.width;
+      const sh = stageTf.height;
+      mountWeakTip(this.host as unknown as GuideKitHost, parent, 'WorldMapGuide', { stageLeft: -sw / 2, stageRight: sw / 2, stageTop: sh / 2, stageBottom: -sh / 2 },
+        k, guideTarget, guide.text, '', () => this.host.selectWorldMapPoint(guide.code));
     }
     // 右栏:选中地图详情 + 已激活传送阵列表
     mountGlassPanel(this.host, parent, 'MapSide', FX(1613.5), FY(438.5), S(433), SY(P, 693), k);

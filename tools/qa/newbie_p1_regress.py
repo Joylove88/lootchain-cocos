@@ -17,6 +17,10 @@
     → 聚光还没上阵的英雄卡 / 点遮罩外下阵被拦 / 点卡上阵即自动保存(服务端阵容核对)→ 都在阵上时直接保存)
   steps_tips.json:§5 情境提示(拦红点接口模拟「有未穿装备」/「水晶可升级」→ 终端钮红点 + 格子脉冲气泡 / 点气泡或格子记看过;
     「新」格脉冲;本地体力改 0 → 秘境试炼开战被拦 + 第一次弱引导(点了开商店体力页)/ 第二次只说一句;野外走近采集点或隐藏点圆徽放大;服务端 tip:*)
+  steps_story_tips.json:§3 表里跟剧情走的弱引导(本地改剧情状态模拟):V03 村口出口金圈脉冲(林地激活后收)/ V10 世界地图主城脉冲两种文案 + 点气泡选中
+    / V08 追踪条「蛛丝 +1」强调;回读剧情后真进林地:V03 靠近怪群「靠近就开战」/ 第一次掉落「自动拾取」/ V07 血量低于 40% /
+    V09 林地棕鬃熊读条红圈(读满圈内掉当前生命 40%、破防打断);服务端 tip:camp_engage / loot_auto / low_hp / boss_cast
+    (V01 交任务「对话」条脉冲在 steps_newplayer.json「走到目标」里查 TalkPulse)
   steps_move_pc.json(--pc 电脑 1600×900):移动教学电脑版 W A S D 键帽(按住哪个亮哪个、走满收起)
 截图 / log 在 <输出目录>(默认 %TEMP%/lootchain-qa/newbie_p1_<时间>);跑完按配置目录关掉无头 Edge。
 注意:「圣契64」是本地库 guidetest02 的主角名,换库后改 steps_newplayer.json 里的名字;
@@ -80,6 +84,7 @@ def main():
         run(out_dir, fill('steps_guides.json', os.path.join(out_dir, '_guides.json'), token, uid), '--keep')
         run(out_dir, fill('steps_formation.json', os.path.join(out_dir, '_formation.json'), token, uid), '--keep')
         run(out_dir, fill('steps_tips.json', os.path.join(out_dir, '_tips.json'), token, uid), '--keep')
+        run(out_dir, fill('steps_story_tips.json', os.path.join(out_dir, '_story_tips.json'), token, uid), '--keep')
         run(out_dir, fill('steps_move_pc.json', os.path.join(out_dir, '_move_pc.json'), token, uid), '--keep', '--pc')
     finally:
         edge_guard.kill_profiles([os.path.join(SCRATCH, PROFILE_NAME)])

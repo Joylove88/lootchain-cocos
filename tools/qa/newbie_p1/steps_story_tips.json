@@ -1,0 +1,93 @@
+[
+ {
+  "label": "剧情弱引导_V03村口出口脉冲",
+  "js": "for (let i = 0; i < 80; i++) { refresh(); if (t && t.groundRoot && t.leader && view() === 'lobby' && root.worldState) break; await sleep(500); } await sleep(1500); refresh(); root.closeLobbyTerminalPanel(); root.terminalReturn = null; if (root.worldDialog) root.closeWorldDialog(); if (root.worldPoiDialog) root.closeWorldPoiDialog(); if (root.evolutionPick) root.closeEvolutionPickLater(); if (root.worldMapPanel) root.closeWorldMapPanel(); if (view() !== 'lobby') { root.returnToLobbyFromScenePage(); await sleep(1500); refresh(); } const only = (code, state, progress) => { const qs = root.worldState.quests; const at = qs.findIndex(q => q.code === code); qs.forEach((q, i) => { if (i < at) { q.state = 'CLAIMED'; } else if (i === at) { q.state = state; q.progress = progress || 0; } else { q.state = 'LOCKED'; } }); }; const ok = t.autoWalkTo(2120, -1010); for (let i = 0; i < 90; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(1500); only('V03', 'ACCEPTED', 0); const woods = root.worldState.maps.find(m => m.mapCode === 'WOODS'); if (woods) woods.activated = false; await sleep(900); refresh(); const exit = t.groundRoot.getChildByName('TownExit_to_woods'); const g = exit ? exit.getChildByName('ExitGuide') : null; return JSON.stringify({ ok, pos: t.leaderPosition(), guide: !!g, key: t.exitGuideKey, caption: g && g.getChildByName('Caption') ? g.getChildByName('Caption').getComponent(cc.Label).string : null });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V03激活后不再脉冲",
+  "js": "refresh(); const woods = root.worldState.maps.find(m => m.mapCode === 'WOODS'); if (woods) woods.activated = true; await sleep(800); const exit = t.groundRoot.getChildByName('TownExit_to_woods'); return JSON.stringify({ guide: !!(exit && exit.getChildByName('ExitGuide')), key: t.exitGuideKey });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "剧情弱引导_V10世界地图主城脉冲_未交远行",
+  "js": "const only = (code, state, progress) => { const qs = root.worldState.quests; const at = qs.findIndex(q => q.code === code); qs.forEach((q, i) => { if (i < at) { q.state = 'CLAIMED'; } else if (i === at) { q.state = state; q.progress = progress || 0; } else { q.state = 'LOCKED'; } }); }; only('V10', 'ACCEPTED', 0); root.openWorldMapPanel(); await sleep(1500); refresh(); const g = find('WorldMapGuide'); return JSON.stringify({ guide: !!g, ring: !!find('WeakTipRing'), text: texts(400).filter(s => s.indexOf('主城') >= 0 && s.length > 12) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V10世界地图主城脉冲_出村未激活",
+  "js": "refresh(); const v10 = root.worldState.quests.find(q => q.code === 'V10'); v10.state = 'CLAIMED'; window.__villageDone = root.worldState.villageDone; root.worldState.villageDone = true; const city = root.worldState.maps.find(m => m.mapCode === 'CITY'); window.__cityAct = city ? city.activated : null; if (city) city.activated = false; root.redrawWorldMapPanel(); await sleep(1200); refresh(); return JSON.stringify({ guide: !!find('WorldMapGuide'), text: texts(400).filter(s => s.indexOf('传送阵还没激活') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V10点气泡选中主城",
+  "tap": "refresh(); const g = find('WorldMapGuide'); let b = null; if (g) g.walk(n => { if (!b && n.name === 'WeakTipBubble') b = n; }); return scr(b);",
+  "after": "await sleep(900); refresh(); const out = JSON.stringify({ selected: root.worldMapPanel && root.worldMapPanel.selected, sub: texts(400).filter(s => s.indexOf('需亲自前往') >= 0) }); root.closeWorldMapPanel(); root.worldState.villageDone = window.__villageDone; const city = root.worldState.maps.find(m => m.mapCode === 'CITY'); if (city && window.__cityAct !== null) city.activated = window.__cityAct; return out;",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "剧情弱引导_V08追踪条进度强调",
+  "js": "const only = (code, state, progress) => { const qs = root.worldState.quests; const at = qs.findIndex(q => q.code === code); qs.forEach((q, i) => { if (i < at) { q.state = 'CLAIMED'; } else if (i === at) { q.state = state; q.progress = progress || 0; } else { q.state = 'LOCKED'; } }); }; await sleep(600); only('V08', 'ACCEPTED', 1); root.refreshLobbyViewPreservingBackground(); await sleep(1200); only('V08', 'ACCEPTED', 2); root.refreshLobbyViewPreservingBackground(); await sleep(350); refresh(); const gain = find('ProgressGain'); return JSON.stringify({ gain: gain ? gain.getComponent(cc.Label).string : null, pulse: !!find('ProgressPulse'), row: texts(300).filter(s => s.indexOf('铁匠的委托') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_回读剧情_进林地",
+  "js": "refresh(); await root.loadWorldState(); await sleep(1200); const woods = root.worldState.maps.find(m => m.mapCode === 'WOODS'); setTimeout(() => root.travelWorldMap('WOODS', null), 50); for (let i = 0; i < 120; i++) { await sleep(500); refresh(); if (t.def.code === 'WOODS' && t.leader && view() === 'lobby') break; } await sleep(2500); refresh(); return JSON.stringify({ map: t.def.code, stage: root.worldState.stage, woods: woods ? woods.unlocked : null, view: view() });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "剧情弱引导_V03靠近怪群_靠近就开战",
+  "js": "const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.forEach((a, i) => { a.x = x - i * 90; a.y = y; a.node.setPosition(a.x, a.y, 0); }); t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); }; const tipNode = (name) => { const layer = root.node.getChildByName('LobbyWeakTipLayer'); return layer ? layer.getChildByName(name) : null; }; refresh(); const seen0 = root.guideTips.seen('camp_engage'); const c = t.def.camps.filter(x => !x.elite && !x.dummy).sort((a, b) => Math.hypot(a.x - t.leader.x, a.y - t.leader.y) - Math.hypot(b.x - t.leader.x, b.y - t.leader.y))[0]; window.__camp = c.stageCode; tp(c.x - c.radius - 900, c.y); await sleep(2600); const mine = () => t.monsters.filter(m => m.camp.stageCode === c.stageCode && !m.dead); for (let i = 0; i < 30 && !tipNode('FieldTipEngage'); i++) { const m = mine().sort((a, b) => a.x - b.x)[0]; if (m) { const d = Math.hypot(m.x - t.leader.x, m.y - t.leader.y); if (d > 560 || d < 300) tp(m.x - 480, m.y); } await sleep(400); } refresh(); let pulse = false; mine().forEach(m => { if (m.node.getChildByName('GuideEngagePulse')) pulse = true; }); return JSON.stringify({ seen0, camp: c.stageCode, alive: mine().length, tip: !!tipNode('FieldTipEngage'), pulse, seen: root.guideTips.seen('camp_engage'), inCombat: t.inCombat, text: texts(400).filter(s => s.indexOf('开战') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V03第一次掉落_自动拾取",
+  "js": "const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.forEach((a, i) => { a.x = x - i * 90; a.y = y; a.node.setPosition(a.x, a.y, 0); }); t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); }; const tipNode = (name) => { const layer = root.node.getChildByName('LobbyWeakTipLayer'); return layer ? layer.getChildByName(name) : null; }; refresh(); clearInterval(window.__lcKeepAlive); window.__lcKeepAlive = setInterval(() => { try { const tt = window.__root.lobbyTownRenderer; tt.leaderHp = tt.leaderMaxHp || 99999; tt.followers.forEach(a => { a.hp = a.maxHp || 99999; a.down = false; }); } catch (e) {} }, 80); const mine = () => t.monsters.filter(m => m.camp.stageCode === window.__camp && !m.dead); let n = 0; for (let i = 0; i < 300 && !tipNode('FieldTipLoot') && mine().length > 0; i++) { const m = mine()[0]; if (Math.hypot(t.leader.x - m.x, t.leader.y - m.y) > 260) tp(m.x - 110, m.y); t.skillReadyAt = [0, 0, 0]; t.actionUntil = 0; if (i % 5 === 4) t.leaderSkill(n++ % 3); else t.leaderAttack(); await sleep(220); } for (let i = 0; i < 20 && !tipNode('FieldTipLoot'); i++) await sleep(300); refresh(); clearInterval(window.__lcKeepAlive); return JSON.stringify({ tip: !!tipNode('FieldTipLoot'), ring: !!find('WeakTipRing'), haul: !!t.haulNode, seen: root.guideTips.seen('loot_auto'), left: mine().length, text: texts(400).filter(s => s.indexOf('自动拾取') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V07血量低于40%",
+  "js": "const tipNode = (name) => { const layer = root.node.getChildByName('LobbyWeakTipLayer'); return layer ? layer.getChildByName(name) : null; }; refresh(); clearInterval(window.__lcKeepAlive); await sleep(300); t.leaderHp = Math.round(t.leaderMaxHp * 0.5); t.hurtLeader(Math.round(t.leaderMaxHp * 0.2)); await sleep(500); refresh(); const out = { tip: !!tipNode('FieldTipLowHp'), ring: !!find('WeakTipRing'), hp: Math.round(t.leaderHp / t.leaderMaxHp * 100), seen: root.guideTips.seen('low_hp'), text: texts(400).filter(s => s.indexOf('血量低了') >= 0) }; return JSON.stringify(out);",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V09巨熊读条红圈",
+  "js": "const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.forEach((a, i) => { a.x = x - i * 90; a.y = y; a.node.setPosition(a.x, a.y, 0); }); t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); }; const tipNode = (name) => { const layer = root.node.getChildByName('LobbyWeakTipLayer'); return layer ? layer.getChildByName(name) : null; }; refresh(); t.leaderHp = t.leaderMaxHp; const c = t.def.camps.find(x => x.stageCode === 'FIELD_WOODS_E'); window.__hurts = []; if (!t.__hurtWrapped) { const h = t.hurtActor.bind(t); t.hurtActor = (a, amt) => { window.__hurts.push({ leader: a === t.leader, amt, at: Date.now() }); return h(a, amt); }; t.__hurtWrapped = true; } clearInterval(window.__lcKeepAlive); window.__lcKeepAlive = setInterval(() => { try { const tt = window.__root.lobbyTownRenderer; if (tt.leaderHp < tt.leaderMaxHp * 0.7) tt.leaderHp = tt.leaderMaxHp; tt.followers.forEach(a => { if (a.hp < a.maxHp * 0.5) a.hp = a.maxHp; a.down = false; }); } catch (e) {} }, 80); tp(c.x - 700, c.y); await sleep(2600); const bear = () => t.monsters.find(m => m.camp.stageCode === 'FIELD_WOODS_E' && !m.dead); let b = bear(); if (b) tp(b.x - 150, b.y); let casting = false; for (let i = 0; i < 60; i++) { await sleep(200); b = bear(); if (b && Math.hypot(b.x - t.leader.x, b.y - t.leader.y) > 200) tp(b.x - 150, b.y); if (b && b.castUntil > 0) { casting = true; break; } } await sleep(500); refresh(); const zone = t.groundRoot.getChildByName('SlamZone_FIELD_WOODS_E'); return JSON.stringify({ bear: !!b, casting, zone: !!zone, tip: !!tipNode('FieldTipBossCast'), seen: root.guideTips.seen('boss_cast'), text: texts(400).filter(s => s.indexOf('红圈') >= 0 || s.indexOf('蓄力') >= 0) });",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_V09读满圈内掉血",
+  "js": "refresh(); const b = t.monsters.find(m => m.camp.stageCode === 'FIELD_WOODS_E' && !m.dead); const hp0 = t.leaderHp; for (let i = 0; i < 30 && b && b.castUntil > 0; i++) await sleep(100); await sleep(250); const big = window.__hurts.filter(h => h.leader && h.amt >= Math.floor(t.leaderMaxHp * 0.2)); return JSON.stringify({ resolved: !!b && b.castUntil === 0, zone: !!t.groundRoot.getChildByName('SlamZone_FIELD_WOODS_E'), hp0: Math.round(hp0), max: Math.round(t.leaderMaxHp), bigHits: big.map(h => h.amt), nextIn: b ? Math.round((b.slamAt - Date.now()) / 1000) : null });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "剧情弱引导_V09破防打断读条",
+  "js": "const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.forEach((a, i) => { a.x = x - i * 90; a.y = y; a.node.setPosition(a.x, a.y, 0); }); t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); }; refresh(); const bear = () => t.monsters.find(m => m.camp.stageCode === 'FIELD_WOODS_E' && !m.dead); let b = bear(); if (b) b.slamAt = Date.now(); let casting = false; for (let i = 0; i < 40; i++) { await sleep(150); b = bear(); if (b && Math.hypot(b.x - t.leader.x, b.y - t.leader.y) > 200) tp(b.x - 150, b.y); if (b && b.castUntil > 0) { casting = true; break; } } if (b) b.staggeredUntil = Date.now() + 1500; await sleep(400); refresh(); const out = JSON.stringify({ casting, canceled: !!b && b.castUntil === 0, zone: !!t.groundRoot.getChildByName('SlamZone_FIELD_WOODS_E'), floats: texts(400).filter(s => s.indexOf('打断') >= 0), nextIn: b ? Math.round((b.slamAt - Date.now()) / 1000) : null }); clearInterval(window.__lcKeepAlive); return out;",
+  "wait": 0,
+  "shot": true
+ },
+ {
+  "label": "剧情弱引导_标记已存服务端",
+  "js": "await sleep(1500); refresh(); const f = await root.api.guide.flags(); const tips = f.filter(x => x.indexOf('tip:') === 0); return JSON.stringify({ tips, ok: ['tip:camp_engage', 'tip:loot_auto', 'tip:low_hp', 'tip:boss_cast'].every(x => tips.indexOf(x) >= 0) });",
+  "wait": 0,
+  "shot": false
+ },
+ {
+  "label": "剧情弱引导_收尾回村",
+  "js": "refresh(); clearInterval(window.__lcKeepAlive); t.leaderHp = t.leaderMaxHp; setTimeout(() => root.travelWorldMap('VILLAGE', null), 50); for (let i = 0; i < 120; i++) { await sleep(500); refresh(); if (t.def.code === 'VILLAGE' && t.leader && view() === 'lobby') break; } await root.loadWorldState(); await sleep(1500); refresh(); return JSON.stringify({ map: t.def.code, view: view(), level: root.worldState && root.worldState.playerLevel });",
+  "wait": 0,
+  "shot": false
+ }
+]

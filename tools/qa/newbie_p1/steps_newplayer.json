@@ -113,7 +113,7 @@
  },
  {
   "label": "走到目标",
-  "js": "refresh(); for (let i = 0; i < 90; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(800); return JSON.stringify({ walking: t.isAutoWalking(), pos: t.leaderPosition(), near: (t.nearbyInteracts ? t.nearbyInteracts() : []).map(x => x.label) });",
+  "js": "refresh(); for (let i = 0; i < 90; i++) { if (!t.isAutoWalking()) break; await sleep(500); } await sleep(800); return JSON.stringify({ walking: t.isAutoWalking(), pos: t.leaderPosition(), near: (t.nearbyInteracts ? t.nearbyInteracts() : []).map(x => x.label), talkPulse: !!find('TalkPulse') });",
   "wait": 0,
   "shot": true
  },

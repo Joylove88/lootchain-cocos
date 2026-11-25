@@ -11,9 +11,15 @@ import { rgba } from './LobbyHudTypes';
  * - 新功能解锁 → 终端格「新」角标(§11 已做)+ 脉冲一次;
  * - 野外第一次走近隐藏点 / 宝箱 / 采集点 → 头顶圆徽放大弹三下。
  * 弱引导 = 脉冲光环 + 玻璃气泡,不压暗、不拦点击。「出过」存服务端标记 tip:<键>(本机兜底),换设备不重放。
+ *
+ * docs/57 §3 表里跟剧情走的弱引导(11-25)也记在这里:camp_engage = V03 野外第一次走近怪群「靠近就开战」;
+ * loot_auto = V03 第一次掉落「战利品自动拾取」;low_hp = V07 第一次血量低于 40%;boss_cast = V09 林地巨熊第一次读条(红圈)。
+ * V01 NPC 对话脉冲 / V03 村口出口脉冲 / V08 追踪条进度强调 / V10 世界地图主城脉冲跟剧情状态走,不记标记。
  */
-export type GuideTipKey = 'equip' | 'crystal' | 'stamina' | 'near_hidden' | 'near_chest' | 'near_gather';
-export const GUIDE_TIP_KEYS: readonly GuideTipKey[] = ['equip', 'crystal', 'stamina', 'near_hidden', 'near_chest', 'near_gather'];
+export type GuideTipKey = 'equip' | 'crystal' | 'stamina' | 'near_hidden' | 'near_chest' | 'near_gather'
+  | 'camp_engage' | 'loot_auto' | 'low_hp' | 'boss_cast';
+export const GUIDE_TIP_KEYS: readonly GuideTipKey[] = ['equip', 'crystal', 'stamina', 'near_hidden', 'near_chest', 'near_gather',
+  'camp_engage', 'loot_auto', 'low_hp', 'boss_cast'];
 
 /** 情境提示「出过」的记录(同 FeatureIntroTracker 口径:本机 lc_guide_tip_<uid> + 服务端 tip:<键>)。 */
 export class GuideTipTracker {
@@ -135,6 +141,43 @@ export function mountPulseRing(host: GuideKitHost, parent: Node, name: string, x
   return node;
 }
 
+/**
+ * 贴地椭圆脉冲(世界空间,跟着父节点走):常亮细椭圆 + 一圈往外扩、越扩越淡的椭圆;rx / ry = 常亮圈半轴(世界单位)。
+ * times = 扩几次(0 = 一直扩,扩完自己收)。野外村口出口 / 怪群脚下用(屏幕空间的 mountPulseRing 跟不住会走动的东西)。
+ */
+export function mountGroundPulse(host: GuideKitHost, parent: Node, name: string, x: number, y: number, rx: number, ry: number, times = 0,
+  color: [number, number, number] = [255, 226, 150]): Node {
+  const node = host.addChildPlainNode(parent, name, x, y, rx * 2.8, ry * 2.8);
+  const g = node.addComponent(Graphics);
+  const state = { t: 0 };
+  const [cr, cg, cb] = color;
+  const draw = (): void => {
+    if (!g.isValid) {
+      Tween.stopAllByTarget(state);
+      return;
+    }
+    g.clear();
+    g.strokeColor = rgba(cr, cg, cb, 200);
+    g.lineWidth = 4;
+    g.ellipse(0, 0, rx, ry);
+    g.stroke();
+    const s = state.t;
+    const grow = 1 + 0.38 * s;
+    g.strokeColor = rgba(cr, cg, cb, Math.round(230 * (1 - s)));
+    g.lineWidth = Math.max(2, 7 * (1 - s * 0.6));
+    g.ellipse(0, 0, rx * grow, ry * grow);
+    g.stroke();
+  };
+  draw();
+  const cycle = (): Tween<{ t: number }> => tween(state).set({ t: 0 }).to(1.2, { t: 1 }, { easing: 'sineOut', onUpdate: draw }).delay(0.25);
+  if (times > 0) {
+    tween(state).repeat(times, cycle()).call(() => node.isValid && node.destroy()).start();
+  } else {
+    tween(state).repeatForever(cycle()).start();
+  }
+  return node;
+}
+
 export interface WeakTipStage {
   stageLeft: number;
   stageRight: number;
@@ -145,8 +188,10 @@ export interface WeakTipStage {
 /**
  * 弱引导一组:目标外一圈脉冲光环 + 「零」气泡(目标在上半屏放下面、否则放上面)+ 香槟小三角。不压暗、不拦点击(只有气泡本身可点)。
  * target = 要指的节点(null = 只出气泡,放舞台上部居中);hint = 气泡右下角灰字;onTap = 点气泡。返回整组根节点,调用方负责收。
+ * bubbleTop = 光环照样套在目标上,气泡放舞台上部居中、不画小三角(野外战斗中:气泡放在战斗按钮旁边会挡住技能键)。
  */
-export function mountWeakTip(host: GuideKitHost, parent: Node, name: string, stage: WeakTipStage, k: number, target: Node | null, text: string, hint: string, onTap: () => void): Node {
+export function mountWeakTip(host: GuideKitHost, parent: Node, name: string, stage: WeakTipStage, k: number, target: Node | null, text: string, hint: string, onTap: () => void,
+  opts?: { bubbleTop?: boolean }): Node {
   const root = host.addChildPlainNode(parent, name, 0, 0, 1, 1);
   const parentTf = parent.getComponent(UITransform);
   const targetTf = target?.getComponent(UITransform) ?? null;
@@ -155,12 +200,17 @@ export function mountWeakTip(host: GuideKitHost, parent: Node, name: string, sta
   const over = bubbleH * GUIDE_BUBBLE_AVATAR_OVERHANG;
   const midY = (stage.stageTop + stage.stageBottom) / 2;
   let bx = (stage.stageLeft + stage.stageRight) / 2 + over / 2;
-  let by = stage.stageTop - bubbleH / 2 - 150 * k;
+  // bubbleTop(野外战斗中)再往上贴一点:默认高度正好压在镜头中心那只怪的头顶飘字 / 名字上(11-25 自验)
+  let by = stage.stageTop - bubbleH / 2 - (opts?.bubbleTop ? 52 : 150) * k;
   if (target && targetTf && parentTf) {
     const local = parentTf.convertToNodeSpaceAR(target.worldPosition.clone());
     const tw = targetTf.width * Math.abs(target.worldScale.x);
     const th = targetTf.height * Math.abs(target.worldScale.y);
     mountPulseRing(host, root, 'WeakTipRing', local.x, local.y, tw + 14 * k, th + 14 * k, k);
+  }
+  if (target && targetTf && parentTf && !opts?.bubbleTop) {
+    const local = parentTf.convertToNodeSpaceAR(target.worldPosition.clone());
+    const th = targetTf.height * Math.abs(target.worldScale.y);
     const below = local.y > midY;
     const dir = below ? -1 : 1;
     const pointerH = 26 * k;

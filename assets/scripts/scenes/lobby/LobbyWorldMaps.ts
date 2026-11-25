@@ -172,6 +172,28 @@ export interface WorldMapCamp {
    * 玩家站在旁边也照样重立(普通怪要等人走远)。
    */
   dummy?: { asset: string; height: number; respawnMs: number };
+  /** 读条重击(docs/50 第 9 条「精英怪:更大、有技能读条要躲」;11-25 先给林地两只熊):脚下红圈,读满圈内全队掉当前生命的一部分。 */
+  slam?: WorldMapCampSlam;
+}
+
+/**
+ * 精英 / 首领的读条重击(野外即时战斗,11-25):交战 firstMs 后第一次、之后每 everyMs 一次;站定读条 windupMs,脚下画红圈(半径 radius,
+ * 贴地压扁 0.56);读满时圈内的队员掉「当前生命 × hpPct」(非致命,最多扣到 1 点),翻滚无敌帧里 / 走出圈外躲开;读条中被打出破防 = 打断。
+ */
+export interface WorldMapCampSlam {
+  name: string;
+  radius: number;
+  windupMs: number;
+  firstMs: number;
+  everyMs: number;
+  hpPct: number;
+}
+
+/** 营地变种:专属骨骼 / 光环 / 读条重击。 */
+export interface WorldMapCampVariant {
+  spine?: string;
+  aura?: WorldMapCampAura;
+  slam?: WorldMapCampSlam;
 }
 
 /**
@@ -461,11 +483,11 @@ const MONSTER_SPINE: Record<string, string> = {
 };
 
 function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false,
-  variant?: { spine?: string; aura?: WorldMapCampAura }): WorldMapCamp {
+  variant?: WorldMapCampVariant): WorldMapCamp {
   // 一群 6~10 只:散布半径随只数放大
   // 10-30 用户「怪物太靠近都融一起了」:单只体型约 200,8 只一群散到半径 ~600
   const radius = stageCode.endsWith('_B') ? 120 : elite ? 90 : count <= 3 ? 170 : 140 + count * 58;
-  return { stageCode, label, monsterCode, spine: variant?.spine ?? MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius, aura: variant?.aura };
+  return { stageCode, label, monsterCode, spine: variant?.spine ?? MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius, aura: variant?.aura, slam: variant?.slam };
 }
 
 /** 晨风村 v2 素材(docs/53 §4.1,2026-10-29;tools/qa/village2_install_assets.py 入库)。 */
@@ -719,11 +741,18 @@ function woodsRows(rows: number[][], flat: boolean, tint?: [number, number, numb
   });
 }
 
+/**
+ * 林地两只熊的读条重击(docs/50 第 9 条「林地之王:精英怪,有技能读条要躲」;docs/57 §3 V09 弱引导教「红圈 = 要放大招,翻滚躲开」)。
+ * 读条 1.8 秒 ≈ 走 340 / 翻滚 220 世界单位,够走出圈;伤害按当前生命比例、非致命,新手打不过也不会被一下秒掉。
+ */
+const BEAR_SLAM: WorldMapCampSlam = { name: '震地重击', radius: 250, windupMs: 1800, firstMs: 4500, everyMs: 11000, hpPct: 0.4 };
+const BEAR_SLAM_BOSS: WorldMapCampSlam = { name: '腐木震地', radius: 300, windupMs: 1800, firstMs: 4000, everyMs: 10000, hpPct: 0.45 };
+
 /** 林地精英 / 首领的专属骨骼与光环(v4 布局表只给坐标)。 */
-const WOODS_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+const WOODS_CAMP_VARIANT: Record<string, WorldMapCampVariant> = {
   FIELD_WOODS_E2: { spine: VARIANT_SPINE.lavaSpider, aura: AURA_LAVA },
-  FIELD_WOODS_E: { spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE },
-  FIELD_WOODS_B: { spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT },
+  FIELD_WOODS_E: { spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE, slam: BEAR_SLAM },
+  FIELD_WOODS_B: { spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT, slam: BEAR_SLAM_BOSS },
 };
 
 const WOODS_HALF_W = WOODS_V4_SIZE.width / 2 - 50;
@@ -824,7 +853,7 @@ function grayRows(rows: number[][], tint?: [number, number, number]): WorldMapPr
 }
 
 /** 荒原精英 / 首领光环(布局表只给坐标):狼王狂暴法阵、石像鬼腐化、碎岩巨像熔火。 */
-const GRAY_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+const GRAY_CAMP_VARIANT: Record<string, WorldMapCampVariant> = {
   FIELD_GRAY_E2: { aura: AURA_RAGE },
   FIELD_GRAY_E: { aura: AURA_CORRUPT },
   FIELD_GRAY_B: { aura: AURA_LAVA },
@@ -915,7 +944,7 @@ function deadRows(rows: number[][], tint?: [number, number, number]): WorldMapPr
 }
 
 /** 枯木林精英 / 首领光环:沼泽蛛母腐化、守墓人狂暴法阵、林间女巫腐化(紫色法阵 + 品红旋涡)。 */
-const DEAD_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+const DEAD_CAMP_VARIANT: Record<string, WorldMapCampVariant> = {
   FIELD_DEADWOOD_E2: { aura: AURA_CORRUPT },
   FIELD_DEADWOOD_E: { aura: AURA_RAGE },
   FIELD_DEADWOOD_B: { aura: AURA_CORRUPT },

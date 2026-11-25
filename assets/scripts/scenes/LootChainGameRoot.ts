@@ -10506,6 +10506,26 @@ export class LootChainGameRoot extends Component {
     return now - at < 4000;
   }
 
+  /**
+   * docs/57 §3 V10「远行」(LobbyAreaMapHost):世界地图上「主城」脉冲 + 气泡指路。11-04 起新图第一次要亲自走到、传送阵才激活,
+   * 所以不是「点主城传送」,而是告诉玩家怎么走:还没交「远行」→ 先和村长告别;交了、主城传送阵没激活 → 穿过林地从东边出口走过去。
+   */
+  worldMapGuide(): { code: WorldMapCode; text: string } | null {
+    const world = this.worldState;
+    if (!world || this.lobbyTownRenderer.currentMapCode() === 'CITY') {
+      return null;
+    }
+    const v10 = world.quests.find((quest) => quest.code === 'V10');
+    if (v10 && (v10.state === 'ACCEPTED' || v10.state === 'DONE')) {
+      return { code: 'CITY', text: '下一站是主城:先和晨风村的村长告别(交「远行」),再穿过村外林地,从东边的出口过去' };
+    }
+    const city = world.maps.find((map) => map.mapCode === 'CITY');
+    if (world.villageDone && city && !city.activated) {
+      return { code: 'CITY', text: '主城的传送阵还没激活:穿过村外林地,从林地东边的出口走过去,靠近传送阵就能激活' };
+    }
+    return null;
+  }
+
   /** 野外「可互动」圆徽第一次放大(LobbyTownHost):出过没有 / 记出过。 */
   guideTipSeen(key: GuideTipKey): boolean {
     return this.tips().seen(key);
@@ -10546,20 +10566,28 @@ export class LootChainGameRoot extends Component {
     const tips = this.tips();
     const first = !tips.seen('stamina');
     tips.markSeen('stamina');
+    const chip = first ? this.findNodeInTree(this.ensureContentRoot(), chipName) : null;
+    this.showWeakTip('LobbyStaminaTip', chip, text, first ? '去补充 ›' : '', first ? 8 : 4, undefined, () => this.openLobbyShopDialog('stamina'));
+  }
+
+  /**
+   * 弱引导挂根节点独立层(LobbyTownHost.showWeakTip;docs/57 §3 野外提示 / §5 体力提示共用):一次只留一条,seconds 秒后自己收,
+   * 点气泡收(再执行 onTap);出提示的那一页换掉了也收(tickWeakTips)。bubbleTop = 光环套目标、气泡放屏幕上部(战斗中别挡技能键)。
+   */
+  showWeakTip(name: string, target: Node | null, text: string, hint: string, seconds: number, opts?: { bubbleTop?: boolean }, onTap?: () => void): void {
     this.clearWeakTips();
     const layout = this.resolveLayout();
-    const chip = first ? this.findNodeInTree(this.ensureContentRoot(), chipName) : null;
     const k = Math.max(0.7, Math.min(1.25, layout.stageHeight / 841)) * (isPhoneDesign() ? 1.1 : 1);
-    const tip = mountWeakTip(this as unknown as import('./GuideKit').GuideKitHost, this.weakTipLayer(), 'LobbyStaminaTip', layout, k, chip, text, first ? '去补充 ›' : '', () => {
+    const tip = mountWeakTip(this as unknown as import('./GuideKit').GuideKitHost, this.weakTipLayer(), name, layout, k, target, text, hint, () => {
       this.clearWeakTips();
-      this.openLobbyShopDialog('stamina');
-    });
+      onTap?.();
+    }, opts);
     this.weakTipView = this.currentView;
     this.scheduleOnce(() => {
       if (tip.isValid) {
         tip.destroy();
       }
-    }, first ? 8 : 4);
+    }, seconds);
   }
 
   /** 弱引导独立层(根节点最上面,功能页整页重绘不拆);记下出提示时的视图,换了页就收。 */
