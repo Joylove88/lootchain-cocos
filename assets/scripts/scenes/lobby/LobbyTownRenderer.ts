@@ -27,6 +27,7 @@ import {
   Vec4,
 } from 'cc';
 import { HERO_CLIP_COMBOS } from './HeroClipCombos';
+import { applyFieldActorLook, fieldActorLook, fieldActorLookEnabled } from './LobbyFieldActorLook';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import { resolveFieldParty } from '../../api/LobbyHeroApi';
 import { isBuiltinFxHero } from '../../api/YijieShenzhouHeroes';
@@ -2039,7 +2040,15 @@ export class LobbyTownRenderer {
         spineNode.setPosition(pos.x, pos.y + HERO_SLOT_H * 0.44, 0);
         actor.names = resolveBattleUnitSpineAnimationNames(data, unit);
         actor.skeleton = skeleton;
-        this.applyActorTint(skeleton);
+        // 队伍可读性(11-26):整个人外轮廓细暗边 + 受光侧淡亮边 + 本体略提色;开着时不再套地图的人物偏色(林地会把人压灰)
+        if (fieldActorLookEnabled(this.def.code)) {
+          if (!fieldActorLook(this.def.code).clearTint) {
+            this.applyActorTint(skeleton);
+          }
+          applyFieldActorLook(skeleton, this.def.code);
+        } else {
+          this.applyActorTint(skeleton);
+        }
         // 动作之间 0.08s 过渡混合:攻击 → 待机 / 跑 → 攻击不再硬切
         mixAll(skeleton, [actor.names.idle, actor.names.move, actor.names.attack, actor.names.skill1, actor.names.skill2, actor.names.skill3, actor.names.ult], 0.08);
         // 英雄骨骼大多自带脚底影子插槽:有就不再叠程序椭圆影(否则脚下两个影子,且骨骼有横向偏移会错开)

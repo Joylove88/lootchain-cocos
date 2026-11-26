@@ -1,0 +1,189 @@
+// 野外队伍骨骼的可读性材质(2026-11-26 用户:「主角和随行英雄跟写实背景混在一起,看不出谁是谁,边缘发糊」)。
+// 多 pass:先画 4 份往对角方向错开几像素的「纯色剪影」(暗色描边),再画 1 份往受光方向(左上)错开的亮色剪影(轮廓光),
+// 最后正常画骨骼本体(盖住剪影的里面)→ 只在人物外轮廓上露出一圈暗边 + 受光侧一道亮边,身体内部部件之间不出线。
+// 2D 合批:同一副骨骼同一种混合模式的所有插槽是一批,每个 pass 把整批画一遍(ui-phase 逐 pass 绘制),所以剪影是整个人的剪影。
+// 叠加混合的插槽(发光特效)走 src_alpha / one:暗色剪影叠加 ≈ 不可见,不会给特效描黑边。
+// 骨骼自带的半透明脚底影子(alpha 约 0.3~0.5)不描边:剪影只取 alpha 高于 olStyle.y~z 的像素。
+// olStyle = (描边宽度 / 帧缓冲像素, alpha 下沿, alpha 上沿, 整体强度);olColor = 暗边颜色;rimColor = 亮边颜色(a = 强度)
+// olDir   = (方向 x, 方向 y, 0 暗边 / 1 亮边, 宽度倍率)—— 每个 pass 自带默认值,代码不改
+// popParams = (饱和度倍率, 对比度倍率, 提亮, 0):本体颜色微调,让人物比被调色层压过的地面更「实」
+CCEffect %{
+  techniques:
+  - passes:
+    - &ol
+      vert: actor-ol-vs:vert
+      frag: actor-ol-fs:frag
+      depthStencilState: &ds
+        depthTest: false
+        depthWrite: false
+      blendState: &bs
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState: &rs
+        cullMode: none
+      properties: &olp
+        olDir: { value: [0.85, 0.85, 0.0, 1.0] }
+        olStyle: { value: [2.0, 0.35, 0.7, 1.0] }
+        olColor: { value: [0.06, 0.05, 0.04, 0.85] }
+        rimColor: { value: [1.0, 0.93, 0.78, 0.0] }
+    - <<: *ol
+      properties:
+        <<: *olp
+        olDir: { value: [-0.85, 0.85, 0.0, 1.0] }
+    - <<: *ol
+      properties:
+        <<: *olp
+        olDir: { value: [0.85, -0.85, 0.0, 1.0] }
+    - <<: *ol
+      properties:
+        <<: *olp
+        olDir: { value: [-0.85, -0.85, 0.0, 1.0] }
+    - <<: *ol
+      properties:
+        <<: *olp
+        olDir: { value: [-0.8, 0.6, 1.0, 1.25] }
+    - vert: actor-vs:vert
+      frag: actor-fs:frag
+      depthStencilState: *ds
+      blendState: *bs
+      rasterizerState: *rs
+      properties:
+        alphaThreshold: { value: 0.5 }
+        popParams: { value: [1.0, 1.0, 0.0, 0.0] }
+}%
+
+CCProgram actor-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #if USE_LOCAL
+    #include <builtin/uniforms/cc-local>
+  #endif
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 v_light;
+  out vec2 uv0;
+
+  #if TWO_COLORED
+    in vec4 a_color2;
+    out vec4 v_dark;
+  #endif
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+    #if USE_LOCAL
+      pos = cc_matWorld * pos;
+    #endif
+    pos = cc_matViewProj * pos;
+    uv0 = a_texCoord;
+    v_light = a_color;
+    #if TWO_COLORED
+      v_dark = a_color2;
+    #endif
+    return pos;
+  }
+}%
+
+CCProgram actor-fs %{
+  precision highp float;
+  #include <builtin/internal/alpha-test>
+
+  in vec4 v_light;
+  #if TWO_COLORED
+    in vec4 v_dark;
+  #endif
+  in vec2 uv0;
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform ActorPop {
+    vec4 popParams;
+  };
+
+  vec4 frag () {
+    vec4 o = vec4(1, 1, 1, 1);
+    #if TWO_COLORED
+      vec4 texColor = texture(cc_spriteTexture, uv0);
+      o.a = texColor.a * v_light.a;
+      o.rgb = ((texColor.a - 1.0) * v_dark.a + 1.0 - texColor.rgb) * v_dark.rgb + texColor.rgb * v_light.rgb;
+    #else
+      o *= texture(cc_spriteTexture, uv0);
+      o *= v_light;
+    #endif
+    vec3 c = o.rgb;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = mix(vec3(l), c, popParams.x);
+    c = (c - 0.5) * popParams.y + 0.5;
+    c = c * (1.0 + popParams.z);
+    o.rgb = clamp(c, 0.0, 1.0);
+    ALPHA_TEST(o);
+    return o;
+  }
+}%
+
+CCProgram actor-ol-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #if USE_LOCAL
+    #include <builtin/uniforms/cc-local>
+  #endif
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out float v_alpha;
+  out vec2 uv0;
+
+  uniform ActorOutline {
+    vec4 olDir;
+    vec4 olStyle;
+    vec4 olColor;
+    vec4 rimColor;
+  };
+
+  #if TWO_COLORED
+    in vec4 a_color2;
+  #endif
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+    #if USE_LOCAL
+      pos = cc_matWorld * pos;
+    #endif
+    pos = cc_matViewProj * pos;
+    // 剪影在屏幕上错开 olStyle.x × olDir.w 个帧缓冲像素(cc_screenSize.zw = 1 / 帧缓冲宽高)
+    pos.xy += olDir.xy * (olStyle.x * olDir.w) * 2.0 * cc_screenSize.zw * pos.w;
+    uv0 = a_texCoord;
+    v_alpha = a_color.a;
+    return pos;
+  }
+}%
+
+CCProgram actor-ol-fs %{
+  precision highp float;
+
+  in float v_alpha;
+  in vec2 uv0;
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform ActorOutline {
+    vec4 olDir;
+    vec4 olStyle;
+    vec4 olColor;
+    vec4 rimColor;
+  };
+
+  vec4 frag () {
+    float a = texture(cc_spriteTexture, uv0).a * v_alpha;
+    a = smoothstep(olStyle.y, olStyle.z, a) * olStyle.w;
+    vec4 c = mix(olColor, rimColor, olDir.z);
+    return vec4(c.rgb, a * c.a);
+  }
+}%
