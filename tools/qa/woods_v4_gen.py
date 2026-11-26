@@ -310,10 +310,10 @@ def schematic(path, scale=0.06, show_grid=True):
 
 POI_FIX = {
     'W_STELE_1': (2568, -1426),
-    'W_HERB_1': (5980, 273),
+    'W_HERB_1': (5980, 49),  # 11-26 原 (5980, 273) 藏在营帐后面看不见,挪到营帐前(field_explore_occlusion_audit RELOCATE)
     'W_HERB_2': (-1285, -533),
     'W_ORE_1': (-696, -3798),
-    'W_ORE_2': (4682, -3450),
+    'W_ORE_2': (4682, -3506),  # 11-26 原 (4682, -3450) 顶部被废墟石墙挡住
 }
 
 

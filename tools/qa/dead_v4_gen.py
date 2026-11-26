@@ -395,8 +395,16 @@ def camp_radius(c):
     return 170 if c['count'] <= 3 else 140 + c['count'] * 58
 
 
+CHEST_FIX = {  # 11-26 实机:原点位本体藏在遮挡件后(field_explore_occlusion_audit RELOCATE 找的最近可见点)
+    'DEADWOOD_W3': (6689, -3820),  # 原 (6829, -3820) 藏在枯树干后面
+}
+
+
 def build_points():
     chests = [{'code': c, 'label': n, 'kind': k, 'x': wx(x), 'y': wy(y)} for c, n, k, x, y in CHESTS_PX]
+    for c in chests:
+        if c['code'] in CHEST_FIX:
+            c['x'], c['y'] = CHEST_FIX[c['code']]
     pois = [{'code': c, 'kind': k, 'name': n, 'x': wx(x), 'y': wy(y)} for c, k, n, x, y in POIS_PX]
     for p in pois:
         if p['code'] in POI_FIX:

@@ -600,6 +600,11 @@ export class LobbyTownRenderer {
   /** 已经发出领取请求的隐藏点(等世界状态回来前不重复触发)。 */
   private poiPending = new Set<string>();
   private entityRoot: Node | null = null;
+  /**
+   * 头顶标签层(11-26 用户:林地采集点名字被石墙挡住只露「已采」):探索物(宝箱 / 兴趣点 / 隐藏点)的名字和圆徽、出口名牌挂这里,
+   * 压在全部立物 / 遮挡件之上,不参与前后排序;本体素材照旧在立物层里排序。
+   */
+  private tagRoot: Node | null = null;
   private layout: UiLayout | null = null;
   private k = 1;
   /** 世界层头顶字 / 血条 / 飘字反向放大倍数(= 地图镜头拉远倍数 cameraZoom,屏上大小不变)。 */
@@ -842,6 +847,7 @@ export class LobbyTownRenderer {
     this.world = null;
     this.groundRoot = null;
     this.entityRoot = null;
+    this.tagRoot = null;
     this.leader = null;
     this.followers = [];
     this.buildings = [];
@@ -1299,6 +1305,7 @@ export class LobbyTownRenderer {
     this.backdropNode = null;
     this.groundRoot = null;
     this.entityRoot = null;
+    this.tagRoot = null;
     this.leader = null;
     this.followers = [];
     this.buildings = [];
@@ -1349,6 +1356,7 @@ export class LobbyTownRenderer {
     this.backdropNode = def.backdrop ? this.host.addChildPlainNode(world, 'Backdrop', 0, def.height / 2, 10, 10) : null;
     this.groundRoot = this.host.addChildPlainNode(world, 'Ground', 0, 0, def.width, def.height);
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, def.width, def.height);
+    this.tagRoot = this.host.addChildPlainNode(world, 'WorldTags', 0, 0, def.width, def.height);
     this.buildings = [];
     this.lampNodes = [];
     this.propNodes = [];
@@ -4512,11 +4520,12 @@ export class LobbyTownRenderer {
         sprite.node.setPosition(0, h / 2 - 8, 0);
         artH = h;
       }
-      // 头顶名字(10-30 用户:兴趣点要有名字,不然到附近也不好找)
-      const name = this.addWorldNameLabel(node, chest.label, artH + 14);
+      // 头顶名字(10-30 用户:兴趣点要有名字,不然到附近也不好找);名字 / 圆徽挂标签层,不被前面的石墙 / 大树挡住
+      const tag = this.tagHolder(`Tag_chest_${chest.code}`, chest.x, chest.y);
+      const name = this.addWorldNameLabel(tag, chest.label, artH + 14);
       // 可开的宝箱头顶浮一个小圆徽(10-30 用户:要让玩家感觉这个可以开 / 采 / 解锁)
       const badgeY = artH + 76;
-      const badge = this.mountPoiBadge(node, badgeY, 'ui/world/mapui/map_chest/spriteFrame', null);
+      const badge = this.mountPoiBadge(tag, badgeY, 'ui/world/mapui/map_chest/spriteFrame', null);
       this.chestNodes.set(chest.code, { node, sprite, glow, opened: false, kind: chest.kind, name, label: chest.label, badge, badgeY });
       this.propNodes.push({ node, y: chest.y });
     }
@@ -4538,11 +4547,10 @@ export class LobbyTownRenderer {
       if (poi.kind === 'HIDDEN') {
         const node = this.host.addChildPlainNode(ground, `TownPoi_${poi.code}`, poi.x, poi.y, 170, 120);
         this.addPoiArt(node, POI_ASSET.hidden, 170);
-        // 「?」圆徽挂在立物层(参与前后遮挡),比地上的土块高一截
-        const holder = this.host.addChildPlainNode(root, `TownPoiBadge_${poi.code}`, poi.x, poi.y, 80, 80);
+        // 「?」圆徽挂标签层(11-26 起不参与前后遮挡,不被石墙 / 树冠挡住),比地上的土块高一截
+        const holder = this.tagHolder(`TownPoiBadge_${poi.code}`, poi.x, poi.y);
         this.mountPoiBadge(holder, 110, null, '?');
         this.poiNodes.set(poi.code, { node, art: node, badge: holder, badgeY: 110, glow: null, poi, done: false, name: null });
-        this.propNodes.push({ node: holder, y: poi.y });
         continue;
       }
       // 10-30 远看草药丛 130 宽融进草地:放大到 180(石碑 190)
@@ -4552,9 +4560,10 @@ export class LobbyTownRenderer {
       const glow = this.host.addChildPlainNode(node, 'Glow', 0, 2, w * 1.8, w * 0.7).addComponent(Graphics);
       const art = this.addPoiArt(node, poi.kind === 'STELE' ? POI_ASSET.stele : poi.kind === 'HERB' ? POI_ASSET.herb : POI_ASSET.ore, w);
       const artH = art?.getComponent(UITransform)?.contentSize.height ?? w;
-      const name = this.addWorldNameLabel(node, poi.name, artH + 4);
+      const tag = this.tagHolder(`Tag_poi_${poi.code}`, poi.x, poi.y);
+      const name = this.addWorldNameLabel(tag, poi.name, artH + 4);
       const badgeY = artH + 68;
-      const badge = this.mountPoiBadge(node, badgeY, POI_MAP_ICON[poi.kind], null);
+      const badge = this.mountPoiBadge(tag, badgeY, POI_MAP_ICON[poi.kind], null);
       this.poiNodes.set(poi.code, { node, art, badge, badgeY, glow, poi, done: false, name });
       this.propNodes.push({ node, y: poi.y });
     }
@@ -4695,6 +4704,16 @@ export class LobbyTownRenderer {
     label.outlineWidth = 3;
     this.worldUi(label.node);
     return label;
+  }
+
+  /** 标签层里一个跟着世界坐标 (x, y) 的空节点(名字 / 圆徽挂它下面,局部坐标和挂在物件节点下时一样);标签层还没建时退回立物层。 */
+  private tagHolder(name: string, x: number, y: number): Node {
+    const parent = this.tagRoot && this.tagRoot.isValid ? this.tagRoot : this.entityRoot!;
+    const existing = parent.getChildByName(name);
+    if (existing && existing.isValid) {
+      existing.destroy();
+    }
+    return this.host.addChildPlainNode(parent, name, x, y, 10, 10);
   }
 
   /** 素材按原比例、脚线贴在节点原点;返回素材节点。 */
@@ -4917,6 +4936,10 @@ export class LobbyTownRenderer {
     if (current && current.isValid) {
       current.destroy();
     }
+    const oldCaption = this.exitGuideKey ? this.tagRoot?.getChildByName(`Tag_exit_${this.exitGuideKey}`)?.getChildByName('ExitGuideCaption') ?? null : null;
+    if (oldCaption && oldCaption.isValid) {
+      oldCaption.destroy();
+    }
     this.exitGuideKey = null;
     const exit = want ? this.def.exits.find((item) => item.key === want) : undefined;
     const holder = exit && ground?.isValid ? ground.getChildByName(`TownExit_${exit.key}`) : null;
@@ -4926,7 +4949,9 @@ export class LobbyTownRenderer {
     this.exitGuideKey = exit.key;
     const guide = this.host.addChildPlainNode(holder, 'ExitGuide', 0, 0, exit.radius * 3, exit.radius * 2);
     mountGroundPulse(this.host as unknown as GuideKitHost, guide, 'Pulse', 0, 0, exit.radius, exit.radius * 0.56, 0);
-    const caption = this.host.addChildLabel(guide, 'Caption', '走进金圈就能过去', 0, exit.radius * 0.56 + 60, 24, rgba(255, 244, 214), new Size(320, 34));
+    // 提示字挂标签层(和出口名牌一起压在立物之上)
+    const tagHolder = this.tagRoot?.getChildByName(`Tag_exit_${exit.key}`) ?? null;
+    const caption = this.host.addChildLabel(tagHolder && tagHolder.isValid ? tagHolder : guide, tagHolder && tagHolder.isValid ? 'ExitGuideCaption' : 'Caption', '走进金圈就能过去', 0, exit.radius * 0.56 + 60, 24, rgba(255, 244, 214), new Size(320, 34));
     caption.enableOutline = true;
     caption.outlineColor = rgba(16, 8, 4, 255);
     caption.outlineWidth = 2;
@@ -5118,7 +5143,8 @@ export class LobbyTownRenderer {
       g.lineWidth = 3;
       g.ellipse(0, 0, exit.radius, exit.radius * 0.56);
       g.stroke();
-      const plate = this.host.addChildLabel(node, 'Label', exit.label, 0, exit.radius * 0.56 + 26, 22, rgba(255, 232, 180), new Size(260, 30));
+      // 名牌挂标签层(地面层里会被前面的树 / 石头整块盖住)
+      const plate = this.host.addChildLabel(this.tagHolder(`Tag_exit_${exit.key}`, exit.x, exit.y), 'Label', exit.label, 0, exit.radius * 0.56 + 26, 22, rgba(255, 232, 180), new Size(260, 30));
       plate.enableOutline = true;
       plate.outlineColor = rgba(16, 8, 4, 255);
       plate.outlineWidth = 2;
