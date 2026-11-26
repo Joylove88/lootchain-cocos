@@ -29,7 +29,7 @@ const PROTAGONIST_CHAIN: HeroClipSegment[] = [
  * 11-26 男主换底:失落之剑 Lucius 换皮(tools/qa/protag_lucius_install.py;动画已改名 atk / atk2 / atk3 / skill2 …)。
  * 每段攻击本身就短(0.5~0.7 秒、一刀一段),接近原速播;出刀点按 20fps 逐帧看过,命中时刻(切片时长 × hitAt)
  * 与矿境掠夺模型 GUARD_RAID_COMBO 的 hitMs 对齐在几十毫秒内(模型数值不动、不用重建 guard-replay)。
- * 劈下 → 上撩 → 过顶斩 → 横扫 → 蓄力突刺(终结,重击 + 范围)。女主暂时还是永夜龙骑底(PROTAGONIST_CHAIN)。
+ * 劈下 → 上撩 → 过顶斩 → 横扫 → 蓄力突刺(终结,重击 + 范围)。女主同一副骨骼、只换头部(Meowa 局部重画短发写实脸)。
  */
 const PROTAGONIST_LUCIUS_CHAIN: HeroClipSegment[] = [
   { anim: 'atk', start: 0.08, end: 0.5, speed: 1.0, hitAt: 0.6, mult: 0.9, reach: 175, heavy: false },
@@ -41,9 +41,9 @@ const PROTAGONIST_LUCIUS_CHAIN: HeroClipSegment[] = [
 
 export const HERO_CLIP_COMBOS: Readonly<Record<string, ReadonlyArray<HeroClipSegment>>> = {
   protag_m: PROTAGONIST_LUCIUS_CHAIN,
-  protag_f: PROTAGONIST_CHAIN,
+  protag_f: PROTAGONIST_LUCIUS_CHAIN,
   protag_m_lh: PROTAGONIST_LUCIUS_CHAIN,
-  protag_f_lh: PROTAGONIST_CHAIN,
+  protag_f_lh: PROTAGONIST_LUCIUS_CHAIN,
   IshmaelA: PROTAGONIST_CHAIN,
 };
 

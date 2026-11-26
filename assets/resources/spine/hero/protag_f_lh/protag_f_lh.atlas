@@ -1,342 +1,327 @@
-
 protag_f_lh.png
-size: 1939,821
-format: RGBA8888
-filter: Linear,Linear
-repeat: none
-IshmaelA_blur
-  rotate: false
-  xy: 519, 132
-  size: 308, 477
-  orig: 308, 477
-  offset: 0, 0
-  index: -1
-L_armor01
-  rotate: true
-  xy: 353, 6
-  size: 130, 142
-  orig: 130, 143
-  offset: 0, 1
-  index: -1
-L_armor02
-  rotate: true
-  xy: 1869, 86
-  size: 62, 49
-  orig: 62, 49
-  offset: 0, 0
-  index: -1
-L_armor03
-  rotate: false
-  xy: 1863, 387
-  size: 67, 98
-  orig: 67, 98
-  offset: 0, 0
-  index: -1
-L_foot01
-  rotate: false
-  xy: 1144, 37
-  size: 121, 68
-  orig: 121, 68
-  offset: 0, 0
-  index: -1
-L_forearm01
-  rotate: true
-  xy: 1554, 4
-  size: 97, 92
-  orig: 97, 92
-  offset: 0, 0
-  index: -1
-L_forearm02
-  rotate: false
-  xy: 1632, 261
-  size: 97, 58
-  orig: 97, 58
-  offset: 0, 0
-  index: -1
-L_foreleg01
-  rotate: false
-  xy: 1538, 103
-  size: 91, 181
-  orig: 91, 181
-  offset: 0, 0
-  index: -1
-L_hand01
-  rotate: true
-  xy: 1474, 2
-  size: 99, 78
-  orig: 99, 78
-  offset: 0, 0
-  index: -1
-L_tasset01
-  rotate: false
-  xy: 1488, 608
-  size: 53, 81
-  orig: 53, 81
-  offset: 0, 0
-  index: -1
-L_tasset02
-  rotate: true
-  xy: 1650, 497
-  size: 106, 167
-  orig: 106, 167
-  offset: 0, 0
-  index: -1
-L_uparm01
-  rotate: true
-  xy: 631, 11
-  size: 119, 126
-  orig: 119, 126
-  offset: 0, 0
-  index: -1
-L_upleg01
-  rotate: false
-  xy: 1488, 449
-  size: 160, 154
-  orig: 160, 154
-  offset: 0, 0
-  index: -1
-R_armor01
-  rotate: false
-  xy: 199, 6
-  size: 152, 130
-  orig: 152, 130
-  offset: 0, 0
-  index: -1
-R_armor02
-  rotate: false
-  xy: 1745, 246
-  size: 87, 85
-  orig: 87, 85
-  offset: 0, 0
-  index: -1
-R_armor03
-  rotate: true
-  xy: 1374, 13
-  size: 89, 98
-  orig: 89, 98
-  offset: 0, 0
-  index: -1
-R_foot01
-  rotate: false
-  xy: 1631, 177
-  size: 92, 82
-  orig: 92, 82
-  offset: 0, 0
-  index: -1
-R_foot02
-  rotate: true
-  xy: 1706, 106
-  size: 60, 75
-  orig: 60, 75
-  offset: 0, 0
-  index: -1
-R_forearm01
-  rotate: true
-  xy: 497, 9
-  size: 121, 132
-  orig: 121, 132
-  offset: 0, 0
-  index: -1
-R_forearm02
-  rotate: false
-  xy: 1632, 321
-  size: 111, 126
-  orig: 111, 126
-  offset: 0, 0
-  index: -1
-R_foreleg01
-  rotate: true
-  xy: 2, 10
-  size: 126, 195
-  orig: 126, 195
-  offset: 0, 0
-  index: -1
-R_hand1
-  rotate: true
-  xy: 1726, 29
-  size: 75, 64
-  orig: 75, 64
-  offset: 0, 0
-  index: -1
-R_tasset01
-  rotate: true
-  xy: 1170, 107
-  size: 175, 211
-  orig: 175, 211
-  offset: 0, 0
-  index: -1
-R_tasset02
-  rotate: false
-  xy: 1648, 11
-  size: 76, 90
-  orig: 76, 90
-  offset: 0, 0
-  index: -1
-R_uparm01
-  rotate: false
-  xy: 1819, 487
-  size: 118, 116
-  orig: 118, 116
-  offset: 0, 0
-  index: -1
-R_upleg01
-  rotate: false
-  xy: 1383, 104
-  size: 153, 178
-  orig: 153, 178
-  offset: 0, 0
-  index: -1
-Shadow
-  rotate: false
-  xy: 1650, 459
-  size: 167, 36
-  orig: 167, 36
-  offset: 0, 0
-  index: -1
-armor01
-  rotate: true
-  xy: 1488, 286
-  size: 161, 142
-  orig: 161, 142
-  offset: 0, 0
-  index: -1
-armor02
-  rotate: false
-  xy: 1745, 333
-  size: 116, 124
-  orig: 116, 124
-  offset: 0, 0
-  index: -1
-armor03
-  rotate: false
-  xy: 1725, 168
-  size: 87, 76
-  orig: 87, 76
-  offset: 0, 0
-  index: -1
-armor04
-  rotate: true
-  xy: 1267, 14
-  size: 91, 105
-  orig: 91, 112
-  offset: 0, 0
-  index: -1
-body01
-  rotate: true
-  xy: 829, 114
-  size: 176, 339
-  orig: 176, 339
-  offset: 0, 0
-  index: -1
-body02
-  rotate: true
-  xy: 1543, 605
-  size: 214, 381
-  orig: 214, 381
-  offset: 0, 0
-  index: -1
-cloak01
-  rotate: false
-  xy: 1197, 284
-  size: 289, 405
-  orig: 289, 405
-  offset: 0, 0
-  index: -1
-cloak02
-  rotate: false
-  xy: 829, 292
-  size: 366, 397
-  orig: 378, 397
-  offset: 0, 0
-  index: -1
-eyes01
-  rotate: false
-  xy: 1863, 310
-  size: 73, 75
-  orig: 73, 75
-  offset: 0, 0
-  index: -1
-face01
-  rotate: true
-  xy: 759, 2
-  size: 100, 124
-  orig: 100, 124
-  offset: 0, 0
-  index: -1
-face02
-  rotate: true
-  xy: 885, 6
-  size: 106, 119
-  orig: 106, 119
-  offset: 0, 0
-  index: -1
-hand01
-  rotate: true
-  xy: 1834, 231
-  size: 77, 86
-  orig: 77, 86
-  offset: 0, 0
-  index: -1
-hand02
-  rotate: false
-  xy: 1792, 81
-  size: 75, 67
-  orig: 75, 67
-  offset: 0, 0
-  index: -1
-hand03
-  rotate: false
-  xy: 1631, 103
-  size: 73, 72
-  orig: 73, 72
-  offset: 0, 0
-  index: -1
-hand05
-  rotate: false
-  xy: 1792, 12
-  size: 75, 67
-  orig: 75, 67
-  offset: 0, 0
-  index: -1
-hand06
-  rotate: false
-  xy: 1814, 150
-  size: 84, 79
-  orig: 84, 79
-  offset: 0, 0
-  index: -1
-pelvis01
-  rotate: false
-  xy: 1006, 27
-  size: 136, 85
-  orig: 136, 85
-  offset: 0, 0
-  index: -1
-sword01
-  rotate: false
-  xy: 2, 138
-  size: 515, 471
-  orig: 515, 471
-  offset: 0, 0
-  index: -1
-sword02
-  rotate: false
-  xy: 793, 691
-  size: 748, 128
-  orig: 748, 128
-  offset: 0, 0
-  index: -1
-sword03
-  rotate: false
-  xy: 2, 611
-  size: 789, 208
-  orig: 789, 208
-  offset: 0, 0
-  index: -1
-neckfill
-  rotate: false
-  xy: 1872, 0
-  size: 64, 64
-  orig: 64, 64
-  offset: 0, 0
-  index: -1
+size:1985,808
+filter:Linear,Linear
+pma:false
+08Dragon_jaw
+bounds:939,610,424,196
+offsets:107,0,531,461
+08Dragon_jaw_teeth
+bounds:1152,297,252,115
+rotate:90
+08Dragon_neck
+bounds:1710,490,316,273
+offsets:0,0,316,428
+rotate:90
+08Dragon_upper1
+bounds:2,452,486,354
+offsets:49,21,535,375
+08Dragon_upper2
+bounds:324,117,320,333
+offsets:0,42,320,375
+09Dragon_jaw1
+bounds:1365,486,320,343
+offsets:142,0,462,541
+rotate:90
+09Dragon_jaw2
+bounds:1517,324,160,192
+rotate:90
+09Dragon_mouth1
+bounds:809,70,75,104
+rotate:90
+09Dragon_neck
+bounds:2,20,320,430
+09Dragon_tongue
+bounds:1040,139,105,78
+09Dragon_upper1
+bounds:490,547,447,259
+09Dragon_upper2
+bounds:1711,319,163,71
+B_Calf_L
+bounds:1136,56,46,126
+rotate:90
+B_Calf_R
+bounds:1280,110,46,127
+rotate:90
+B_Foot_L
+bounds:1940,49,48,39
+rotate:90
+B_Foot_R
+bounds:1401,13,48,39
+B_Forearm_L
+bounds:1489,116,30,78
+rotate:90
+B_Forearm_R
+bounds:1706,112,38,72
+rotate:90
+B_Thigh_L
+bounds:1266,222,48,142
+rotate:90
+B_Thigh_R
+bounds:1667,266,51,142
+rotate:90
+B_Upperarm_L
+bounds:1783,151,29,67
+rotate:90
+B_Upperarm_R
+bounds:1780,111,38,72
+rotate:90
+B_body1
+bounds:906,149,85,132
+rotate:90
+B_body2
+bounds:1269,490,82,49
+B_body3
+bounds:1524,47,19,29
+rotate:90
+B_cloak1
+bounds:939,551,57,321
+rotate:90
+B_cloak2
+bounds:490,459,86,324
+rotate:90
+B_collar
+bounds:818,147,130,86
+rotate:90
+B_hand_L
+bounds:1454,44,27,47
+B_hand_R
+bounds:1561,78,34,49
+rotate:90
+B_head
+bounds:1420,163,74,77
+B_tie
+bounds:1706,152,75,37
+F_armor
+bounds:1854,109,63,55
+F_arms
+bounds:939,308,211,241
+F_body1
+bounds:1269,272,85,161
+rotate:90
+F_body1_die
+bounds:646,70,85,161
+rotate:90
+F_body2
+bounds:1084,219,87,64
+rotate:90
+F_body3
+bounds:1856,166,73,55
+F_calf_L
+bounds:1003,85,52,131
+rotate:90
+F_calf_L_die
+bounds:1147,104,52,131
+rotate:90
+F_calf_R
+bounds:939,236,70,143
+rotate:90
+F_cloak1
+bounds:1269,541,67,94
+rotate:90
+F_cloak2
+bounds:1931,130,50,60
+F_collar1
+bounds:1483,69,39,45
+F_collar2
+bounds:1483,45,22,39
+rotate:90
+F_collar3
+bounds:818,279,119,266
+F_collar4
+bounds:1269,359,125,246
+rotate:90
+F_face
+bounds:1612,79,33,33
+F_face_blink
+bounds:1612,44,33,33
+F_face_hit
+bounds:1694,41,33,33
+F_finger
+bounds:1675,5,27,22
+rotate:90
+F_foot_L
+bounds:1663,133,58,41
+rotate:90
+F_foot_R
+bounds:1524,68,35,46
+F_forearm_L
+bounds:1420,127,67,34
+F_forearm_L_die
+bounds:1706,76,67,34
+F_forearm_R
+bounds:1009,2,58,81
+F_gem
+bounds:163,2,16,18
+rotate:90
+F_hair1
+bounds:1647,34,22,44
+rotate:90
+F_hair2
+bounds:1136,118,9,19
+F_hair3
+bounds:1356,12,43,43
+F_hair4
+bounds:1496,205,15,13
+F_hair5
+bounds:1040,219,15,28
+rotate:90
+F_hand1
+bounds:1559,16,27,39
+rotate:90
+F_hand2
+bounds:906,236,41,31
+rotate:90
+F_head
+bounds:1811,253,63,64
+F_head2
+bounds:1783,182,71,69
+F_neck
+bounds:1561,45,31,48
+rotate:90
+F_thigh_L
+bounds:1150,158,62,133
+rotate:90
+F_thigh_L_die
+bounds:1285,158,62,133
+rotate:90
+F_thigh_R
+bounds:1150,222,73,114
+rotate:90
+F_thigh_R2
+bounds:1513,193,73,114
+rotate:90
+F_tie1
+bounds:1432,242,79,38
+F_tie2
+bounds:1856,223,27,74
+rotate:90
+F_uparm_L
+bounds:1647,83,48,57
+rotate:90
+F_uparm_R
+bounds:1586,147,44,75
+rotate:90
+L_cloak1
+bounds:1711,392,96,219
+rotate:90
+S_Calf_R_1
+bounds:1135,3,51,120
+rotate:90
+S_Calf_R_1_die
+bounds:1280,57,51,120
+rotate:90
+S_Thigh_L
+bounds:1517,268,54,148
+rotate:90
+S_Thigh_R
+bounds:1932,341,51,147
+offsets:0,0,51,151
+S_Thigh_R_die
+bounds:1932,192,51,147
+offsets:0,0,51,151
+S_armor
+bounds:1904,2,41,57
+rotate:90
+S_body1
+bounds:636,2,66,159
+rotate:90
+S_body1_die
+bounds:797,2,66,159
+rotate:90
+S_body2
+bounds:1775,46,63,63
+S_cloak1
+bounds:1876,252,54,138
+S_cloak2
+bounds:324,17,98,310
+rotate:90
+S_collar1
+bounds:1486,9,47,34
+S_face
+bounds:1410,242,17,28
+S_face2
+bounds:78,2,16,28
+rotate:90
+S_foot_R
+bounds:1840,17,62,40
+S_forearm
+bounds:1069,2,31,81
+S_forearm_die
+bounds:1102,2,31,81
+S_hair1
+bounds:1647,58,23,45
+rotate:90
+S_hair2
+bounds:1554,2,12,17
+rotate:90
+S_hair3
+bounds:1940,99,29,43
+rotate:90
+S_hand
+bounds:1409,93,32,58
+rotate:90
+S_hand2
+bounds:1257,2,34,42
+S_hand3
+bounds:1600,11,31,38
+rotate:90
+S_hand4
+bounds:1293,10,61,45
+S_hand5
+bounds:1451,2,40,33
+rotate:90
+S_hand6
+bounds:1729,41,31,33
+S_head
+bounds:1629,193,75,71
+S_neck
+bounds:1640,5,27,33
+rotate:90
+S_tie1
+bounds:1904,45,62,34
+rotate:90
+S_tie2
+bounds:2,3,15,74
+rotate:90
+S_upperarm
+bounds:1569,114,31,76
+rotate:90
+broken_1
+bounds:1706,191,73,75
+rotate:90
+broken_2
+bounds:1432,282,75,83
+rotate:90
+broken_3
+bounds:1535,17,22,28
+broken_4
+bounds:915,70,77,86
+rotate:90
+f_mouth_attack
+bounds:137,2,24,16
+offsets:2,3,29,23
+f_mouth_hit
+bounds:1496,220,20,15
+offsets:4,3,27,20
+rotate:90
+f_mouth_laugh
+bounds:1535,2,17,13
+hand11
+bounds:1402,54,50,37
+hand12
+bounds:958,2,66,49
+rotate:90
+hand13
+bounds:1840,59,48,62
+rotate:90
+pati_1
+bounds:108,2,16,27
+rotate:90
+pati_2
+bounds:1264,85,14,17
+pati_3
+bounds:1699,17,25,22
+shadow
+bounds:1496,148,88,43
+weaponEff01
+bounds:646,157,170,300

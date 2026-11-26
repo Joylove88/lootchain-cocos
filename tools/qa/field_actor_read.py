@@ -128,6 +128,11 @@ def steps():
 t.trail=[new cc.Vec2({x}-300,{y}),new cc.Vec2({x},{y})]; t.applyCamera(true);
 (t.monsters || []).forEach(m => {{ if (m.node) m.node.active = false; m.x = 1e7; m.y = 1e7; }}); await sleep(3500); return 'tp';"""})
     st.append({'js': HELPERS + "return 'helpers';"})
+    if OPT.get('leaderspine'):
+        # --leaderspine=protag_f_lh:临时把队长骨骼换成另一套(测试号是男主时验女主 / 别的外观)
+        path = f"spine/hero/{OPT['leaderspine']}/{OPT['leaderspine']}"
+        st.append({'js': f"""const data = await new Promise(r => cc.resources.load('{path}', cc.sp ? cc.sp.SkeletonData : cc.SkeletonData, (e, a) => r(e ? null : a)));
+if (!data) return 'leaderspine load failed'; const L = t.leader; L.skeleton.skeletonData = data; t.applyActorAnimation(L, true); await sleep(1500); return 'leaderspine ok';"""})
     st.append({'js': FREEZE})
     st.append({'js': "return window.__ar.measure();"})
     st.append({'js': "return window.__ar.shot();", 'save': f'{TAG}_cur.png'})
