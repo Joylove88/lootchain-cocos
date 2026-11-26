@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """角色骨骼预览(2026-10-31,评估 Meowa 生成的 Spine 角色):每个动作出一张 GIF + 一张总览图(每个动作一行关键帧)。
 骨骼目录里要有 <base>.json / <base>.atlas / 贴图;同一镜头取景,看动作 / 比例 / 清晰度。
-用法:python render_char.py <骨骼目录> <base> <输出目录> [--fps 20] [--pma]
+用法:python render_char.py <骨骼目录> <base> <输出目录> [--fps 20] [--pma] [--skin 名]
 """
 import asyncio, base64, io, json, os, subprocess, sys, time, urllib.request
 import websockets
@@ -19,6 +19,7 @@ args = sys.argv[1:]
 SRC, BASE, OUT = os.path.abspath(args[0]), args[1], os.path.abspath(args[2])
 FPS = int(args[args.index('--fps') + 1]) if '--fps' in args else 20
 PMA = '--pma' in args
+SKIN = args[args.index('--skin') + 1] if '--skin' in args else ''  # 具名皮肤(失落之剑一类:默认皮肤只有影子)
 
 
 def img(d):
@@ -29,7 +30,7 @@ async def main():
     os.makedirs(OUT, exist_ok=True)
     env = dict(os.environ, FX_ROOT=os.path.dirname(SRC))
     server = subprocess.Popen([sys.executable, os.path.join(HERE, 'server.py'), str(HTTP_PORT)], env=env)
-    proc = subprocess.Popen([EDGE, '--headless=new', f'--remote-debugging-port={CDP_PORT}', f'--user-data-dir={PROFILE}', '--no-first-run',
+    proc = subprocess.Popen([EDGE, '--headless=new', f'--remote-debugging-port={CDP_PORT}', f'--user-data-dir={PROFILE}', '--no-first-run', '--disable-extensions', '--disable-sync',
                              '--window-size=600,700', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     try:
         for _ in range(100):
@@ -58,11 +59,12 @@ async def main():
                 # 背景色(0~1 三元组,如 CLEAR=1,0,1 洋红):查透明缝时用,深色背景和深色衣服分不开
                 await ev('window.__clear = [' + os.environ['CLEAR'] + ']; 1', 10)
             binary = 'true' if not os.path.exists(os.path.join(SRC, BASE + '.json')) and os.path.exists(os.path.join(SRC, BASE + '.skel')) else 'false'
-            res = await ev(f'window.renderChar({json.dumps(os.path.basename(SRC))}, {json.dumps(BASE)}, {{fps: {FPS}, pma: {"true" if PMA else "false"}, binary: {binary}}})')
+            res = await ev(f'window.renderChar({json.dumps(os.path.basename(SRC))}, {json.dumps(BASE)}, {{fps: {FPS}, pma: {"true" if PMA else "false"}, binary: {binary}, skin: {json.dumps(SKIN)}}})')
     finally:
         proc.terminate()
         server.terminate()
 
+    print('setupBounds', res.get('setupBounds'), 'view', res.get('view'))
     rows = []
     for anim, entry in res['anims'].items():
         frames = [img(d) for d in entry['frames']]

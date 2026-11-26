@@ -33,9 +33,13 @@ def page_png(atlas):
 
 
 def box(r):
-    x, y = map(int, r['xy'].split(','))
-    w, h = map(int, r['size'].split(','))
-    bw, bh = (h, w) if r.get('rotate') == 'true' else (w, h)
+    # 4.0 写法 xy / size;4.1+ 紧凑写法 bounds: x,y,w,h(rotate: 90 / true)
+    if 'bounds' in r:
+        x, y, w, h = map(int, r['bounds'].split(','))
+    else:
+        x, y = map(int, r['xy'].split(','))
+        w, h = map(int, r['size'].split(','))
+    bw, bh = (h, w) if r.get('rotate') in ('true', '90', '270') else (w, h)
     return (x, y, x + bw, y + bh)
 
 

@@ -108,7 +108,10 @@ window.renderChar = async function (dir, base, opts) {
       zoom = Math.max((wx1 - wx0) / W, (wy1 - wy0) / H) * pad;
     }
   }
-  const out = { anims: {}, view: { x0, y0, x1, y1 } };
+  // 静止姿势(setup pose)的包围盒:游戏按骨骼数据里的 skeleton.x/y/width/height 定体型,新骨骼缺这几个值时用它补
+  skeleton.setToSetupPose(); skeleton.updateWorldTransform(spine.Physics ? spine.Physics.update : undefined); skeleton.getBounds(off, size);
+  const setupBounds = [off.x, off.y, size.x, size.y].map(v => Math.round(v * 100) / 100);
+  const out = { anims: {}, view: { x0, y0, x1, y1 }, setupBounds };
   for (const anim of (opts.only && opts.only.length ? names.filter(n => opts.only.includes(n)) : names)) {
     state.setAnimation(0, anim, true);
     const duration = state.getCurrent(0).animation.duration || 0.001;

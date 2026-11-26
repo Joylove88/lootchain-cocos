@@ -25,10 +25,24 @@ const PROTAGONIST_CHAIN: HeroClipSegment[] = [
   { anim: 'skill3B', start: 0.3, end: 1.45, speed: 1.3, hitAt: 0.62, mult: 1.9, reach: 220, heavy: true, around: true },
 ];
 
+/**
+ * 11-26 男主换底:失落之剑 Lucius 换皮(tools/qa/protag_lucius_install.py;动画已改名 atk / atk2 / atk3 / skill2 …)。
+ * 每段攻击本身就短(0.5~0.7 秒、一刀一段),接近原速播;出刀点按 20fps 逐帧看过,命中时刻(切片时长 × hitAt)
+ * 与矿境掠夺模型 GUARD_RAID_COMBO 的 hitMs 对齐在几十毫秒内(模型数值不动、不用重建 guard-replay)。
+ * 劈下 → 上撩 → 过顶斩 → 横扫 → 蓄力突刺(终结,重击 + 范围)。女主暂时还是永夜龙骑底(PROTAGONIST_CHAIN)。
+ */
+const PROTAGONIST_LUCIUS_CHAIN: HeroClipSegment[] = [
+  { anim: 'atk', start: 0.08, end: 0.5, speed: 1.0, hitAt: 0.6, mult: 0.9, reach: 175, heavy: false },
+  { anim: 'atk2', start: 0.12, end: 0.533, speed: 1.0, hitAt: 0.56, mult: 1.0, reach: 185, heavy: false },
+  { anim: 'atk3', start: 0.15, end: 0.7, speed: 1.0, hitAt: 0.82, mult: 1.25, reach: 180, heavy: false },
+  { anim: 'atk2', start: 0, end: 0.533, speed: 1.3, hitAt: 0.66, mult: 1.2, reach: 210, heavy: false },
+  { anim: 'skill2', start: 0.75, end: 1.6, speed: 1.15, hitAt: 0.76, mult: 1.9, reach: 220, heavy: true, around: true },
+];
+
 export const HERO_CLIP_COMBOS: Readonly<Record<string, ReadonlyArray<HeroClipSegment>>> = {
-  protag_m: PROTAGONIST_CHAIN,
+  protag_m: PROTAGONIST_LUCIUS_CHAIN,
   protag_f: PROTAGONIST_CHAIN,
-  protag_m_lh: PROTAGONIST_CHAIN,
+  protag_m_lh: PROTAGONIST_LUCIUS_CHAIN,
   protag_f_lh: PROTAGONIST_CHAIN,
   IshmaelA: PROTAGONIST_CHAIN,
 };
