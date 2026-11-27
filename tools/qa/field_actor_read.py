@@ -147,6 +147,11 @@ if (!data) return 'leaderspine load failed'; const L = t.leader; L.skeleton.skel
         st.append({'js': "window.__am(null); window.__ar.shot(); return 'reset';"})
     if OPT.get('ab'):
         st.append({'js': AB_OFF, 'save': f'{TAG}_off.png'})
+    if OPT.get('scales'):
+        # --scales=1.15,1.25:同帧把队伍骨骼放大几档(只动骨骼节点,脚底不动)
+        for k in str(OPT['scales']).split(','):
+            st.append({'js': f"""for (const a of window.__ar.actors()) {{ const n = a.spineNode; if (!n) continue; n.setScale(a.baseScaleX * a.facing * {k}, a.baseScaleY * {k}, 1); }}
+const u = window.__ar.shot(); for (const a of window.__ar.actors()) {{ const n = a.spineNode; if (n) n.setScale(a.baseScaleX * a.facing, a.baseScaleY, 1); }} return u;""", 'save': f'{TAG}_x{k}.png'})
     st.append({'js': "window.__ar.overlays(false); window.__ar.party(0); const u = window.__ar.shot(); window.__ar.party(255); window.__ar.overlays(true); return u;", 'save': f'{TAG}_noov_bg.png'})
     # 命中那一帧:放开普攻,约 0.3 秒刀落下时定格
     st.append({'js': "cc.director.resume(); t.skillReadyAt=[0,0,0]; t.actionUntil=0; t.leaderAttack(); await sleep(320); cc.director.pause(); cc.game.step(); return 'hit';"})

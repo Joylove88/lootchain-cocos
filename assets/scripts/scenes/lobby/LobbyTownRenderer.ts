@@ -1997,11 +1997,13 @@ export class LobbyTownRenderer {
 
   private createActor(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, facing: 1 | -1): TownActor {
     const node = this.host.addChildPlainNode(parent, `TownActor_${index}`, x, y, HERO_SLOT_W, HERO_SLOT_H);
+    // 野外队伍整体放大(11-27,见 LobbyFieldActorLook.scale):骨骼 + 脚下影子一起放大,判定范围不变
+    const partyScale = fieldActorLookEnabled(this.def.code) ? fieldActorLook(this.def.code).scale : 1;
     // 脚下:柔边接触阴影(压地)+ 原程序椭圆影(骨骼自带影子插槽时去掉,见下)
-    const contact = this.addContactShadow(node, HERO_SLOT_W * 0.95);
+    const contact = this.addContactShadow(node, HERO_SLOT_W * 0.95 * partyScale);
     const shadow = node.addComponent(Graphics);
     shadow.fillColor = rgba(0, 0, 0, 70);
-    shadow.ellipse(0, 2, HERO_SLOT_W * 0.24, 6);
+    shadow.ellipse(0, 2, HERO_SLOT_W * 0.24 * partyScale, 6 * partyScale);
     shadow.fill();
     const actor: TownActor = {
       node, x, y, facing, moving: false, skeleton: null, spineNode: null, names: null, baseScaleX: 1, baseScaleY: 1, anim: null, shadow, idleFor: 0, faceAcc: 0,
@@ -2011,6 +2013,8 @@ export class LobbyTownRenderer {
     };
     if (hero.protagonist && this.host.realmQilingOpen?.()) {
       actor.seals = this.mountQilingSeals(node);
+      // 契印位置按人物身高摆的,队伍放大时整组跟着放大
+      node.getChildByName('QilingSeals')?.setScale(partyScale, partyScale, 1);
     }
     const unit = this.toUnit(hero);
     const resourcePath = resolveBattleUnitSpineResource(unit);
@@ -2039,7 +2043,7 @@ export class LobbyTownRenderer {
         if (skin) {
           skeleton.setSkin(skin);
         }
-        const resolvedScale = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, HERO_SLOT_W, HERO_SLOT_H, 1, false, unit);
+        const resolvedScale = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, HERO_SLOT_W, HERO_SLOT_H, 1, false, unit) * partyScale;
         actor.baseScaleX = resolveBattleUnitSpineMirrorScaleX(resolvedScale, false);
         actor.baseScaleY = resolvedScale;
         spineNode.setScale(actor.baseScaleX * actor.facing, actor.baseScaleY, 1);
