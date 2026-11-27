@@ -2682,12 +2682,28 @@ export class LobbyTownRenderer {
   private awakenBind: Graphics | null = null;
 
   /**
-   * 队长能演觉醒了:跑图已建好、队长骨骼就绪、带「倒地起身」动作。
+   * 队长能演觉醒了:跑图已建好、队长骨骼就绪、有「躺地」动作(down_end,或死亡动作末帧兜底)。
    * 新号都出生在晨风村法阵旁;不在晨风村(老号补演 / 自验账号)就在原地演,不卡流程。
    */
   awakenStageReady(): boolean {
     const leader = this.leader;
-    return this.isMounted() && !!leader?.skeleton && !!leader.skeleton.findAnimation('down_end');
+    return this.isMounted() && !!leader?.skeleton && !!this.awakenLieAnim(leader);
+  }
+
+  /**
+   * 「躺地」用哪段动作:有 down_end(倒地起身)用它;没有就用死亡动作的最后一帧当躺姿(11-27 主角换 Lucius 底后骨骼没有 down_end,
+   * 曾导致新号觉醒演出永远不开演 → 契约之选不弹、弹窗队列卡死)。起身时死亡末帧混合过渡到待机。
+   */
+  private awakenLieAnim(leader: TownActor): { name: string; getUp: boolean } | null {
+    const sk = leader.skeleton;
+    if (!sk) {
+      return null;
+    }
+    if (sk.findAnimation('down_end')) {
+      return { name: 'down_end', getUp: true };
+    }
+    const death = leader.names?.death;
+    return death && sk.findAnimation(death) ? { name: death, getUp: false } : null;
   }
 
   /** 开场:锁操作、藏队友、队长躺在法阵旁(down_end 首帧定格 = 平躺)。 */
@@ -2702,9 +2718,14 @@ export class LobbyTownRenderer {
     this.actionUntil = Number.MAX_SAFE_INTEGER;
     this.leaderActionAnim = false;
     this.setActorFacing(leader, 1);
-    leader.skeleton.setAnimation(0, 'down_end', false);
+    const lie = this.awakenLieAnim(leader)!;
+    const entry = leader.skeleton.setAnimation(0, lie.name, false);
+    if (!lie.getUp && entry) {
+      // 死亡动作:停在最后一帧 = 躺在地上
+      entry.trackTime = entry.animationEnd;
+    }
     leader.skeleton.timeScale = 0;
-    leader.anim = 'down_end';
+    leader.anim = lie.name;
     leader.oneShotEnd = 0;
     return true;
   }
@@ -2715,6 +2736,17 @@ export class LobbyTownRenderer {
     const names = leader?.names;
     if (!leader?.skeleton || !names) {
       return 0;
+    }
+    const lie = this.awakenLieAnim(leader);
+    if (lie && !lie.getUp) {
+      // 没有起身动作:从死亡末帧(躺姿)混合 0.9 秒过渡到待机 = 慢慢站起来
+      leader.skeleton.timeScale = 1;
+      if (names.idle) {
+        leader.skeleton.setMix(lie.name, names.idle, 0.9);
+        leader.skeleton.setAnimation(0, names.idle, true);
+      }
+      leader.anim = names.idle;
+      return 1100;
     }
     const length = (leader.skeleton.findAnimation('down_end')?.duration ?? 0.83) * 1000;
     leader.skeleton.timeScale = 0.7;
