@@ -20,6 +20,11 @@ export interface ActorLookDef {
   pop: [number, number, number];
   /** 不再给队伍套地图的 actorTint(林地 236,242,226 会把人压灰)。 */
   clearTint: boolean;
+  /**
+   * 缩小显示时的清晰度(11-27 用户「看起来太糊」):反锐化强度 / 取样半径(屏幕像素)/ mip 偏置。
+   * 配合主角贴图补齐 2 的幂后真正生成 mipmap:mip 去锯齿,偏置 + 反锐化把细节找回来(实测细节量 20.0 → 25.2,边缘不起锯齿)。
+   */
+  sharp: [number, number, number];
 }
 
 const DEFAULT_LOOK: ActorLookDef = {
@@ -29,6 +34,7 @@ const DEFAULT_LOOK: ActorLookDef = {
   rimW: 1.0,
   pop: [1.12, 1.06, 0.04],
   clearTint: true,
+  sharp: [0.7, 1.0, -0.6],
 };
 
 /** 每张图的微调(不写 = 默认)。 */
@@ -117,6 +123,7 @@ export function applyFieldActorLook(skeleton: sp.Skeleton, mapCode: string | und
     mat.setProperty('rimColor', new Vec4(r[0], r[1], r[2], r[3]));
     mat.setProperty('olDir', new Vec4(-0.8, 0.6, 1, look.rimW), RIM_PASS);
     mat.setProperty('popParams', new Vec4(look.pop[0], look.pop[1], look.pop[2], 0));
+    mat.setProperty('sharpParams', new Vec4(look.sharp[0], look.sharp[1], look.sharp[2], 0));
     skeleton.customMaterial = mat;
     skeleton.markForUpdateRenderData(true);
   });

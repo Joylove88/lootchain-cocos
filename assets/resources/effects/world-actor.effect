@@ -53,6 +53,7 @@ CCEffect %{
       properties:
         alphaThreshold: { value: 0.5 }
         popParams: { value: [1.0, 1.0, 0.0, 0.0] }
+        sharpParams: { value: [0.0, 0.0, 0.0, 0.0] }
 }%
 
 CCProgram actor-vs %{
@@ -91,6 +92,7 @@ CCProgram actor-vs %{
 
 CCProgram actor-fs %{
   precision highp float;
+  #pragma extension([GL_OES_standard_derivatives, __VERSION__ < 300])
   #include <builtin/internal/alpha-test>
 
   in vec4 v_light;
@@ -103,16 +105,36 @@ CCProgram actor-fs %{
 
   uniform ActorPop {
     vec4 popParams;
+    vec4 sharpParams;
   };
+
+  // 缩小显示时的清晰度(11-27 用户「看起来太糊」):sharpParams = (锐化强度, 取样半径 / 屏幕像素, mip 偏置, 0)。
+  // 偏置 < 0 = 选更清楚的那一级 mip;锐化 = 本像素减去周围 4 点(按屏幕像素间距取样)的均值再加回去(反锐化遮罩),只动颜色不动透明度。
+  vec4 sampleSharp (vec2 uv) {
+    vec4 c = texture(cc_spriteTexture, uv, sharpParams.z);
+    if (sharpParams.x > 0.0) {
+      vec2 d = fwidth(uv) * sharpParams.y;
+      vec4 a1 = texture(cc_spriteTexture, uv + vec2(d.x, 0.0), sharpParams.z);
+      vec4 a2 = texture(cc_spriteTexture, uv - vec2(d.x, 0.0), sharpParams.z);
+      vec4 a3 = texture(cc_spriteTexture, uv + vec2(0.0, d.y), sharpParams.z);
+      vec4 a4 = texture(cc_spriteTexture, uv - vec2(0.0, d.y), sharpParams.z);
+      float w = a1.a + a2.a + a3.a + a4.a;
+      vec3 avg = (a1.rgb * a1.a + a2.rgb * a2.a + a3.rgb * a3.a + a4.rgb * a4.a) / max(w, 1e-3);
+      // 只在本像素和周围都基本不透明时锐化(轮廓边上不动,免得描出亮 / 暗边)
+      float k = sharpParams.x * smoothstep(0.6, 0.9, c.a) * smoothstep(2.4, 3.6, w);
+      c.rgb = clamp(c.rgb + (c.rgb - avg) * k, 0.0, 1.0);
+    }
+    return c;
+  }
 
   vec4 frag () {
     vec4 o = vec4(1, 1, 1, 1);
     #if TWO_COLORED
-      vec4 texColor = texture(cc_spriteTexture, uv0);
+      vec4 texColor = sampleSharp(uv0);
       o.a = texColor.a * v_light.a;
       o.rgb = ((texColor.a - 1.0) * v_dark.a + 1.0 - texColor.rgb) * v_dark.rgb + texColor.rgb * v_light.rgb;
     #else
-      o *= texture(cc_spriteTexture, uv0);
+      o *= sampleSharp(uv0);
       o *= v_light;
     #endif
     vec3 c = o.rgb;

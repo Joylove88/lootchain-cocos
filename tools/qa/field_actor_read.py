@@ -56,7 +56,7 @@ window.__ar = (() => {
         info.nodeScale = [s.node.scale.x, s.node.scale.y]; info.worldScale = [ws.x, ws.y];
         info.pma = s.premultipliedAlpha; info.color = [s.color.r, s.color.g, s.color.b];
         const texs = (s.skeletonData && s.skeletonData.textures) || [];
-        info.textures = texs.map(tx => { const im = tx && tx.image; const g = tx && tx.getGFXSampler && tx.getGFXSampler(); return [tx.width, tx.height, tx._minFilter, tx._magFilter, tx._mipFilter, (tx.mipmapLevel || (tx._mipmapLevel)) || 1]; });
+        info.textures = texs.map(tx => { const im = tx && tx.image; const g = tx && tx.getGFXSampler && tx.getGFXSampler(); const gt = tx.getGFXTexture && tx.getGFXTexture(); return [tx.width, tx.height, tx._minFilter, tx._magFilter, tx._mipFilter, (tx.mipmapLevel || (tx._mipmapLevel)) || 1, gt ? gt.levelCount : -1]; });
         const rd = s.renderData; info.rdKeys = rd ? Object.keys(rd).slice(0, 40) : null;
         const vb = rd && rd.chunk && rd.chunk.vb; const st = rd && rd.floatStride; const nv = rd && rd.vertexCount;
         const ib = rd && (rd.indices || (rd._indices));
@@ -94,16 +94,17 @@ window.__ar = (() => {
 
 # --proto:同帧套上 effects/world-actor 材质的几档参数(描边宽度单位 = 帧缓冲像素)
 PROTO = {
-    'r1_outline': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1, 0.92, 0.75, 0.0), rimW=1.0, pop=(1.0, 1.0, 0.0)),
-    'r2_recommend': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04)),
-    'r3_recommend_notint': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04), white=True),
+    's0_now': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04)),
+    's1_bias': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04), sharp=(0.0, 0.0, -0.7)),
+    's2_bias_sharp': dict(w=2.4, ol=(0.04, 0.035, 0.03, 0.8), rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04), sharp=(0.6, 1.0, -0.7)),
+    's3_sharp_softol': dict(w=2.0, ol=(0.04, 0.035, 0.03, 0.8), olo=0.15, ohi=0.85, rim=(1.0, 0.94, 0.8, 0.32), rimW=1.0, pop=(1.12, 1.06, 0.04), sharp=(0.6, 1.0, -0.7)),
 }
 PROTO_JS = r"""
 const eff = await new Promise(r => cc.resources.load('effects/world-actor', cc.EffectAsset, (e, a) => r(e ? 'ERR ' + e.message : a)));
 if (typeof eff === 'string') return eff;
 window.__am = (c) => { for (const a of window.__ar.actors()) { const s = a.skeleton; if (!s) continue;
   if (!c) { s.customMaterial = null; } else { const m = new cc.Material(); m.initialize({ effectAsset: eff });
-    m.setProperty('olStyle', new cc.Vec4(c.w, 0.35, 0.7, 1)); m.setProperty('olColor', new cc.Vec4(...c.ol)); m.setProperty('rimColor', new cc.Vec4(...c.rim));
+    m.setProperty('olStyle', new cc.Vec4(c.w, c.olo ?? 0.35, c.ohi ?? 0.7, 1)); if (c.sharp) m.setProperty('sharpParams', new cc.Vec4(c.sharp[0], c.sharp[1], c.sharp[2], 0)); m.setProperty('olColor', new cc.Vec4(...c.ol)); m.setProperty('rimColor', new cc.Vec4(...c.rim));
     m.setProperty('popParams', new cc.Vec4(c.pop[0], c.pop[1], c.pop[2], 0)); m.setProperty('olDir', new cc.Vec4(-0.8, 0.6, 1, c.rimW || 1.25), 4); s.customMaterial = m; }
   if (c && c.white) { if (!a.__c0) a.__c0 = s.color.clone(); s.color = new cc.Color(255, 255, 255, 255); } else if (a.__c0) { s.color = a.__c0; a.__c0 = null; }
   s.markForUpdateRenderData(true); } };

@@ -79,6 +79,13 @@ def main():
             if r.get('rotate') in ('90', 'true', '270'):
                 w, h = h, w
             im.paste((0, 0, 0, 0), (x, y, x + w, y + h))
+    # 11-27:贴图补齐到 2 的幂(1985×808 → 2048×1024,内容贴左上、区域坐标不变),否则引擎不生成 mipmap,
+    # 野外缩小 2.4 倍显示时锯齿 + 细节糊成一片(实测 mip 偏置无效 = 没有 mip)
+    pw, ph = 1 << (im.width - 1).bit_length(), 1 << (im.height - 1).bit_length()
+    if (pw, ph) != im.size:
+        canvas = Image.new('RGBA', (pw, ph), (0, 0, 0, 0))
+        canvas.paste(im, (0, 0))
+        im = canvas
     im.save(os.path.join(dst, f'{asset}.png'), optimize=True)
     text = []
     for l in lines:
@@ -87,6 +94,8 @@ def main():
             l = f'{asset}.png'
         elif s.startswith('pma:'):
             l = 'pma:false'
+        elif s.startswith('size:'):
+            l = f'size:{im.width},{im.height}'
         text.append(l)
     open(os.path.join(dst, f'{asset}.atlas'), 'w', encoding='utf-8', newline='\n').write('\n'.join(text) + '\n')
     print(asset, 'anims', sorted(out), 'png', im.size)
