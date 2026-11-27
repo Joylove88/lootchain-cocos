@@ -25,7 +25,7 @@ export interface ActorLookDef {
    * 配合主角贴图补齐 2 的幂后真正生成 mipmap:mip 去锯齿,偏置 + 反锐化把细节找回来(实测细节量 20.0 → 25.2,边缘不起锯齿)。
    */
   sharp: [number, number, number];
-  /** 队伍骨骼放大倍数(11-27 用户「放大试试看」:人在屏上只有约 180px,放大 1.25 → 约 225px;怪物 / 判定范围不动)。 */
+  /** 队伍骨骼放大倍数(11-27 试过 1.25 = 约 225px,上线后用户「需要恢复下英雄尺寸」→ 回到 1.0;怪物 / 判定范围从来不动)。 */
   scale: number;
 }
 
@@ -37,7 +37,7 @@ const DEFAULT_LOOK: ActorLookDef = {
   pop: [1.12, 1.06, 0.04],
   clearTint: true,
   sharp: [0.7, 1.0, -0.6],
-  scale: 1.25,
+  scale: 1.0,
 };
 
 /** 每张图的微调(不写 = 默认)。 */

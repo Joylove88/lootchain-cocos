@@ -36,27 +36,30 @@ interface TodDef {
   shadowAlpha?: number;
 }
 
+// 11-27 用户看线上:「整体偏暗,英雄和技能特效像做了透明化」→ 白天档整体减弱:薄色层减半、叠底变浅、四周压暗 0.72 → 0.86;
+// 左上暖光由「叠加」改「按底色提亮」(结果 = 底 × (1 + 光)),暗部不再被抬成灰(实测人物暗部 10.8 → 25.8 就是它抬的);
+// 提亮比叠加弱,强度约翻倍、四周压暗只留 0.92~0.94 —— 林地同帧:画面亮度 65.7 → 68、人物反差 164 → 192(全关调色层 190)。
 const TOD_DEFS: Record<string, TodDef> = {
   // 11-21 实测对齐原型:白天亮度 = A,饱和度 0.47 → 0.36 靠薄色层压;黄昏亮度 = B,蓝通道补到 B
   VILLAGE: {
-    day: { wash: [0.30, 0.31, 0.36, 0.2], mul: [1.0, 0.95, 0.88] },
+    day: { wash: [0.30, 0.31, 0.36, 0.1], mul: [1.0, 0.97, 0.93] },
     dusk: { wash: [0.10, 0.14, 0.34, 0.12], mul: [0.46, 0.46, 0.74] },
-    sun: 0.55, duskEdge: 0.58, dayEdge: 0.78, shadowLen: 210,
+    sun: 1.0, duskEdge: 0.58, dayEdge: 0.94, shadowLen: 210,
   },
   WOODS: {
-    day: { wash: [0.18, 0.24, 0.26, 0.06], mul: [0.96, 0.92, 0.82] },
+    day: { wash: [0.18, 0.24, 0.26, 0.03], mul: [1.0, 0.97, 0.9] },
     dusk: { wash: [0.10, 0.16, 0.28, 0.16], mul: [0.48, 0.52, 0.66] },
-    sun: 0.5, duskEdge: 0.6, dayEdge: 0.72, shadowLen: 230,
+    sun: 1.0, duskEdge: 0.6, dayEdge: 0.94, shadowLen: 230,
   },
   GRAY: {
-    day: { wash: [0.24, 0.26, 0.30, 0.06], mul: [0.96, 0.91, 0.82] },
+    day: { wash: [0.24, 0.26, 0.30, 0.03], mul: [1.0, 0.96, 0.9] },
     dusk: { wash: [0.14, 0.16, 0.30, 0.16], mul: [0.52, 0.50, 0.64] },
-    sun: 0.3, duskEdge: 0.6, dayEdge: 0.72, shadowLen: 340, shadowAlpha: 178,
+    sun: 0.6, duskEdge: 0.6, dayEdge: 0.92, shadowLen: 340, shadowAlpha: 178,
   },
   DEADWOOD: {
-    day: { wash: [0.18, 0.22, 0.24, 0.06], mul: [0.94, 0.94, 0.90] },
+    day: { wash: [0.18, 0.22, 0.24, 0.03], mul: [0.98, 0.98, 0.95] },
     dusk: { wash: [0.08, 0.14, 0.22, 0.16], mul: [0.46, 0.52, 0.60] },
-    sun: 0.16, duskEdge: 0.58, dayEdge: 0.72, shadowLen: 230,
+    sun: 0.35, duskEdge: 0.58, dayEdge: 0.92, shadowLen: 230,
   },
 };
 
@@ -97,7 +100,6 @@ let whiteFrame: SpriteFrame | null = null;
 let glowFrame: SpriteFrame | null = null;
 let multiplyMat: Material | null = null;
 const mulFrames = new Map<number, SpriteFrame>();
-let sunFrame: SpriteFrame | null = null;
 
 function makeFrame(data: Uint8Array, w: number, h: number): SpriteFrame {
   const tex = new Texture2D();
@@ -166,8 +168,10 @@ function mulTex(edge: number): SpriteFrame {
 }
 
 /** 斜照暖光:左上最亮往右下衰减 + 几道斜向光柱(白色,alpha 存强度)。 */
-function sunTex(): SpriteFrame {
-  if (!sunFrame) {
+/** 提亮版暖光:形状放在颜色通道(a 恒 255),配合 applyBrighten 的 DST_COLOR / ONE 混合 = 底 × (1 + 颜色)。 */
+let sunBrightFrame: SpriteFrame | null = null;
+function sunBrightTex(): SpriteFrame {
+  if (!sunBrightFrame) {
     const w = 256;
     const h = 128;
     const data = new Uint8Array(w * h * 4);
@@ -178,17 +182,43 @@ function sunTex(): SpriteFrame {
         const g = Math.pow(Math.max(0, 1 - (u * 0.75 + v * 0.9) / 1.25), 1.5);
         const t = u * 1.0 - v * 0.55;
         const s = 0.5 + 0.5 * Math.sin(t * 28) * Math.sin(t * 11 + 1.3);
-        const a = g * (0.45 + 0.55 * s);
+        const a = Math.round(Math.min(1, g * (0.45 + 0.55 * s)) * 255);
         const i = (y * w + x) * 4;
-        data[i] = 255;
-        data[i + 1] = 255;
-        data[i + 2] = 255;
-        data[i + 3] = Math.round(Math.min(1, a) * 255);
+        data[i] = a;
+        data[i + 1] = a;
+        data[i + 2] = a;
+        data[i + 3] = 255;
       }
     }
-    sunFrame = makeFrame(data, w, h);
+    sunBrightFrame = makeFrame(data, w, h);
   }
-  return sunFrame;
+  return sunBrightFrame;
+}
+
+let brightenMat: Material | null = null;
+/** 按底色提亮:结果 = 底 + 底 × 源色(暗处几乎不变,亮处更亮;不像叠加那样把黑抬成灰)。 */
+function applyBrighten(sprite: Sprite): void {
+  if (!brightenMat) {
+    const src = builtinResMgr.get<Material>('ui-sprite-material');
+    if (!src || !src.effectAsset) {
+      return;
+    }
+    const mat = new Material();
+    mat.initialize({
+      effectAsset: src.effectAsset,
+      defines: { USE_TEXTURE: true },
+      states: {
+        blendState: {
+          targets: [{
+            blend: true, blendSrc: gfx.BlendFactor.DST_COLOR, blendDst: gfx.BlendFactor.ONE,
+            blendSrcAlpha: gfx.BlendFactor.ZERO, blendDstAlpha: gfx.BlendFactor.ONE,
+          }],
+        },
+      },
+    });
+    brightenMat = mat;
+  }
+  sprite.customMaterial = brightenMat;
 }
 
 function applyMultiply(sprite: Sprite): void {
@@ -297,8 +327,8 @@ export class FieldTod {
     this.glowOp = glowRoot.addComponent(UIOpacity);
     world.addChild(glowRoot);
     this.glowRoot = glowRoot;
-    this.sun = mk('TodSun', sunTex());
-    applyAdditive(this.sun);
+    this.sun = mk('TodSun', sunBrightTex());
+    applyBrighten(this.sun);
     // 插到鬼火 / 暗角之前
     const anchor = world.getChildByName('FieldWisps') ?? world.getChildByName('FieldLookOverlay');
     if (anchor) {
@@ -508,7 +538,9 @@ export class FieldTod {
     if (this.mul!.spriteFrame !== frame) {
       this.mul!.spriteFrame = frame;
     }
-    this.sun!.color = new Color(255, 196, 120, Math.round(d.sun * (1 - n) * 255));
+    // 提亮混合不看透明度:强度乘进颜色(暖色 255 / 196 / 120)
+    const k = d.sun * (1 - n);
+    this.sun!.color = new Color(Math.round(255 * k), Math.round(196 * k), Math.round(120 * k), 255);
     if (this.glowOp) {
       this.glowOp.opacity = 255;
     }

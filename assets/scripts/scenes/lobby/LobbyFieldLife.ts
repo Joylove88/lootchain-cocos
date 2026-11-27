@@ -27,13 +27,14 @@ export interface FieldLifeDef {
   ambient: AmbientOpts;
 }
 
+// 11-27 叶影深度减约三成(用户「整体偏暗」;人走到树下不再被压得发黑)
 const LIFE_DEFS: Record<string, FieldLifeDef> = {
   WOODS: {
-    dapple: { shade: 0.55, sun: 0.46, open: 0.22, scale: 720 }, smoke: true, flies: 4, birds: 'flock', foliage: true,
+    dapple: { shade: 0.36, sun: 0.46, open: 0.22, scale: 720 }, smoke: true, flies: 4, birds: 'flock', foliage: true,
     ambient: { leaves: 14, localClouds: 3, cloudOpacity: 44, motes: 16, moteTint: [255, 238, 196], canopy: false },
   },
   VILLAGE: {
-    dapple: { shade: 0.46, sun: 0.4, open: 0.1, scale: 680 }, flies: 5, birds: 'flock',
+    dapple: { shade: 0.3, sun: 0.4, open: 0.1, scale: 680 }, flies: 5, birds: 'flock',
     ambient: { leaves: 8, localClouds: 3, cloudOpacity: 38, motes: 12, moteTint: [255, 240, 205], canopy: false },
   },
   GRAY: {
