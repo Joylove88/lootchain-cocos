@@ -108,6 +108,7 @@ import {
 import { clearAwakenPending, isAwakenPending, ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protagonist/ProtagonistCreateFlow';
 import { playPrologueVideo, prologuePlaying, prologueSeen } from './protagonist/PrologueVideo';
 import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
+import { OPENING_LINES, markOpeningDone, openingDone, openingOn } from './lobby/LobbyOpeningBattle';
 import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickState } from './lobby/LobbyContractPickRenderer';
 import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickState } from './lobby/LobbyEvolutionPickRenderer';
 import { LobbyPopupQueue } from './lobby/LobbyPopupQueue';
@@ -417,6 +418,9 @@ export class LootChainGameRoot extends Component {
   // docs/58 契约之选:觉醒后 3 选 1 R(没选过才弹;不可跳过)
   private contractPick: ContractPickState | null = null;
   private contractCheckedUid = 0;
+  /** 开局爽感原型(?opening=v2):idle / active(前世一战进行中)/ ending(黑场收尾);本会话打过的账号。 */
+  private openingPhase: 'idle' | 'active' | 'ending' = 'idle';
+  private readonly openingPlayed = new Set<number>();
   /** '' = 开局契约之选;否则 = 英雄契约里程碑码(docs/58 §3.1:V04 / V09 剧情领奖后 / Lv.30),同一页面换文案。 */
   private contractMilestone = '';
   private levelContractCheckDue = true;
@@ -1398,6 +1402,7 @@ export class LootChainGameRoot extends Component {
     if (LOBBY_TOWN_ENABLED && this.currentView === 'lobby') {
       this.lobbyTownRenderer.step(deltaTime);
       this.tickRealmTrial();
+      this.stepOpeningHud();
       this.stepAwakenCinematic();
       this.checkMoveGuide();
       this.pumpPopupQueue();
@@ -10125,6 +10130,10 @@ export class LootChainGameRoot extends Component {
 
   private showProtagonistCreateView(): void {
     this.renderProtagonistCreate();
+    if (openingOn()) {
+      // 开局原型:玩家起名的这段时间先把强队骨骼 / 特效 / 掉落图标拉下来,建完进村就能开打
+      this.lobbyTownRenderer.openingPartyLoaded();
+    }
   }
 
   private handleLoginSuccess(userId: number, tokenName: string): void {
@@ -10157,6 +10166,9 @@ export class LootChainGameRoot extends Component {
     // 11-07 用户:剧情对话框和进化抉择同时出现 → 剧情框(worldDialog)开着时契约 / 进化 / 里程碑都等它关了再弹
     if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone
       || this.worldDialog || this.worldPoiDialog || this.lobbyHasOpenLayer() || prologuePlaying()) {
+      return;
+    }
+    if (this.stepOpeningStart(userId)) {
       return;
     }
     if (!isAwakenPending(userId)) {
@@ -10319,7 +10331,7 @@ export class LootChainGameRoot extends Component {
     if (this.worldDialog || this.worldPoiDialog || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone) {
       return true;
     }
-    if (this.awakenCinematic.active || prologuePlaying()) {
+    if (this.awakenCinematic.active || prologuePlaying() || this.openingPhase !== 'idle') {
       return true;
     }
     // 新号觉醒演出还没开演(待演标记还在):别抢在演出前弹东西
@@ -10560,6 +10572,128 @@ export class LootChainGameRoot extends Component {
     }, seconds);
   }
 
+  // ── 开局爽感原型(?opening=v2,docs/开局爽感原型方案.md)──
+
+  /**
+   * 开关打开、这个账号还没打过「前世一战」、人在晨风村且队长骨骼就绪 → 就地开打;返回 true = 本帧由开局接管(觉醒 / 契约之选等它打完)。
+   * 建号时不再记觉醒待演 / 不播序幕(ProtagonistCreateFlow);老号带开关进来残留的待演标记在这里清掉。
+   */
+  private stepOpeningStart(userId: number): boolean {
+    if (!openingOn()) {
+      return false;
+    }
+    if (this.openingPhase !== 'idle') {
+      return true;
+    }
+    if (this.openingPlayed.has(userId) || openingDone(userId)) {
+      return false;
+    }
+    if (isAwakenPending(userId)) {
+      clearAwakenPending(userId);
+    }
+    const town = this.lobbyTownRenderer;
+    if (town.currentMapCode() !== 'VILLAGE' || !town.partyReady() || !town.openingPartyLoaded() || this.realmTrial) {
+      // 不在村里(老号)就不打;在村里但队伍还没建好就等下一轮
+      if (town.isMounted() && town.currentMapCode() !== 'VILLAGE') {
+        this.openingPlayed.add(userId);
+        return false;
+      }
+      return true;
+    }
+    if (!town.startOpening(() => this.finishOpeningFlow(userId))) {
+      return true;
+    }
+    this.openingPhase = 'active';
+    this.openingPlayed.add(userId);
+    // 整页重绘:跑图 HUD 按开局模式重建(摇杆 / 战斗簇 / 血条 / 援护位 / 波次连杀)
+    this.renderCurrentView();
+    this.stepOpeningHud();
+    return true;
+  }
+
+  /** 开局进行中:跑图 HUD 以外的系统按钮 / 资源条 / 追踪条全部收起(整页重绘后会被重建,所以每帧压一下)。 */
+  private stepOpeningHud(): void {
+    if (this.openingPhase === 'idle') {
+      return;
+    }
+    const root = this.ensureContentRoot();
+    for (const name of ['LobbySystemIcons', 'LobbyResourceBar', 'LobbyPlayerInfoButton', 'LobbyCompactStaminaChip', 'LobbyGuideOverlay', 'LobbyGoalTracker', 'LobbyCompactGoalTracker']) {
+      const node = root.getChildByName(name);
+      if (node && node.isValid && node.active) {
+        node.active = false;
+      }
+    }
+  }
+
+  /** 首领倒下后:黑场 + 一句话收尾 → 收场回到 Lv.1 正常开局(契约之选照常排队)。 */
+  private finishOpeningFlow(userId: number): void {
+    if (this.openingPhase !== 'active') {
+      return;
+    }
+    this.openingPhase = 'ending';
+    const layout = this.resolveLayout();
+    const layer = this.openingLayer();
+    layer.destroyAllChildren();
+    const veil = new Node('OpeningVeil');
+    veil.layer = this.node.layer;
+    layer.addChild(veil);
+    veil.addComponent(UITransform).setContentSize(new Size(layout.width * 2, layout.height * 2));
+    const g = veil.addComponent(Graphics);
+    g.fillColor = new Color(0, 0, 0, 255);
+    g.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+    g.fill();
+    const op = veil.addComponent(UIOpacity);
+    op.opacity = 0;
+    const k = Math.max(0.8, Math.min(1.3, layout.stageHeight / 841));
+    const line = this.addChildLabel(veil, 'Line', OPENING_LINES.end, 0, 24 * k, Math.round(36 * k), new Color(240, 226, 200, 255), new Size(layout.stageWidth * 0.9, 60 * k));
+    line.isBold = true;
+    const sub = this.addChildLabel(veil, 'Sub', OPENING_LINES.loot, 0, -36 * k, Math.round(22 * k), new Color(190, 176, 150, 255), new Size(layout.stageWidth * 0.9, 40 * k));
+    sub.isBold = false;
+    tween(op).to(0.8, { opacity: 255 }).delay(2.4).call(() => {
+      this.lobbyTownRenderer.endOpening();
+      markOpeningDone(userId);
+      this.openingPhase = 'idle';
+      this.renderCurrentView();
+      // 回到 Lv.1 正常开局:直接查契约之选(本会话的那次查询原本挂在觉醒舞台就绪上)
+      this.contractCheckedUid = userId;
+      void this.checkStarterContract();
+    }).to(0.9, { opacity: 0 }).call(() => veil.isValid && veil.destroy()).start();
+  }
+
+  /** 零的一句话(LobbyTownHost.openingSay):中上方气泡,挂根节点(整页重绘不拆),seconds 秒后淡出;新的一句顶掉旧的。 */
+  openingSay(text: string, seconds: number): void {
+    const layer = this.openingLayer();
+    layer.getChildByName('OpeningSay')?.destroy();
+    const layout = this.resolveLayout();
+    const phone = isPhoneDesign();
+    const k = Math.max(0.7, Math.min(1.25, layout.stageHeight / 841)) * (phone ? 1.1 : 1);
+    const w = Math.min(layout.stageWidth * 0.62, 640 * k);
+    const h = 96 * k;
+    const root = new Node('OpeningSay');
+    root.layer = this.node.layer;
+    layer.addChild(root);
+    root.addComponent(UITransform).setContentSize(new Size(w + h, h));
+    // 底部居中(队长血条上方):不挡战场中间和顶部波次标题
+    root.setPosition(new Vec3((layout.stageLeft + layout.stageRight) / 2 + h * 0.3, layout.stageBottom + 150 * k, 0));
+    mountZeroGuideBubble(this as unknown as import('./GuideKit').GuideKitHost, root, 'Bubble', 0, 0, w, h, text);
+    const opacity = root.addComponent(UIOpacity);
+    opacity.opacity = 0;
+    tween(opacity).to(0.2, { opacity: 255 }).delay(Math.max(0.6, seconds - 0.6)).to(0.4, { opacity: 0 }).call(() => root.isValid && root.destroy()).start();
+  }
+
+  /** 开局专用层(根节点最上面):零的台词 / 收尾黑场。 */
+  private openingLayer(): Node {
+    let layer = this.node.getChildByName('LobbyOpeningLayer');
+    if (!layer) {
+      layer = new Node('LobbyOpeningLayer');
+      layer.layer = this.node.layer;
+      this.node.addChild(layer);
+      layer.addComponent(UITransform).setContentSize(new Size(10, 10));
+    }
+    layer.setSiblingIndex(this.node.children.length - 1);
+    return layer;
+  }
+
   /** 弱引导独立层(根节点最上面,功能页整页重绘不拆);记下出提示时的视图,换了页就收。 */
   private weakTipView: string | null = null;
 
@@ -10765,6 +10899,11 @@ export class LootChainGameRoot extends Component {
   private checkMoveGuide(): void {
     const userId = this.api.tokenStore.userId() ?? 0;
     const now = Date.now();
+    if (userId && openingOn() && this.moveGuideQueuedUid !== userId) {
+      // 开局原型(?opening=v2):前世一战里已经会走了,移动教学不再单独占环节
+      this.moveGuideQueuedUid = userId;
+      return;
+    }
     if (!userId || this.moveGuideQueuedUid === userId || this.starterContractSettledUid !== userId
       || now < this.starterContractSettledAt + 1500 || now < this.moveGuideRetryAt) {
       return;

@@ -13,6 +13,8 @@ js 里可用:cc / root / t(野外渲染器)/ sleep / find(节点名)/ tap(节点
   "tap": "return scr(find('X'));" → 浏览器真实按下抬起(手机触摸 / 电脑鼠标);
   "drag": "return {x0, y0, x1, y1};" + "drag_ms" / "hold"(秒)/ "shot_hold"(松手前截一张 *_hold.png);
   "after": 输入打完后再跑的 JS,结果记在 log 的 after。顺序:js → tap / drag → after → wait → 截图
+录屏(11-27):步骤里 "rec_start": true 开始录(CDP 屏幕流,JPEG 帧存 <输出目录>/rec/,文件名带毫秒时间戳),"rec_stop": true 停;
+  跨多步连续录,停时打印帧数;合成 mp4 用 tools/qa/rec_to_mp4.py <输出目录>/rec。
 产物:<输出目录>/NN_<label>.png + log.jsonl(每步返回值 / 耗时 / 当前视图)+ exceptions.txt
 要求:本地游戏服 8081;正式包服务 7460(tools/local-serve/serve_release.py)。
 """
@@ -113,6 +115,7 @@ async def run():
         async with websockets.connect(tab['webSocketDebuggerUrl'], max_size=None, ping_interval=None) as ws:
             seq = 0
             pending = {}
+            cast = {'dir': os.path.join(OUT, 'rec'), 'n': 0}
 
             async def reader():
                 async for raw in ws:
@@ -122,6 +125,12 @@ async def run():
                     elif m.get('method') == 'Runtime.exceptionThrown':
                         d = m['params']['exceptionDetails']
                         exc.append((d.get('exception') or {}).get('description', d.get('text', ''))[:300])
+                    elif m.get('method') == 'Page.screencastFrame':
+                        p = m['params']
+                        cast['n'] += 1
+                        ts = int(float(p.get('metadata', {}).get('timestamp', time.time())) * 1000)
+                        open(os.path.join(cast['dir'], f'f_{ts}.jpg'), 'wb').write(base64.b64decode(p['data']))
+                        await ws.send(json.dumps({'id': 900000000 + cast['n'], 'method': 'Page.screencastFrameAck', 'params': {'sessionId': p['sessionId']}}))
                     elif m.get('method') == 'Runtime.consoleAPICalled' and m['params'].get('type') == 'error':
                         exc.append('console.error: ' + ' '.join(str(a.get('value', a.get('description', '')))[:200] for a in m['params'].get('args', [])))
 
@@ -172,6 +181,9 @@ async def run():
             n0 = len([f for f in os.listdir(OUT) if f.endswith('.png')])
             for i, step in enumerate(json.load(open(STEPS, encoding='utf-8'))):
                 ts = time.time()
+                if step.get('rec_start'):
+                    os.makedirs(cast['dir'], exist_ok=True)
+                    await call('Page.startScreencast', {'format': 'jpeg', 'quality': 80, 'maxWidth': 1600, 'maxHeight': 900, 'everyNthFrame': 1})
                 res = await ev(wrap(step['js']), step.get('timeout', 600)) if step.get('js') else None
                 name = f"{n0 + i:02d}_{re.sub(r'[^0-9A-Za-z_\u4e00-\u9fff-]+', '_', step.get('label', 'step'))}.png"
                 # tap:JS \u8fd4\u56de {x, y}(CSS \u5750\u6807,\u53ef\u7528 scr(node))\u2192 \u771f\u5b9e\u6309\u4e0b\u62ac\u8d77;
@@ -200,6 +212,9 @@ async def run():
                 after = await ev(wrap(step['after']), step.get('timeout', 600)) if step.get('after') else None
                 if step.get('wait'):
                     await asyncio.sleep(float(step['wait']))
+                if step.get('rec_stop'):
+                    await call('Page.stopScreencast')
+                    print('rec frames', cast['n'], flush=True)
                 v = await ev(wrap("return view() + (t && t.isMounted && t.isMounted() ? ' @' + t.def.code : '');"))
                 if step.get('shot', True):
                     await shot(name)

@@ -29,7 +29,8 @@ import {
 import { HERO_CLIP_COMBOS } from './HeroClipCombos';
 import { applyFieldActorLook, fieldActorLook, fieldActorLookEnabled } from './LobbyFieldActorLook';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
-import { resolveFieldParty } from '../../api/LobbyHeroApi';
+import { currentLobbyProtagonistHero, resolveFieldParty } from '../../api/LobbyHeroApi';
+import { OPENING_LINES, OPENING_STAGE_PREFIX, OPENING_TUNING, OPENING_WAVES, OPENING_WAVE_NEXT_ALIVE, OpeningHud, REAL_DROP_RARITY, buildOpeningParty, floatDropName, openingOn, preloadOpeningIcons, rollOpeningLoot, spawnRarityDrop, type LootRarity, type OpeningDrop } from './LobbyOpeningBattle';
 import { isBuiltinFxHero } from '../../api/YijieShenzhouHeroes';
 import type { LobbyBadges } from '../../api/LobbyBadgeApi';
 import type { PlayerIdleSummaryVO } from '../../types/IdleTypes';
@@ -140,6 +141,8 @@ export interface LobbyTownHost extends LobbyHudHost {
    * target = 要套光环的节点(null = 只出气泡);bubbleTop = 气泡放屏幕上部(战斗中别挡技能键)。
    */
   showWeakTip?(name: string, target: Node | null, text: string, hint: string, seconds: number, opts?: { bubbleTop?: boolean }): void;
+  /** 开局爽感原型(?opening=v2):零的一句话(开场 / 连杀档位 / 收尾),挂根节点不随 HUD 重建。 */
+  openingSay?(text: string, seconds: number): void;
 }
 
 /** 地图页(鸟瞰,10-30 原型 proto_map_b)要的当前图快照:坐标都是世界坐标。 */
@@ -800,6 +803,12 @@ export class LobbyTownRenderer {
   private swapReadyAt = 0;
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private holdFired = false;
+  /** 开局爽感原型(?opening=v2)「前世一战」进行中;null = 没在打(LobbyOpeningBattle)。 */
+  private opening: {
+    party: LobbyHeroItemVO[]; startedAt: number; wave: number; waveAt: number; homeX: number; homeY: number;
+    hidden: Node[]; savedMonsters: TownMonster[]; over: boolean; loot: Record<LootRarity, number>; onEnd: () => void; hintAt: number;
+  } | null = null;
+  private readonly openingHud = new OpeningHud();
   private loots: TownLoot[] = [];
 
   constructor(private readonly host: LobbyTownHost) {}
@@ -1141,6 +1150,337 @@ export class LobbyTownRenderer {
       leader.skeleton.setAnimation(0, names.death, false);
     }
     trial.onFail('down');
+  }
+
+  // ── 开局爽感原型(?opening=v2,LobbyOpeningBattle):「前世一战」 ──
+
+  isOpeningActive(): boolean {
+    return !!this.opening;
+  }
+
+  private openingPreload: { left: number } | null = null;
+
+  /**
+   * 开局强队骨骼 + 掉落图标先预载(第一次加载炼魂装骨骼约 1 秒,不预载开战首帧主角是空的);全部到了返回 true。
+   * GameRoot 每轮调,第一次调时发起加载。
+   */
+  openingPartyLoaded(): boolean {
+    if (!this.openingPreload) {
+      // 建角前就会调(选择主角页):男女主炼魂装两套都预载,不管选哪个性别开战时都已就绪
+      const male = buildOpeningParty(null);
+      const female = buildOpeningParty({ ...male[0], heroCode: 'PROTAGONIST_FEMALE_ATTACK', spineAsset: 'protag_f' });
+      const party = [...male, female[0]];
+      const paths = party.map((hero) => ({ path: resolveBattleUnitSpineResource(this.toUnit(hero)), uuid: hero.spineUuid ?? null })).filter((x) => !!x.path);
+      const state = { left: paths.length };
+      this.openingPreload = state;
+      paths.forEach((x) => loadSharedSpineData(x.path, x.uuid, 'OpeningParty', () => { state.left -= 1; }));
+      preloadOpeningIcons();
+      party.forEach((hero) => this.fx.prewarmKit(resolveTownHeroFxKit(hero.heroCode, hero.heroClass, companionRole(hero.heroClass))));
+    }
+    return this.openingPreload.left <= 0;
+  }
+
+  /** 队长骨骼已加载(开局「前世一战」开打的就绪判据;不用 awakenStageReady:11-27 换 Lucius 底后骨骼没有 down_end)。 */
+  partyReady(): boolean {
+    const leader = this.leader;
+    return this.isMounted() && !!leader?.skeleton && !!leader.skeleton.skeletonData;
+  }
+
+  /**
+   * 就地开打:收起本图 NPC / 物件 / 训练靶 / 名牌(结束原样打开),队伍换成满配强队(主角炼魂装 + 3 名 UR),
+   * 队长挪到广场(传送阵一带),1.6 秒后第一波兽潮从四周涌来。全程不登记遭遇、不上报击杀、不上报坐标。
+   */
+  startOpening(onEnd: () => void): boolean {
+    const leader = this.leader;
+    const entities = this.entityRoot;
+    if (this.opening || this.trial || !leader || !entities || !entities.isValid || this.def.camps.length === 0) {
+      return false;
+    }
+    const now = Date.now();
+    this.cancelAutoWalk();
+    this.setLockTarget(null);
+    this.pendingHits = [];
+    this.companionHits = [];
+    const hidden: Node[] = [];
+    for (const parent of [entities, this.tagRoot]) {
+      if (!parent || !parent.isValid) {
+        continue;
+      }
+      for (const child of parent.children) {
+        // 只收 NPC / 宝箱 / 兴趣点 / 训练靶 / 战利品袋 + 标签层(名牌);房子树木等物件留着(村子还是村子)
+        const pick = parent === this.tagRoot || /^Town(Npc|Chest|Poi|Monster|Loot)_/.test(child.name);
+        if (child.active && pick) {
+          child.active = false;
+          hidden.push(child);
+        }
+      }
+    }
+    this.opening = {
+      party: buildOpeningParty(currentLobbyProtagonistHero()),
+      startedAt: now, wave: -1, waveAt: now + 1600, homeX: leader.x, homeY: leader.y,
+      hidden, savedMonsters: this.monsters, over: false,
+      loot: { white: 0, green: 0, blue: 0, purple: 0, orange: 0 }, onEnd, hintAt: now + 4200,
+    };
+    this.monsters = [];
+    // 广场中心偏北(南边是大片橡树树冠,打进去人会被挡住);走不通就留在原地
+    const wp = this.def.waypoint;
+    const px = wp ? wp.x : leader.x;
+    const py = wp ? wp.y + 80 : leader.y;
+    if (this.walkable(px, py)) {
+      leader.x = px;
+      leader.y = py;
+      leader.node.setPosition(px, py, 0);
+    }
+    this.partySignature = '';
+    this.ensureParty();
+    this.leaderMaxHp = OPENING_TUNING.leaderHp;
+    this.leaderHp = OPENING_TUNING.leaderHp;
+    this.raiderAttack = OPENING_TUNING.attack;
+    this.leaderDead = false;
+    for (const actor of this.followers) {
+      actor.attack = OPENING_TUNING.companionAttack;
+      actor.maxHp = OPENING_TUNING.companionHp;
+      actor.hp = actor.maxHp;
+      actor.down = false;
+      actor.assistReadyAt = now + 2500;
+    }
+    this.skillReadyAt.fill(0);
+    this.ultReadyAt = now + 3000;
+    this.prewarmRealmUlt();
+    this.openingHud.combo = 0;
+    this.openingHud.kills = 0;
+    this.openingHud.setLoot(this.opening.loot);
+    this.openingHud.setWave('前世 · 一战');
+    this.drawLeaderHp();
+    this.applyCamera(true);
+    this.host.openingSay?.(OPENING_LINES.start, 3.6);
+    return true;
+  }
+
+  private stepOpening(): void {
+    const op = this.opening;
+    if (!op) {
+      return;
+    }
+    const now = Date.now();
+    this.openingHud.refresh(now, op.over ? -1 : now - op.startedAt);
+    if (op.hintAt > 0 && now >= op.hintAt) {
+      op.hintAt = 0;
+      this.host.openingSay?.(isPhoneDesign() ? OPENING_LINES.hint : OPENING_LINES.hintPc, 4.5);
+    }
+    // 倒下的怪淡出后回收(兽潮一场 100 多只,别越堆越多)
+    if (this.monsters.some((m) => m.dead && now - m.diedAt > 1600)) {
+      this.monsters = this.monsters.filter((m) => {
+        if (m.dead && now - m.diedAt > 1600) {
+          if (m.node.isValid) {
+            m.node.destroy();
+          }
+          return false;
+        }
+        return true;
+      });
+    }
+    if (op.over) {
+      return;
+    }
+    const last = OPENING_WAVES.length - 1;
+    if (op.wave < 0) {
+      if (now >= op.waveAt) {
+        this.spawnOpeningWave(0);
+      }
+      return;
+    }
+    if (op.wave >= last) {
+      return;
+    }
+    const alive = this.monsters.filter((m) => !m.dead).length;
+    const wave = OPENING_WAVES[op.wave];
+    const late = now - op.startedAt > OPENING_TUNING.bossByMs;
+    if (alive <= OPENING_WAVE_NEXT_ALIVE || now - op.waveAt > wave.maxMs || late) {
+      this.spawnOpeningWave(late ? last : op.wave + 1);
+    }
+  }
+
+  private spawnOpeningWave(index: number): void {
+    const op = this.opening;
+    const leader = this.leader;
+    const root = this.entityRoot;
+    if (!op || !leader || !root || !root.isValid) {
+      return;
+    }
+    op.wave = index;
+    op.waveAt = Date.now();
+    const wave = OPENING_WAVES[index];
+    this.openingHud.setWave(wave.title);
+    gameAudio.sfx('wave_start', 0.8);
+    const templates = Object.values(WORLD_MAPS).reduce<WorldMapCamp[]>((list, def) => list.concat(def.camps), []);
+    const base = Math.random() * Math.PI * 2;
+    wave.spawns.forEach((spawn, group) => {
+      const tpl = spawn.variantOf
+        ? templates.find((c) => c.stageCode === spawn.variantOf)
+        : templates.find((c) => c.monsterCode === spawn.monsterCode && !c.elite && !c.dummy);
+      if (!tpl) {
+        return;
+      }
+      const stageCode = spawn.boss ? `${OPENING_STAGE_PREFIX}W${index}_B` : `${OPENING_STAGE_PREFIX}W${index}_${group}`;
+      const camp: WorldMapCamp = {
+        ...tpl, stageCode, label: spawn.label, count: spawn.count, elite: !!spawn.elite, level: spawn.boss ? 12 : spawn.elite ? 10 : 6,
+        x: leader.x, y: leader.y, radius: 2400, spots: undefined, dummy: undefined,
+      };
+      this.encounters.set(stageCode, { id: -1, pending: false });
+      for (let i = 0; i < spawn.count; i += 1) {
+        // 从四周一圈涌进来(精英 / 首领从一侧稍远处并排登场)
+        const ang = spawn.elite ? base + group * 0.6 + (i - (spawn.count - 1) / 2) * 0.7 : base + group * 1.3 + (i / spawn.count) * Math.PI * 2 + Math.random() * 0.4;
+        const r = spawn.elite ? 620 : 640 + Math.random() * 320;
+        let x = leader.x + Math.cos(ang) * r;
+        // 南边(屏幕下方)是树冠:偏南的刷点翻到北边,兽潮从北 / 东 / 西涌来,战斗留在广场上
+        const sin = Math.sin(ang);
+        let y = leader.y + (sin < -0.25 ? -sin * 0.7 : sin) * r * 0.6;
+        for (let step = 0; step < 8 && !this.walkable(x, y); step += 1) {
+          x = leader.x + (x - leader.x) * 0.8;
+          y = leader.y + (y - leader.y) * 0.8;
+        }
+        const monster = this.createMonster(root, camp, i, x, y);
+        monster.maxHp = spawn.hp;
+        monster.hp = spawn.hp;
+        monster.hit = spawn.hit;
+        monster.ranged = false;
+        monster.nextAttackAt = Date.now() + 900 + Math.random() * 600;
+        const opacity = monster.node.addComponent(UIOpacity);
+        opacity.opacity = 0;
+        tween(opacity).delay(Math.random() * 0.4).to(0.35, { opacity: 255 }).start();
+        this.monsters.push(monster);
+      }
+      if (spawn.boss) {
+        setTimeout(() => this.opening && this.playBossIntro(stageCode), 500);
+      }
+    });
+  }
+
+  private onOpeningKill(monster: TownMonster): void {
+    const op = this.opening;
+    if (!op) {
+      return;
+    }
+    const now = Date.now();
+    const shout = this.openingHud.addKill(now);
+    if (shout) {
+      this.host.openingSay?.(shout, 1.8);
+    }
+    const boss = monster.camp.stageCode.endsWith('_B');
+    const drops = rollOpeningLoot(boss ? 'boss' : monster.camp.elite ? 'elite' : 'normal');
+    const root = this.entityRoot;
+    if (root && root.isValid) {
+      let seq = 0;
+      drops.forEach((drop, i) => {
+        spawnRarityDrop({ host: this.host, root, z: this.uiZ, target: () => (this.leader ? { x: this.leader.x, y: this.leader.y } : null) },
+          monster.x, monster.y, drop, i * 160, () => this.pickOpeningDrop(drop, seq++));
+      });
+    }
+    if (boss && !op.over) {
+      this.finishOpening();
+    }
+  }
+
+  private pickOpeningDrop(drop: OpeningDrop, seq: number): void {
+    const op = this.opening;
+    const leader = this.leader;
+    const root = this.entityRoot;
+    if (!op || !leader || !root) {
+      return;
+    }
+    op.loot[drop.rarity] += 1;
+    this.openingHud.setLoot(op.loot);
+    floatDropName(this.host, root, this.uiZ, leader.x, leader.y + 170 * this.uiZ, drop, seq % 4);
+    if (drop.rarity === 'orange') {
+      this.shake(6, 0.2);
+    }
+  }
+
+  /** 首领倒下:顿帧 + 重震 + 剩下的小怪一起倒,1.9 秒后交给 GameRoot 收尾(一句话 + 黑场 → endOpening)。 */
+  private finishOpening(): void {
+    const op = this.opening;
+    if (!op) {
+      return;
+    }
+    op.over = true;
+    this.hitStop(650);
+    this.shake(16, 0.6);
+    for (const m of this.monsters) {
+      if (!m.dead && m.node.isValid) {
+        m.dead = true;
+        m.diedAt = Date.now();
+        m.hpBar?.clear();
+        if (m.nameLabel && m.nameLabel.isValid) {
+          m.nameLabel.node.active = false;
+        }
+        if (m.skeleton && m.skeleton.isValid && m.deathAnim) {
+          m.skeleton.setAnimation(0, m.deathAnim, false);
+        }
+        const opacity = m.node.getComponent(UIOpacity) ?? m.node.addComponent(UIOpacity);
+        tween(opacity).delay(0.5).to(0.6, { opacity: 0 }).start();
+      }
+    }
+    this.setLockTarget(null);
+    this.openingHud.setWave('胜利');
+    gameAudio.sfx('reward', 1);
+    setTimeout(() => {
+      if (this.opening === op) {
+        op.onEnd();
+      }
+    }, 1900);
+  }
+
+  /** 收场:销毁兽潮 / 掉落,收起的东西原样打开,队伍换回真实名册,队长回到开打前的位置,数值交回服务端遭遇。 */
+  endOpening(): void {
+    const op = this.opening;
+    if (!op) {
+      return;
+    }
+    this.opening = null;
+    this.openingHud.unmount();
+    this.setLockTarget(null);
+    this.pendingHits = [];
+    this.companionHits = [];
+    for (const m of this.monsters) {
+      if (m.node.isValid) {
+        m.node.destroy();
+      }
+    }
+    for (const code of Array.from(this.encounters.keys())) {
+      if (code.startsWith(OPENING_STAGE_PREFIX)) {
+        this.encounters.delete(code);
+      }
+    }
+    const root = this.entityRoot;
+    if (root && root.isValid) {
+      root.children.filter((c) => c.name.startsWith('OpeningDrop') || c.name === 'Floater').forEach((c) => c.destroy());
+    }
+    for (const node of op.hidden) {
+      if (node.isValid) {
+        node.active = true;
+      }
+    }
+    this.monsters = op.savedMonsters.filter((m) => m.node.isValid);
+    // 收起时全打开了:按当前镜头重算一次裁剪(镜头外的关回去)
+    this.cullKey = '';
+    const leader = this.leader;
+    if (leader) {
+      leader.x = op.homeX;
+      leader.y = op.homeY;
+      leader.node.setPosition(op.homeX, op.homeY, 0);
+    }
+    this.partySignature = '';
+    this.ensureParty();
+    this.leaderMaxHp = 0;
+    this.leaderHp = 0;
+    this.raiderAttack = 0;
+    this.ensureLeaderStats();
+    this.leaderDead = false;
+    this.skillReadyAt.fill(0);
+    this.ultReadyAt = 0;
+    this.drawLeaderHp();
+    this.applyCamera(true);
   }
 
   /** 野外战斗回来(docs/50):赢了这群怪 60 秒后再刷;输了把队伍推离营地,免得一回来又撞上。 */
@@ -1562,7 +1902,12 @@ export class LobbyTownRenderer {
     const bottom = qy * CULL_STEP - my;
     const top = qy * CULL_STEP + my;
     this.cullItems = this.cullItems.filter((item) => item.node.isValid);
+    const held = this.opening ? new Set(this.opening.hidden) : null;
     for (const item of this.cullItems) {
+      if (held && held.has(item.node)) {
+        // 开局「前世一战」收起的 NPC:镜头裁剪别把它们重新点亮
+        continue;
+      }
       const on = item.x1 > left && item.x0 < right && item.y1 > bottom && item.y0 < top;
       if (item.node.active !== on) {
         item.node.active = on;
@@ -1908,6 +2253,9 @@ export class LobbyTownRenderer {
   // ── 队伍 ──
 
   private resolveParty(): LobbyHeroItemVO[] {
+    if (this.opening) {
+      return this.opening.party;
+    }
     // docs/60:主角当队长 + 编队最多 3 名英雄(与登记遭遇共用 resolveFieldParty,第一个 = 队长)
     return resolveFieldParty(this.host.currentLobbyHeroRosterState().heroes, this.host.currentLobbyFormationHeroIds());
   }
@@ -2485,10 +2833,11 @@ export class LobbyTownRenderer {
     this.stepCombat(clamped);
     this.stepMonsters(clamped);
     this.stepRealmTrial();
+    this.stepOpening();
     this.updateMonsterNames();
     this.retryMissingNpcs();
     this.stepNpcs();
-    if (!this.trial) {
+    if (!this.trial && !this.opening) {
       // 试炼石台是就地铺的:探索 / 隐藏点 / 坐标上报都停掉(站位可能在建筑 / 水面范围里,服务端坐标校验会拦)
       this.updateExplore();
       this.updateHiddenPois();
@@ -2502,7 +2851,7 @@ export class LobbyTownRenderer {
         this.ensureMonsters();
       }
     }
-    if (!this.trial) {
+    if (!this.trial && !this.opening) {
       this.checkExitsAndWaypoint();
     }
     this.stepChannel();
@@ -2515,7 +2864,7 @@ export class LobbyTownRenderer {
     this.scene.step(clamped);
     this.occludeScene();
     this.sortEntities(false);
-    if (!this.trial) {
+    if (!this.trial && !this.opening) {
       this.updateNearBuilding();
       this.updateMinimap();
       this.updateGuidePointer();
@@ -3716,6 +4065,16 @@ export class LobbyTownRenderer {
     this.hudLayout = layout;
     // docs/51 原型 v3:左上圆形小地图 + 追踪;队长右侧交互提示条;野外加右下战斗簇 / 底部队长血条 / 右侧援护位 / 顶部精英条
     this.renderJoystick(hud, layout, scale);
+    if (this.opening) {
+      // 开局「前世一战」:摇杆 / 战斗簇 / 队长血条 / 援护位 + 波次 / 连杀(其余跑图 HUD 全收)
+      this.renderCombatButtons(hud, layout, scale);
+      this.renderLeaderBar(hud, layout);
+      this.renderPartyColumn(hud, layout);
+      this.eliteBar = null;
+      this.promptRoot = this.host.addChildPlainNode(hud, 'LobbyTownPrompts', 0, 0, 1, 1);
+      this.openingHud.mount(this.host, hud, layout, scale);
+      return;
+    }
     if (this.trial) {
       // docs/60 §12 心魔试炼:只留摇杆 / 战斗簇 / 队长血条 / 心魔血条(试炼顶栏 / 放弃 / 零的台词由 GameRoot 盖在上面)
       this.renderCombatButtons(hud, layout, scale);
@@ -4272,7 +4631,8 @@ export class LobbyTownRenderer {
 
   private ensureNpcs(): void {
     const root = this.entityRoot;
-    if (!root || !root.isValid) {
+    // 开局「前世一战」期间 NPC 收起:贴图晚到的 NPC 也别在战斗中补建出来(收场后 retryMissingNpcs 会补)
+    if (!root || !root.isValid || this.opening) {
       return;
     }
     for (const npc of this.def.npcs) {
@@ -5210,7 +5570,7 @@ export class LobbyTownRenderer {
   private ensureMonsters(): void {
     const root = this.entityRoot;
     // 11-09 自验:试炼开始会整页重绘 → 这里不能刷怪(否则本图怪群刷进试炼的怪物列表,出现在石台上一起打)
-    if (!root || !root.isValid || this.trial) {
+    if (!root || !root.isValid || this.trial || this.opening) {
       return;
     }
     const now = Date.now();
@@ -5412,7 +5772,9 @@ export class LobbyTownRenderer {
       // docs/51:追打离自己最近的在场队员(队长 / 队友),不再只盯队长
       const victim = engaged ? this.monsterVictim(monster) : this.leaderDead ? null : leader;
       const toVictim = victim ? Math.hypot(victim.x - monster.x, victim.y - monster.y) : Number.POSITIVE_INFINITY;
-      const chasing = !!victim && !this.leaderDead && !leashed && (toLeader < MONSTER_AGGRO_RADIUS || (engaged && toVictim < MONSTER_AGGRO_RADIUS * 2.2));
+      // 开局兽潮:刷出来就扑向队伍(不等走进警戒圈)
+      const swarm = !!this.opening && camp.stageCode.startsWith(OPENING_STAGE_PREFIX);
+      const chasing = !!victim && !this.leaderDead && (swarm || (!leashed && (toLeader < MONSTER_AGGRO_RADIUS || (engaged && toVictim < MONSTER_AGGRO_RADIUS * 2.2))));
       monster.victim = chasing ? victim : null;
       if (!chasing && (monster.castUntil > 0 || monster.slamAt > 0)) {
         // 脱战 / 队长倒下 / 拉回营地:读条作废,下次开打重新计时
@@ -6114,7 +6476,7 @@ export class LobbyTownRenderer {
   }
 
   private engageCamp(stageCode: string): void {
-    if (stageCode === REALM_TRIAL_STAGE || this.encounters.has(stageCode) || !this.host.engageWorldField) {
+    if (stageCode === REALM_TRIAL_STAGE || stageCode.startsWith(OPENING_STAGE_PREFIX) || this.encounters.has(stageCode) || !this.host.engageWorldField) {
       return;
     }
     this.encounters.set(stageCode, { id: 0, pending: true });
@@ -6333,7 +6695,7 @@ export class LobbyTownRenderer {
     const now = Date.now();
     const leader = this.leader;
     const root = this.entityRoot;
-    if (!leader || !root || this.leaderDead || !this.combatMap() || !leader.hero.protagonist || !this.host.realmUltOpen?.()) {
+    if (!leader || !root || this.leaderDead || !this.combatMap() || !leader.hero.protagonist || !this.ultOpen()) {
       return;
     }
     if (now < this.ultReadyAt) {
@@ -6347,7 +6709,7 @@ export class LobbyTownRenderer {
     }
     this.prewarmRealmUlt();
     const cfg = realmUltCfg();
-    this.ultReadyAt = now + cfg.cdMs;
+    this.ultReadyAt = now + this.ultCdMs();
     this.comboUntil = 0;
     const target = this.ensureLockTarget();
     if (target) {
@@ -6431,7 +6793,21 @@ export class LobbyTownRenderer {
 
   /** 技能冷却:进化「冥想」按比例缩短。 */
   private skillCdMs(index: number): number {
-    return Math.round(LobbyTownRenderer.SKILLS[index].cdMs * (1 - Math.min(0.5, this.evoValue('SKILL_CD'))));
+    const mul = this.opening ? OPENING_TUNING.skillCdMul : 1;
+    return Math.round(LobbyTownRenderer.SKILLS[index].cdMs * mul * (1 - Math.min(0.5, this.evoValue('SKILL_CD'))));
+  }
+
+  /** 主角大招「夜帝残影」开没开:炼魂起;开局「前世一战」也开(LobbyOpeningBattle)。 */
+  private ultOpen(): boolean {
+    return !!this.opening || !!this.host.realmUltOpen?.();
+  }
+
+  private ultCdMs(): number {
+    return this.opening ? OPENING_TUNING.ultCdMs : realmUltCfg().cdMs;
+  }
+
+  private assistCdMs(): number {
+    return this.opening ? OPENING_TUNING.assistCdMs : COMPANION_ASSIST_CD_MS;
   }
 
   private leaderDodge(): void {
@@ -7324,7 +7700,7 @@ export class LobbyTownRenderer {
       return;
     }
     if (actor.role === 'support') {
-      actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
+      actor.assistReadyAt = now + this.assistCdMs();
       // 自带大招动作完整播(2.5 秒),不再压到 1.2 秒
       this.playActorAction(actor, 'ult', this.hasOwnUlt(actor) ? 0 : 1200);
       if (this.entityRoot && !this.hasOwnUlt(actor)) {
@@ -7341,7 +7717,7 @@ export class LobbyTownRenderer {
     const target = this.ensureLockTarget();
     if (!target) {
       // 10-29 用户:没有怪也可以释放 —— 原地朝当前朝向出大招 + 特效,照常进冷却(不造成伤害)
-      actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
+      actor.assistReadyAt = now + this.assistCdMs();
       actor.inAction = true;
       const freeDur = this.playActorAction(actor, 'ult', this.hasOwnUlt(actor) ? 0 : 1200) || 700;
       actor.actionUntil = now + freeDur;
@@ -7355,7 +7731,7 @@ export class LobbyTownRenderer {
       this.spawnFloater(actor.x, actor.y + 270, '援护!', rgba(255, 214, 110), 26);
       return;
     }
-    actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
+    actor.assistReadyAt = now + this.assistCdMs();
     if (!this.encounters.has(target.camp.stageCode)) {
       this.engageCamp(target.camp.stageCode);
     }
@@ -7611,8 +7987,12 @@ export class LobbyTownRenderer {
       return;
     }
     if (hit.ult) {
-      this.resolveRealmUltHit(leader, hit.mult, hit.reach);
+      this.resolveRealmUltHit(leader, hit.mult, hit.reach * (this.opening ? 1.25 : 1));
       return;
+    }
+    if (this.opening && !hit.dashLine) {
+      // 开局:一刀清一片
+      hit = { ...hit, reach: hit.reach * OPENING_TUNING.reachMul };
     }
     const attack = Math.max(1, this.raiderAttack || 20);
     // docs/58 §10 进化:秘能(技能伤害)/ 翻身反击(翻滚后 2 秒)/ 回响(技能命中后下一次普攻 +50%)/ 三段裂地(第三段范围 + 眩晕)
@@ -7788,11 +8168,13 @@ export class LobbyTownRenderer {
     const lift = seq * 26;
     const sway = (seq % 2 === 0 ? 1 : -1) * Math.ceil(seq / 2) * 34;
     const y = monster.y + (monster.camp.elite ? 230 : 130) + lift;
+    // 开局「前世一战」:伤害数字放大 1.4 倍
+    const fm = this.opening ? OPENING_TUNING.floatMul : 1;
     if (companion) {
       // 队友伤害小一号、颜色偏淡,和队长区分
-      this.spawnFloater(monster.x + 30 + sway, y - 20, `${damage}`, heavy ? rgba(255, 226, 150) : rgba(236, 226, 200), heavy ? 24 : 20);
+      this.spawnFloater(monster.x + 30 + sway, y - 20, `${damage}`, heavy ? rgba(255, 226, 150) : rgba(236, 226, 200), Math.round((heavy ? 24 : 20) * fm));
     } else {
-      this.spawnFloater(monster.x + sway, y, `${damage}`, heavy ? rgba(255, 210, 90) : rgba(255, 245, 230), heavy ? 34 : 28);
+      this.spawnFloater(monster.x + sway, y, `${damage}`, heavy ? rgba(255, 210, 90) : rgba(255, 245, 230), Math.round((heavy ? 34 : 28) * fm));
     }
     this.drawMonsterHp(monster);
     if (monster.hp <= 0) {
@@ -7902,6 +8284,10 @@ export class LobbyTownRenderer {
     const stageCode = monster.camp.stageCode;
     if (stageCode === REALM_TRIAL_STAGE) {
       this.onRealmTrialMonsterDead();
+      return;
+    }
+    if (stageCode.startsWith(OPENING_STAGE_PREFIX)) {
+      this.onOpeningKill(monster);
       return;
     }
     const alive = this.monsters.some((item) => item.camp.stageCode === stageCode && !item.dead);
@@ -8088,6 +8474,18 @@ export class LobbyTownRenderer {
       }
       const from = pos[drop.index] ?? pos[pos.length - 1];
       if (!from) {
+        return;
+      }
+      const rarity: LootRarity | undefined = openingOn() ? REAL_DROP_RARITY[item.code] : undefined;
+      if (rarity) {
+        // 开局原型方案 F(?opening=v2):真实掉落按品质上色(金币白 / 经验书绿 / 强化石蓝,蓝起光柱)+ 拾取飘名字;奖励本身不变
+        spawnRarityDrop({ host: this.host, root, z: this.uiZ, target: () => (this.leader ? { x: this.leader.x, y: this.leader.y } : null) },
+          from.x, from.y, { rarity, icon: FIELD_DROP_ICON[item.code] }, order * 120, () => {
+            const leader = this.leader;
+            if (leader) {
+              floatDropName(this.host, root, this.uiZ, leader.x, leader.y + 170 * this.uiZ, { rarity, name: `${item.name} ×${item.amount}` }, order % 4);
+            }
+          });
         return;
       }
       setTimeout(() => {
@@ -8530,6 +8928,13 @@ export class LobbyTownRenderer {
       this.iframesUntil = Math.max(this.iframesUntil, now0 + 2000);
       this.spawnFloater(leader.x, leader.y + 300, '不屈', rgba(240, 210, 130), 30);
     }
+    if (this.opening) {
+      // 开局:先尝到强 —— 血量最低保 30%,不会死
+      amount = Math.min(amount, Math.max(0, this.leaderHp - Math.round(this.leaderMaxHp * OPENING_TUNING.hpFloor)));
+      if (amount <= 0) {
+        return;
+      }
+    }
     this.leaderHp = Math.max(0, this.leaderHp - amount);
     this.lastHurtAt = Date.now();
     this.shake(3, 0.1);
@@ -8548,7 +8953,7 @@ export class LobbyTownRenderer {
       return;
     }
     // docs/57 §3 V07:新手村阶段第一次血量低于 40% → 弱引导(翻滚躲开 / 撤出战斗自动回血,脱战 4 秒每秒回 8%)
-    if (!this.trial && this.leaderMaxHp > 0 && this.leaderHp < this.leaderMaxHp * 0.4 && this.villageStage()) {
+    if (!this.trial && !this.opening && this.leaderMaxHp > 0 && this.leaderHp < this.leaderMaxHp * 0.4 && this.villageStage()) {
       const seen = this.host.guideTipSeen;
       if (seen && !seen.call(this.host, 'low_hp')) {
         this.host.markGuideTip?.('low_hp');
@@ -8882,7 +9287,7 @@ export class LobbyTownRenderer {
     mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.6, 'Shift', () => this.leaderDodge(), -2);
     mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.56, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
     // docs/60 P1b 炼魂大招「夜帝残影」(原型 realm_ult_yedi_a):主角当队长且到炼魂才有,在技能簇左上
-    if (this.resolveParty()[0]?.protagonist && this.host.realmUltOpen?.()) {
+    if (this.resolveParty()[0]?.protagonist && this.ultOpen()) {
       mk('LobbyFieldRealmUlt', 1560, 470, 104, true, REALM_ULT.icon, 0.72, 'U', () => this.leaderRealmUlt(), -4);
       this.prewarmRealmUlt();
     }
@@ -9260,7 +9665,7 @@ export class LobbyTownRenderer {
         continue;
       }
       const readyAt = button.index >= 0 ? this.skillReadyAt[button.index] : button.index === -2 ? this.dodgeReadyAt : button.index === -4 ? this.ultReadyAt : 0;
-      const total = button.index >= 0 ? this.skillCdMs(button.index) : button.index === -4 ? realmUltCfg().cdMs : 1200;
+      const total = button.index >= 0 ? this.skillCdMs(button.index) : button.index === -4 ? this.ultCdMs() : 1200;
       const left = Math.max(0, readyAt - now);
       if (button.cd && button.cd.isValid) {
         const text = left > 0 && (button.index >= 0 || button.index === -4) ? `${Math.ceil(left / 1000)}` : '';
@@ -9431,7 +9836,7 @@ export class LobbyTownRenderer {
       }
       const actor = slot.actor;
       const ratio = actor.maxHp > 0 ? Math.max(0, actor.hp / actor.maxHp) : 1;
-      const cdFrac = actor.down ? 0 : Math.max(0, Math.min(1, 1 - (actor.assistReadyAt - now) / COMPANION_ASSIST_CD_MS));
+      const cdFrac = actor.down ? 0 : Math.max(0, Math.min(1, 1 - (actor.assistReadyAt - now) / this.assistCdMs()));
       const downLeft = actor.down ? Math.max(0, Math.ceil((actor.downUntil - now) / 1000)) : 0;
       const key = `${Math.round(ratio * 50)}:${Math.round(cdFrac * 48)}:${actor.down ? downLeft : -1}`;
       // 没怪也能放(10-29 用户):冷却好了就亮
