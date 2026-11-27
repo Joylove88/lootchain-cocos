@@ -2,7 +2,7 @@
 """新号正常开局回归(2026-11-27):主角骨骼换 Lucius 底后没有 down_end,觉醒演出永远不开演 → 契约之选不弹(线上 P0)。
 不带任何开关:本地注册新号 → 建角 → 觉醒演出(躺地 → 起身)→ 契约之选弹出 → 订立 → 名册里有契约伙伴。
 
-用法:python tools/qa/newbie_awaken_check.py [输出目录] [--pc]
+用法:python tools/qa/newbie_awaken_check.py [输出目录] [--pc] [--release]
 要求编辑器预览 7456 + 本地游戏服 8081;无头 Edge 一次只开一个,跑完按配置目录关(复用 opening_v2_shots 的注册 / 注入写法)。
 """
 import json
@@ -18,8 +18,9 @@ import opening_v2_shots as ov  # noqa: E402  复用 register()
 
 SCRATCH = os.environ.get('LC_QA_OUT') or os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa')
 PC = '--pc' in sys.argv
-PROFILE_NAME = 'playtest_profile_awaken'
-ENV = dict(os.environ, PREVIEW_PORT='7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT='9387', PYTHONIOENCODING='utf-8', PAGE_QS='')
+RELEASE = '--release' in sys.argv  # 本地正式包 7460(出包后验证;全新配置会先下开局包)
+PROFILE_NAME = 'playtest_profile_awaken' + ('_rel' if RELEASE else '')
+ENV = dict(os.environ, PREVIEW_PORT='7460' if RELEASE else '7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT=('9397' if RELEASE else '9387'), PYTHONIOENCODING='utf-8', PAGE_QS='')
 
 
 def steps():

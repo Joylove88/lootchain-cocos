@@ -1283,6 +1283,7 @@ export class LobbyTownRenderer {
     if (op.over) {
       return;
     }
+    this.unstickOpeningMonsters(now);
     const last = OPENING_WAVES.length - 1;
     if (op.wave < 0) {
       if (now >= op.waveAt) {
@@ -1332,14 +1333,7 @@ export class LobbyTownRenderer {
         // 从四周一圈涌进来(精英 / 首领从一侧稍远处并排登场)
         const ang = spawn.elite ? base + group * 0.6 + (i - (spawn.count - 1) / 2) * 0.7 : base + group * 1.3 + (i / spawn.count) * Math.PI * 2 + Math.random() * 0.4;
         const r = spawn.elite ? 620 : 640 + Math.random() * 320;
-        let x = leader.x + Math.cos(ang) * r;
-        // 南边(屏幕下方)是树冠:偏南的刷点翻到北边,兽潮从北 / 东 / 西涌来,战斗留在广场上
-        const sin = Math.sin(ang);
-        let y = leader.y + (sin < -0.25 ? -sin * 0.7 : sin) * r * 0.6;
-        for (let step = 0; step < 8 && !this.walkable(x, y); step += 1) {
-          x = leader.x + (x - leader.x) * 0.8;
-          y = leader.y + (y - leader.y) * 0.8;
-        }
+        const { x, y } = this.openingSpawnPoint(leader.x, leader.y, ang, r);
         const monster = this.createMonster(root, camp, i, x, y);
         monster.maxHp = spawn.hp;
         monster.hp = spawn.hp;
@@ -1355,6 +1349,61 @@ export class LobbyTownRenderer {
         setTimeout(() => this.opening && this.playBossIntro(stageCode), 500);
       }
     });
+  }
+
+  /**
+   * 兽潮刷点:南边(屏幕下方)是树冠,偏南的翻到北边;要求刷点到队长直线走得通(否则怪卡在河边 / 树后过不来,
+   * 正式包自验首领卡在河岸石头后 4 分钟),不通就转角度再试,最后收近。
+   */
+  private openingSpawnPoint(lx: number, ly: number, ang: number, r: number): { x: number; y: number } {
+    for (let rad = r; rad >= 260; rad *= 0.75) {
+      for (let k = 0; k < 12; k += 1) {
+        const a = ang + (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 0.45;
+        const sin = Math.sin(a);
+        const x = lx + Math.cos(a) * rad;
+        const y = ly + (sin < -0.25 ? -sin * 0.7 : sin) * rad * 0.6;
+        if (this.walkable(x, y) && this.segmentWalkable(x, y, lx, ly, 2000)) {
+          return { x, y };
+        }
+      }
+    }
+    return { x: lx + Math.cos(ang) * 200, y: ly };
+  }
+
+  /** 兽潮里被地形卡住的怪(追着人却 2.5 秒挪不到 30):直接朝队长挪到身前 260 处(原型,别让首领卡在树后打不到)。 */
+  private unstickOpeningMonsters(now: number): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    for (const m of this.monsters) {
+      if (m.dead || !m.node.isValid) {
+        continue;
+      }
+      const st = m as unknown as { __ox?: number; __oy?: number; __ot?: number };
+      if (st.__ot === undefined || Math.hypot(m.x - (st.__ox ?? 0), m.y - (st.__oy ?? 0)) > 30) {
+        st.__ox = m.x;
+        st.__oy = m.y;
+        st.__ot = now;
+        continue;
+      }
+      const d = Math.hypot(leader.x - m.x, leader.y - m.y);
+      if (now - st.__ot > 2500 && d > 300 && now >= m.animLockUntil && m.castUntil <= now) {
+        const k = 260 / d;
+        const nx = leader.x + (m.x - leader.x) * k;
+        const ny = leader.y + (m.y - leader.y) * k;
+        if (this.walkable(nx, ny)) {
+          m.x = nx;
+          m.y = ny;
+          m.tx = nx;
+          m.ty = ny;
+          m.node.setPosition(nx, ny, 0);
+        }
+        st.__ox = m.x;
+        st.__oy = m.y;
+        st.__ot = now;
+      }
+    }
   }
 
   private onOpeningKill(monster: TownMonster): void {
@@ -9329,6 +9378,11 @@ export class LobbyTownRenderer {
 
   /** 推着方向却几乎没挪动 1.5 秒 → 冒脱困按钮;走开 80 以上或挂了 8 秒自动收起。 */
   private watchStuck(leader: TownActor, pushing: boolean, nowMs: number): void {
+    if (this.opening) {
+      // 开局「前世一战」:回出生点会把人传出战场,不出「卡住了」按钮
+      this.hideUnstuck();
+      return;
+    }
     const shown = !!this.unstuckNode?.isValid;
     const watch = this.stuckWatch;
     if (shown && (!watch || Math.hypot(leader.x - watch.x, leader.y - watch.y) > 80 || nowMs - this.unstuckShownAt > 8000)) {

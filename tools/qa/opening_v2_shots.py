@@ -6,7 +6,7 @@
 → 契约之选 → 订立后 Lv.1 正常开局(核对:没演觉醒 / 没播序幕 / 没出移动教学、名册只有主角 + 契约伙伴、等级 1)。
 全程屏幕流录像 → <输出目录>/rec.mp4。
 
-用法:python tools/qa/opening_v2_shots.py [输出目录] [--pc]
+用法:python tools/qa/opening_v2_shots.py [输出目录] [--pc] [--release]
   默认手机横屏 1200×540@2x;--pc = 电脑 1600×900。编辑器预览 7456 + 本地游戏服 8081;无头 Edge 一次只开一个,跑完按配置目录关。
 """
 import json
@@ -23,8 +23,9 @@ import edge_guard  # noqa: E402
 API = 'http://localhost:8081'
 SCRATCH = os.environ.get('LC_QA_OUT') or os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa')
 PC = '--pc' in sys.argv
-PROFILE_NAME = 'playtest_profile_opening'
-ENV = dict(os.environ, PREVIEW_PORT='7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT='9386', PYTHONIOENCODING='utf-8', PAGE_QS='?opening=v2')
+RELEASE = '--release' in sys.argv  # 本地正式包 7460(出包后验证;全新配置会先下开局包)
+PROFILE_NAME = 'playtest_profile_opening' + ('_rel' if RELEASE else '')
+ENV = dict(os.environ, PREVIEW_PORT='7460' if RELEASE else '7456', PT_PROFILE=PROFILE_NAME, EDGE_PORT=('9396' if RELEASE else '9386'), PYTHONIOENCODING='utf-8', PAGE_QS='?opening=v2')
 
 # 页面里的自动打:最近的怪远就推摇杆过去,近了普攻 + 技能(大招 / 援护留给关键帧步骤手动放,window.__holdUlt)
 AUTO = r"""
@@ -64,7 +65,7 @@ def steps():
     s = []
     s.append({'label': '等创建页', 'js': "for (let i = 0; i < 300; i++) { refresh(); if (root && (view() === 'protagonistCreate' || view() === 'lobby')) break; await sleep(500); } return view() + ' ' + location.search;", 'wait': 1, 'shot': True})
     s.append({'label': '建角到开打', 'rec_start': True,
-              'js': "refresh(); window.__t0 = Date.now(); root.submitProtagonistCreate(); let ok = false; for (let i = 0; i < 240; i++) { await sleep(250); refresh(); if (t && t.isOpeningActive && t.isOpeningActive()) { ok = true; break; } }"
+              'js': "refresh(); const nm = '原' + String(Date.now()).slice(-6); const f = root.protagonistCreateFlow; f.setNameDraft(nm); if (f.nameInput) f.nameInput.string = nm; window.__t0 = Date.now(); root.submitProtagonistCreate(); let ok = false; for (let i = 0; i < 240; i++) { await sleep(250); refresh(); if (t && t.isOpeningActive && t.isOpeningActive()) { ok = true; break; } }"
                     " const ms = Date.now() - window.__t0; return JSON.stringify({ ok, msToFight: ms, prologue: !!document.getElementById('lootchain-prologue'), awaken: !!(root.awakenCinematic && root.awakenCinematic.active), pending: localStorage.getItem('lootchain.awaken.pending.' + root.api.tokenStore.userId()) });",
               'wait': 0.4, 'shot': True})
     s.append({'label': '零开场台词', 'js': "await sleep(1200); " + STATE + " return JSON.stringify(st);", 'shot': True})
